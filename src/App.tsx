@@ -1,0 +1,3755 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Trophy, 
+  Users, 
+  LayoutDashboard, 
+  Settings, 
+  Bell, 
+  Shield, 
+  ShieldOff, 
+  Plus, 
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  CheckCircle2,
+  Check,
+  AlertCircle,
+  QrCode,
+  CreditCard,
+  Trash2,
+  LogIn,
+  LogOut,
+  UserPlus,
+  Key,
+  User as UserIcon,
+  Lock,
+  Edit2,
+  Calendar,
+  AlertTriangle,
+  Monitor,
+  Maximize,
+  Minimize,
+  X
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { MatchData, RingStatus, EventData } from './types';
+import { syncToGoogleSheets, updateWinnerInGoogleSheets } from './services/googleSheets';
+import { cn } from './lib/utils';
+import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp } from 'firebase/firestore';
+import { db } from './firebase';
+
+// Mock Initial Data
+const INITIAL_RINGS: RingStatus[] = Array.from({ length: 12 }, (_, i) => ({
+  ringNumber: i + 1,
+  currentBout: null,
+  onDeck: null,
+  inTheHole: null
+}));
+
+interface UserAccount {
+  username: string;
+  password: string;
+  role: 'admin' | 'user' | 'viewer';
+  assignedRing?: number;
+}
+
+function AnnouncementPopup({ announcement, onClose, size = 'normal' }: { announcement: { message: string, id: string } | null, onClose: () => void, size?: 'normal' | 'large' }) {
+  const isLarge = size === 'large';
+  return (
+    <AnimatePresence>
+      {announcement && (
+        <motion.div
+          initial={{ opacity: 0, x: "-50%", y: "-40%", scale: 0.9 }}
+          animate={{ opacity: 1, x: "-50%", y: "-50%", scale: 1 }}
+          exit={{ opacity: 0, x: "-50%", y: "-40%", scale: 0.9 }}
+          className={cn(
+            "fixed top-1/2 left-1/2 z-[100] w-full px-4",
+            isLarge ? "max-w-6xl" : "max-w-2xl"
+          )}
+        >
+          <div className="bg-slate-900 border-4 border-red-600 rounded-[2rem] shadow-[0_20px_50px_rgba(220,38,38,0.3)] overflow-hidden">
+            <div className={cn("bg-red-600 flex items-center justify-between", isLarge ? "px-10 py-5" : "px-8 py-3")}>
+              <div className="flex items-center gap-3">
+                <Bell size={isLarge ? 32 : 20} className="text-white animate-bounce" />
+                <span className={cn("font-black text-white uppercase tracking-[0.2em]", isLarge ? "text-xl" : "text-sm")}>Official Announcement</span>
+              </div>
+              <button 
+                onClick={onClose}
+                className="p-1 hover:bg-white/20 rounded-lg text-white transition-colors"
+              >
+                <X size={isLarge ? 32 : 20} />
+              </button>
+            </div>
+            <div className={cn("text-center", isLarge ? "p-16" : "p-8")}>
+              <p className={cn("font-black text-white leading-tight tracking-tight", isLarge ? "text-5xl" : "text-2xl")}>
+                {announcement.message}
+              </p>
+              <div className={cn("flex items-center justify-center gap-2", isLarge ? "mt-10" : "mt-6")}>
+                <div className={cn("bg-red-600/30 rounded-full overflow-hidden", isLarge ? "h-2 w-24" : "h-1 w-12")}>
+                  <motion.div 
+                    initial={{ width: "100%" }}
+                    animate={{ width: "0%" }}
+                    transition={{ duration: 60, ease: "linear" }}
+                    className="h-full bg-red-600"
+                  />
+                </div>
+                <span className={cn("font-bold text-slate-500 uppercase tracking-widest", isLarge ? "text-sm" : "text-[10px]")}>Closing in 1m</span>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+export default function App() {
+  const [events, setEvents] = useState<EventData[]>(() => {
+    const saved = localStorage.getItem('tkd_events');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [currentEventId, setCurrentEventId] = useState<string | null>(() => {
+    return localStorage.getItem('tkd_current_event');
+  });
+
+  const [user, setUser] = useState<UserAccount | null>(() => {
+    const saved = localStorage.getItem('tkd_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [accounts, setAccounts] = useState<UserAccount[]>(() => {
+    const saved = localStorage.getItem('tkd_accounts');
+    let parsed: UserAccount[] = [];
+    if (saved) {
+      parsed = JSON.parse(saved);
+    } else {
+      parsed = [
+        { username: 'admin', password: 'lee093', role: 'admin' }
+      ];
+      for (let i = 1; i <= 12; i++) {
+        parsed.push({
+          username: `ring${i}`,
+          password: '123',
+          role: 'user',
+          assignedRing: i
+        });
+      }
+    }
+    
+    if (!parsed.find(a => a.username === 'viewer')) {
+      parsed.push({ username: 'viewer', password: '123', role: 'viewer' });
+      localStorage.setItem('tkd_accounts', JSON.stringify(parsed));
+    }
+    
+    return parsed;
+  });
+
+  const [rings, setRings] = useState<RingStatus[]>(() => {
+    const saved = localStorage.getItem('tkd_rings');
+    return saved ? JSON.parse(saved) : INITIAL_RINGS;
+  });
+  const [boutQueue, setBoutQueue] = useState<{id: string, data: MatchData}[]>(() => {
+    const saved = localStorage.getItem('tkd_bout_queue');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [athletes, setAthletes] = useState([
+    { name: "Ahmad bin Ibrahim", ic: "080512-14-5567", club: "KST", category: "Junior Male -45kg", status: "Verified" as const },
+    { name: "Lim Wei Kang", ic: "091122-08-1234", club: "TKT", category: "Junior Male -45kg", status: "Pending" as const },
+    { name: "Siti Nurhaliza", ic: "100101-10-9876", club: "PST", category: "Junior Female -42kg", status: "Verified" as const },
+  ]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [activeAnnouncement, setActiveAnnouncement] = useState<{ message: string, id: string } | null>(null);
+  const [showAnnouncementInput, setShowAnnouncementInput] = useState(false);
+  const [announcementText, setAnnouncementText] = useState('');
+  const [announcementTarget, setAnnouncementTarget] = useState<'all' | 'users'>('all');
+
+  useEffect(() => {
+    const q = query(collection(db, 'announcements'), orderBy('timestamp', 'desc'), limit(1));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        const data = snapshot.docs[0].data();
+        const id = snapshot.docs[0].id;
+        
+        const target = data.target || 'all';
+        if (target === 'users' && user?.role !== 'user') return;
+        
+        const lastSeen = sessionStorage.getItem('tkd_last_announcement');
+        if (lastSeen !== id) {
+          setActiveAnnouncement({ message: data.message, id });
+          sessionStorage.setItem('tkd_last_announcement', id);
+          
+          const timer = setTimeout(() => {
+            setActiveAnnouncement(null);
+          }, 60000);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [user?.role]);
+
+  const handleSendAnnouncement = async () => {
+    if (!announcementText.trim()) return;
+    try {
+      await addDoc(collection(db, 'announcements'), {
+        message: announcementText,
+        timestamp: serverTimestamp(),
+        author: user?.username || 'Admin',
+        target: announcementTarget
+      });
+      setAnnouncementText('');
+      setShowAnnouncementInput(false);
+    } catch (error) {
+      console.error("Error sending announcement:", error);
+    }
+  };
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'mats' | 'athletes' | 'settings' | 'general' | 'standby'>(() => {
+    const savedUser = localStorage.getItem('tkd_user');
+    if (savedUser) {
+      try {
+        const parsed = JSON.parse(savedUser);
+        if (parsed.role === 'viewer') return 'general';
+        if (parsed.role === 'user') return 'mats';
+      } catch (e) {
+        // ignore
+      }
+    }
+    return 'dashboard';
+  });
+  const [isPublicView, setIsPublicView] = useState(false);
+  const [showNewBoutModal, setShowNewBoutModal] = useState(false);
+  const [newBoutInitialRing, setNewBoutInitialRing] = useState<number | undefined>(undefined);
+  const [showEditResultModal, setShowEditResultModal] = useState(false);
+  const [showAddRingModal, setShowAddRingModal] = useState(false);
+  const [missingBoutPrompt, setMissingBoutPrompt] = useState<{ ringNumber: number; expectedBout: number; totalBouts: number } | null>(null);
+  const [finalBoutCheck, setFinalBoutCheck] = useState<{ ringNumber: number; remainingCount: number } | null>(null);
+  const [ringNamingMode, setRingNamingMode] = useState<'number' | 'alphabet'>('number');
+  const [categories, setCategories] = useState<string[]>(() => {
+    const saved = localStorage.getItem('tkd_categories');
+    return saved ? JSON.parse(saved) : ["Junior Male -45kg", "Junior Female -42kg", "Senior Male -54kg"];
+  });
+  const [clubs, setClubs] = useState<string[]>(() => {
+    const saved = localStorage.getItem('tkd_clubs');
+    return saved ? JSON.parse(saved) : ["KST", "TKT", "PST", "MTA"];
+  });
+  const [googleSheetUrl, setGoogleSheetUrl] = useState<string>(() => {
+    return localStorage.getItem('tkd_sheet_url') || '';
+  });
+  const [isSheetSaved, setIsSheetSaved] = useState(false);
+
+  // Persistence & Cross-tab Sync
+  // Manual updates are used for better real-time sync
+
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'tkd_rings' && e.newValue) {
+        setRings(JSON.parse(e.newValue));
+      }
+      if (e.key === 'tkd_bout_queue' && e.newValue) {
+        setBoutQueue(JSON.parse(e.newValue));
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  const getRingName = (num: number) => {
+    if (ringNamingMode === 'number') return num.toString();
+    return String.fromCharCode(64 + num); // 1 -> A, 2 -> B, etc.
+  };
+
+  const formatTime = (date: Date | string) => {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const handleNewBoutSubmit = async (ringNumber: number, newData: MatchData) => {
+    // Update categories and clubs lists
+    if (newData.category && !categories.includes(newData.category)) {
+      const newCats = [...categories, newData.category];
+      setCategories(newCats);
+      localStorage.setItem('tkd_categories', JSON.stringify(newCats));
+    }
+    if (newData.blue_club && !clubs.includes(newData.blue_club)) {
+      const newClubs = [...clubs, newData.blue_club];
+      setClubs(newClubs);
+      localStorage.setItem('tkd_clubs', JSON.stringify(newClubs));
+    }
+    if (newData.red_club && !clubs.includes(newData.red_club)) {
+      const newClubs = [...clubs, newData.red_club];
+      setClubs(newClubs);
+      localStorage.setItem('tkd_clubs', JSON.stringify(newClubs));
+    }
+
+    // Add to queue
+    const queueItem = { id: Math.random().toString(36).substr(2, 9), data: newData };
+    setBoutQueue(prev => {
+      const updated = [...prev, queueItem];
+      localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
+      return updated;
+    });
+
+    // Sync to Google Sheets
+    if (googleSheetUrl) {
+      setIsSyncing(true);
+      try {
+        await syncToGoogleSheets(googleSheetUrl, newData);
+      } catch (e) {
+        console.error("Bout sync failed:", e);
+      }
+      setIsSyncing(false);
+    }
+  };
+
+  const pullBout = async (queueId: string) => {
+    const item = boutQueue.find(q => q.id === queueId);
+    if (!item) return;
+
+    // Remove from queue
+    setBoutQueue(prev => {
+      const updated = prev.filter(q => q.id !== queueId);
+      localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
+      return updated;
+    });
+
+    // Update ring
+    handleBoutUpdate(item.data.ring, item.data);
+  };
+
+  const handleMissingBoutReason = async (ringNumber: number, boutNumber: number, reason: string) => {
+    // Close prompt immediately for responsiveness
+    setMissingBoutPrompt(null);
+
+    if (googleSheetUrl) {
+      setIsSyncing(true);
+      const dummyMatch: MatchData = {
+        ring: ringNumber,
+        bout: boutNumber,
+        category: "Skipped",
+        blue_name: "-",
+        blue_club: "-",
+        red_name: "-",
+        red_club: "-",
+        privacy_mode: false
+      };
+      
+      // Sync in background
+      Promise.all([
+        syncToGoogleSheets(googleSheetUrl, dummyMatch, reason),
+        updateWinnerInGoogleSheets(googleSheetUrl, ringNumber, boutNumber, reason, 'N/A')
+      ]).finally(() => setIsSyncing(false));
+    }
+
+    const ring = rings.find(r => r.ringNumber === ringNumber);
+    const nextExpectedBout = boutNumber + 1;
+
+    // Update the ring's nextBoutNumber
+    setRings(prev => {
+      const updated = prev.map(r => r.ringNumber === ringNumber ? { ...r, nextBoutNumber: nextExpectedBout } : r);
+      localStorage.setItem('tkd_rings', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (ring && ring.totalBouts && nextExpectedBout <= ring.totalBouts) {
+      const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber);
+      if (nextBoutIndex !== -1) {
+        pullBout(boutQueue[nextBoutIndex].id);
+      }
+    }
+    
+    // Always close the prompt after recording a reason.
+    // If there's no next bout in the queue, the ring will just become inactive.
+    setMissingBoutPrompt(null);
+  };
+
+  const handleMissingBoutManual = async (ringNumber: number, data: MatchData) => {
+    setMissingBoutPrompt(null);
+    
+    if (googleSheetUrl) {
+      setIsSyncing(true);
+      syncToGoogleSheets(googleSheetUrl, data)
+        .finally(() => setIsSyncing(false));
+    }
+    handleBoutUpdate(ringNumber, data);
+  };
+
+  const getBoutNumber = (bout: string | number) => parseInt(bout.toString()) || 0;
+
+  const handleWinnerSelect = async (ringNumber: number, boutNumber: string | number, winner: string) => {
+    const ring = rings.find(r => r.ringNumber === ringNumber);
+    const currentBout = ring?.currentBout;
+    const winnerName = winner === 'Blue' ? currentBout?.blue_name : currentBout?.red_name;
+
+    if (googleSheetUrl) {
+      setIsSyncing(true);
+      updateWinnerInGoogleSheets(
+        googleSheetUrl, 
+        ringNumber, 
+        boutNumber, 
+        winnerName || winner,
+        winner,
+        currentBout?.blue_name,
+        currentBout?.red_name
+      ).finally(() => setIsSyncing(false));
+    }
+    
+    const ringQueue = boutQueue.filter(q => q.data.ring === ringNumber);
+    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber);
+    
+    // Check if we need to prompt for final bouts
+    // If we have a next bout, and after pulling it, the queue for this ring will be < 3
+    if (nextBoutIndex !== -1 && !ring?.isFinalBouts && ringQueue.length < 4) {
+      setFinalBoutCheck({ ringNumber, remainingCount: ringQueue.length - 1 });
+    }
+
+    if (nextBoutIndex !== -1) {
+      const nextBout = boutQueue[nextBoutIndex];
+      
+      // Remove from queue
+      setBoutQueue(prev => {
+        const updated = [...prev];
+        updated.splice(nextBoutIndex, 1);
+        localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
+        return updated;
+      });
+      
+      // Set as current bout
+      setRings(prev => {
+        const updated = prev.map(r => r.ringNumber === ringNumber ? { 
+          ...r, 
+          currentBout: nextBout.data,
+          nextBoutNumber: getBoutNumber(nextBout.data.bout) + 1
+        } : r);
+        localStorage.setItem('tkd_rings', JSON.stringify(updated));
+        return updated;
+      });
+    } else if (ring && ring.totalBouts && ring.currentBout && getBoutNumber(ring.currentBout.bout) < ring.totalBouts) {
+      // Queue is empty, but we haven't reached total bouts
+      setMissingBoutPrompt({ ringNumber, expectedBout: getBoutNumber(ring.currentBout.bout) + 1, totalBouts: ring.totalBouts });
+      // Clear the ring
+      setRings(prev => {
+        const updated = prev.map(r => r.ringNumber === ringNumber ? { 
+          ...r, 
+          currentBout: null,
+          nextBoutNumber: getBoutNumber(ring.currentBout!.bout) + 1
+        } : r);
+        localStorage.setItem('tkd_rings', JSON.stringify(updated));
+        return updated;
+      });
+    } else {
+      // Clear the ring if no next bout
+      setRings(prev => {
+        const updated = prev.map(r => r.ringNumber === ringNumber ? { 
+          ...r, 
+          currentBout: null,
+          nextBoutNumber: (ring?.currentBout ? getBoutNumber(ring.currentBout.bout) : 0) + 1
+        } : r);
+        localStorage.setItem('tkd_rings', JSON.stringify(updated));
+        return updated;
+      });
+    }
+  };
+
+  const handleTransferSelect = async (ringNumber: number, boutNumber: string | number, reason: string) => {
+    const ring = rings.find(r => r.ringNumber === ringNumber);
+    if (googleSheetUrl) {
+      setIsSyncing(true);
+      import('./services/googleSheets').then(({ updateTransferInGoogleSheets }) => {
+        updateTransferInGoogleSheets(
+          googleSheetUrl,
+          ringNumber,
+          boutNumber,
+          reason
+        ).finally(() => setIsSyncing(false));
+      });
+    }
+    
+    const ringQueue = boutQueue.filter(q => q.data.ring === ringNumber);
+    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber);
+    
+    if (nextBoutIndex !== -1 && !ring?.isFinalBouts && ringQueue.length < 4) {
+      setFinalBoutCheck({ ringNumber, remainingCount: ringQueue.length - 1 });
+    }
+
+    if (nextBoutIndex !== -1) {
+      const nextBout = boutQueue[nextBoutIndex];
+      setBoutQueue(prev => {
+        const updated = [...prev];
+        updated.splice(nextBoutIndex, 1);
+        localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
+        return updated;
+      });
+      setRings(prev => {
+        const updated = prev.map(r => r.ringNumber === ringNumber ? { 
+          ...r, 
+          currentBout: nextBout.data,
+          nextBoutNumber: getBoutNumber(nextBout.data.bout) + 1
+        } : r);
+        localStorage.setItem('tkd_rings', JSON.stringify(updated));
+        return updated;
+      });
+    } else if (ring && ring.totalBouts && ring.currentBout && getBoutNumber(ring.currentBout.bout) < ring.totalBouts) {
+      setMissingBoutPrompt({ ringNumber, expectedBout: getBoutNumber(ring.currentBout.bout) + 1, totalBouts: ring.totalBouts });
+      setRings(prev => {
+        const updated = prev.map(r => r.ringNumber === ringNumber ? { 
+          ...r, 
+          currentBout: null,
+          nextBoutNumber: getBoutNumber(ring.currentBout!.bout) + 1
+        } : r);
+        localStorage.setItem('tkd_rings', JSON.stringify(updated));
+        return updated;
+      });
+    } else {
+      setRings(prev => {
+        const updated = prev.map(r => r.ringNumber === ringNumber ? { 
+          ...r, 
+          currentBout: null,
+          nextBoutNumber: (ring?.currentBout ? getBoutNumber(ring.currentBout.bout) : 0) + 1
+        } : r);
+        localStorage.setItem('tkd_rings', JSON.stringify(updated));
+        return updated;
+      });
+    }
+  };
+
+  const handleBoutUpdate = async (ringNumber: number, newData: MatchData) => {
+    // Update categories and clubs lists
+    if (newData.category && !categories.includes(newData.category)) {
+      const newCats = [...categories, newData.category];
+      setCategories(newCats);
+      localStorage.setItem('tkd_categories', JSON.stringify(newCats));
+    }
+    if (newData.blue_club && !clubs.includes(newData.blue_club)) {
+      const newClubs = [...clubs, newData.blue_club];
+      setClubs(newClubs);
+      localStorage.setItem('tkd_clubs', JSON.stringify(newClubs));
+    }
+    if (newData.red_club && !clubs.includes(newData.red_club)) {
+      const newClubs = [...clubs, newData.red_club];
+      setClubs(newClubs);
+      localStorage.setItem('tkd_clubs', JSON.stringify(newClubs));
+    }
+
+    // Update rings state IMMEDIATELY for real-time sync
+    setRings(prev => {
+      const updated = prev.map(r => r.ringNumber === ringNumber ? { 
+        ...r, 
+        currentBout: newData,
+        nextBoutNumber: getBoutNumber(newData.bout) + 1
+      } : r);
+      localStorage.setItem('tkd_rings', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const startRing = (ringNumber: number) => {
+    const ring = rings.find(r => r.ringNumber === ringNumber);
+    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber);
+    
+    // Reset final bouts flag when starting a new session
+    setRings(prev => {
+      const updated = prev.map(r => r.ringNumber === ringNumber ? { ...r, isFinalBouts: false } : r);
+      localStorage.setItem('tkd_rings', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (nextBoutIndex !== -1) {
+      pullBout(boutQueue[nextBoutIndex].id);
+    } else if (ring && ring.totalBouts) {
+      // If queue is empty but we have total bouts, show the missing bout prompt
+      const expectedBout = ring.nextBoutNumber || 1;
+      if (expectedBout <= ring.totalBouts) {
+        setMissingBoutPrompt({ ringNumber, expectedBout, totalBouts: ring.totalBouts });
+      }
+    } else {
+      const defaultMatch: MatchData = {
+        ring: ringNumber,
+        bout: ring?.nextBoutNumber || 1,
+        blue_name: "New Competitor",
+        blue_club: "Club A",
+        red_name: "New Competitor",
+        red_club: "Club B",
+        category: "Open Category",
+        privacy_mode: false
+      };
+      handleBoutUpdate(ringNumber, defaultMatch);
+    }
+  };
+
+  const addRing = (ringNumber: number) => {
+    setRings(prev => {
+      if (prev.some(r => r.ringNumber === ringNumber)) return prev;
+      const newRing: RingStatus = {
+        ringNumber: ringNumber,
+        currentBout: null,
+        onDeck: null,
+        inTheHole: null,
+        nextBoutNumber: 1
+      };
+      const next = [...prev, newRing].sort((a, b) => a.ringNumber - b.ringNumber);
+      localStorage.setItem('tkd_rings', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const deleteRing = (ringNumber: number) => {
+    setRings(prev => {
+      const next = prev.filter(r => r.ringNumber !== ringNumber);
+      localStorage.setItem('tkd_rings', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleUpdateTotalBouts = (ringNumber: number, total: number) => {
+    setRings(prev => {
+      const ring = prev.find(r => r.ringNumber === ringNumber);
+      if (ring) {
+        const isSessionInProgress = ring.nextBoutNumber && ring.nextBoutNumber > 1 && ring.totalBouts && ring.nextBoutNumber <= ring.totalBouts;
+        if (isSessionInProgress) return prev;
+      }
+      const updated = prev.map(r => r.ringNumber === ringNumber ? { ...r, totalBouts: total, isFinalBouts: false } : r);
+      localStorage.setItem('tkd_rings', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleLogin = (username: string, pass: string, eventId?: string) => {
+    const found = accounts.find(a => a.username === username && a.password === pass);
+    if (found) {
+      setUser(found);
+      localStorage.setItem('tkd_user', JSON.stringify(found));
+      if (eventId) {
+        setCurrentEventId(eventId);
+        localStorage.setItem('tkd_current_event', eventId);
+        const event = events.find(e => e.id === eventId);
+        if (event && event.sheetUrl) {
+          setGoogleSheetUrl(event.sheetUrl);
+          localStorage.setItem('tkd_sheet_url', event.sheetUrl);
+        }
+      }
+      
+      if (found.role === 'viewer') {
+        setActiveTab('general');
+      } else if (found.role === 'user') {
+        setActiveTab('mats');
+      } else {
+        setActiveTab('dashboard');
+      }
+      
+      return true;
+    }
+    return false;
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('tkd_user');
+  };
+
+  const handleAddEvent = (newEvent: EventData) => {
+    const updated = [...events, newEvent];
+    setEvents(updated);
+    localStorage.setItem('tkd_events', JSON.stringify(updated));
+    
+    // Also auto-generate rings up to ringQuantity if they don't exist
+    // For simplicity, we just set the rings to the new quantity
+    const newRings = Array.from({ length: newEvent.ringQuantity }, (_, i) => ({
+      ringNumber: i + 1,
+      currentBout: null,
+      onDeck: null,
+      inTheHole: null
+    }));
+    setRings(newRings);
+    localStorage.setItem('tkd_rings', JSON.stringify(newRings));
+  };
+
+  const handleDeleteEvent = (id: string) => {
+    const updated = events.filter(e => e.id !== id);
+    setEvents(updated);
+    localStorage.setItem('tkd_events', JSON.stringify(updated));
+    if (currentEventId === id) {
+      setCurrentEventId(null);
+      localStorage.removeItem('tkd_current_event');
+    }
+  };
+
+  const handleAddAccount = (newAcc: UserAccount) => {
+    const updated = [...accounts, newAcc];
+    setAccounts(updated);
+    localStorage.setItem('tkd_accounts', JSON.stringify(updated));
+  };
+
+  const handleDeleteAccount = (username: string) => {
+    if (username === 'admin') return; // Protect main admin
+    const updated = accounts.filter(a => a.username !== username);
+    setAccounts(updated);
+    localStorage.setItem('tkd_accounts', JSON.stringify(updated));
+    if (user?.username === username) {
+      handleLogout();
+    }
+  };
+
+  const handleEditPassword = (username: string, newPassword: string) => {
+    const updated = accounts.map(a => a.username === username ? { ...a, password: newPassword } : a);
+    setAccounts(updated);
+    localStorage.setItem('tkd_accounts', JSON.stringify(updated));
+  };
+
+  if (!user && !isPublicView) {
+    return <LoginScreen onLogin={handleLogin} events={events} />;
+  }
+
+  if (isPublicView) {
+    return (
+      <PublicDashboardView 
+        rings={rings} 
+        boutQueue={boutQueue} 
+        namingMode={ringNamingMode} 
+        onBack={() => setIsPublicView(false)} 
+      />
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row text-slate-900 font-sans">
+      {/* Mobile Header */}
+      <header className="md:hidden bg-white border-b border-slate-200 p-4 flex items-center justify-between sticky top-0 z-[60]">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-red-200">
+            <Trophy size={18} />
+          </div>
+          <h1 className="font-bold text-base leading-tight">MY-TKD</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setIsPublicView(true)}
+            className="p-2 text-slate-400 hover:text-red-600 transition-colors"
+          >
+            <QrCode size={20} />
+          </button>
+          <button 
+            onClick={handleLogout}
+            className="p-2 text-slate-400 hover:text-red-600 transition-colors"
+          >
+            <LogOut size={20} />
+          </button>
+        </div>
+      </header>
+
+      {/* Sidebar (Desktop) */}
+      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col hidden md:flex h-screen sticky top-0">
+        <div className="p-6 flex items-center gap-3 border-b border-slate-100">
+          <div className="w-10 h-10 bg-red-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-red-200">
+            <Trophy size={24} />
+          </div>
+          <div>
+            <h1 className="font-black text-lg leading-tight tracking-tighter">MY-TKD</h1>
+            <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Tournament Manager</p>
+          </div>
+        </div>
+
+        <nav className="flex-1 p-4 space-y-1">
+          {user?.role === 'admin' && (
+            <>
+              <NavItem 
+                icon={<LayoutDashboard size={20} />} 
+                label="Dashboard" 
+                active={activeTab === 'dashboard'} 
+                onClick={() => setActiveTab('dashboard')} 
+              />
+              <NavItem 
+                icon={<Monitor size={20} />} 
+                label="Onsite View" 
+                active={activeTab === 'general'} 
+                onClick={() => setActiveTab('general')} 
+              />
+              <NavItem 
+                icon={<LayoutDashboard size={20} />} 
+                label="Standby View" 
+                active={activeTab === 'standby'} 
+                onClick={() => setActiveTab('standby')} 
+              />
+              <NavItem 
+                icon={<LayoutDashboard size={20} />} 
+                label="Live Controller" 
+                active={activeTab === 'mats'} 
+                onClick={() => setActiveTab('mats')} 
+              />
+              <NavItem 
+                icon={<Users size={20} />} 
+                label="Athlete DB" 
+                active={activeTab === 'athletes'} 
+                onClick={() => setActiveTab('athletes')} 
+              />
+            </>
+          )}
+          {user?.role === 'user' && (
+            <NavItem 
+              icon={<LayoutDashboard size={20} />} 
+              label="My Ring" 
+              active={activeTab === 'mats'} 
+              onClick={() => setActiveTab('mats')} 
+            />
+          )}
+          {user?.role === 'viewer' && (
+            <>
+              <NavItem 
+                icon={<Monitor size={20} />} 
+                label="Onsite View" 
+                active={activeTab === 'general'} 
+                onClick={() => setActiveTab('general')} 
+              />
+              <NavItem 
+                icon={<LayoutDashboard size={20} />} 
+                label="Standby View" 
+                active={activeTab === 'standby'} 
+                onClick={() => setActiveTab('standby')} 
+              />
+            </>
+          )}
+          {user?.role === 'admin' && (
+            <NavItem 
+              icon={<Settings size={20} />} 
+              label="Settings" 
+              active={activeTab === 'settings'} 
+              onClick={() => setActiveTab('settings')} 
+            />
+          )}
+          <div className="pt-4 mt-4 border-t border-slate-100 space-y-2">
+            <div className="px-4 py-2 bg-slate-50 rounded-xl flex items-center gap-3">
+              <div className="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-slate-600 font-bold text-xs">
+                {user?.username.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-slate-800 truncate">{user?.username}</p>
+                <p className="text-[10px] text-slate-500 uppercase font-black">{user?.role}</p>
+              </div>
+              <button 
+                onClick={handleLogout}
+                className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-colors"
+                title="Logout"
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
+            {(user?.role === 'admin' || user?.role === 'viewer') && (
+              <button 
+                onClick={() => setIsPublicView(true)}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-red-50 hover:text-red-600 transition-all group"
+              >
+                <QrCode size={20} className="group-hover:scale-110 transition-transform" />
+                Public View
+              </button>
+            )}
+          </div>
+        </nav>
+
+        <div className="p-4 border-t border-slate-100">
+          <div className="bg-slate-50 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className={cn(
+                "w-2 h-2 rounded-full",
+                googleSheetUrl ? "bg-green-500 animate-pulse" : "bg-slate-300"
+              )} />
+              <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Live Sync</span>
+            </div>
+            <p className="text-[10px] text-slate-400 leading-relaxed">
+              {googleSheetUrl ? (
+                <>
+                  {user?.role === 'admin' ? 'Connected to Google Sheets:' : 'Connected to System'} <br/>
+                  <span className="text-slate-600 truncate block">Active Web App</span>
+                </>
+              ) : (
+                <>
+                  {user?.role === 'admin' ? 'Google Sheets:' : 'System Status:'} <br/>
+                  <span className="text-slate-400">Not Configured</span>
+                </>
+              )}
+            </p>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col md:h-screen overflow-hidden">
+        {/* Scrollable Area */}
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 pb-24 md:pb-8">
+          {/* Page Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 md:mb-8">
+            <div className="flex items-center gap-4">
+              <h2 className="text-xl md:text-2xl font-black text-slate-900 capitalize tracking-tight">{activeTab}</h2>
+            </div>
+            
+            <div className="flex flex-wrap items-center gap-2 md:gap-4">
+              {events.length > 0 && (
+                <select
+                  value={currentEventId || ''}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setCurrentEventId(id);
+                    localStorage.setItem('tkd_current_event', id);
+                    const event = events.find(ev => ev.id === id);
+                    if (event && event.sheetUrl) {
+                      setGoogleSheetUrl(event.sheetUrl);
+                      localStorage.setItem('tkd_sheet_url', event.sheetUrl);
+                    }
+                  }}
+                  className="flex-1 sm:flex-none px-3 md:px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs md:text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-red-500 shadow-sm"
+                >
+                  <option value="" disabled>Select Event</option>
+                  {events.map(ev => (
+                    <option key={ev.id} value={ev.id}>{ev.name}</option>
+                  ))}
+                </select>
+              )}
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button 
+                  onClick={() => setShowAnnouncementInput(true)}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-red-600 text-white rounded-xl text-[10px] md:text-sm font-black uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-200"
+                >
+                  <Bell size={16} />
+                  <span>Broadcast</span>
+                </button>
+                <button 
+                  onClick={() => setShowEditResultModal(true)}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-blue-600 text-white rounded-xl text-[10px] md:text-sm font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
+                >
+                  <Edit2 size={16} />
+                  <span>Edit</span>
+                </button>
+                <button 
+                  onClick={() => setShowNewBoutModal(true)}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-slate-900 text-white rounded-xl text-[10px] md:text-sm font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+                >
+                  <Plus size={16} />
+                  <span>New</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {activeTab === 'dashboard' && (() => {
+            const dashboardRings = rings.filter(r => user?.role === 'admin' || r.ringNumber === user?.assignedRing);
+            const activeCount = dashboardRings.filter(r => r.currentBout).length;
+
+            return (
+              <>
+                {/* Bout Summary - Admin Only */}
+                {user?.role === 'admin' && (
+                  <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                        <Trophy size={16} className="text-red-600" />
+                        Bout Summary
+                      </h3>
+                      <div className="bg-red-50 text-red-600 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest">
+                        Total: {rings.reduce((acc, r) => acc + (r.totalBouts || 0), 0)} Bouts
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                      {rings.map(ring => (
+                        <div key={ring.ringNumber} className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Ring {getRingName(ring.ringNumber)}</p>
+                          <p className="text-lg font-black text-slate-800">{ring.totalBouts || 0} <span className="text-[10px] text-slate-500">Bouts</span></p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  {/* Live Rings */}
+                  <div className="lg:col-span-2 space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                        <LayoutDashboard size={20} className="text-red-600" />
+                        Active Ring Overview
+                      </h3>
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                        <span className="text-xs font-bold text-green-600 uppercase tracking-widest">
+                          {activeCount} Live
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {dashboardRings.length === 0 ? (
+                        <div className="col-span-full py-20 bg-white border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center text-slate-400 space-y-4">
+                          <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center">
+                            <LayoutDashboard size={32} />
+                          </div>
+                          <div className="text-center">
+                            <p className="text-sm font-bold text-slate-600">No Rings Assigned</p>
+                            <p className="text-xs font-medium">Rings will appear here once they are added by an administrator.</p>
+                          </div>
+                        </div>
+                      ) : (
+                        dashboardRings.map((ring) => (
+                          <RingCard 
+                            key={ring.ringNumber} 
+                            ring={ring} 
+                            namingMode={ringNamingMode}
+                            categories={categories}
+                            clubs={clubs}
+                            queueCount={boutQueue.filter(q => q.data.ring === ring.ringNumber).length}
+                            onUpdate={(data) => handleBoutUpdate(ring.ringNumber, data)}
+                            onUpdateTotalBouts={(total) => handleUpdateTotalBouts(ring.ringNumber, total)}
+                            onStart={() => startRing(ring.ringNumber)}
+                            onDelete={user?.role === 'admin' ? () => deleteRing(ring.ringNumber) : undefined}
+                            onWinnerSelect={(winner) => handleWinnerSelect(ring.ringNumber, ring.currentBout?.bout || 0, winner)}
+                            onTransferSelect={(reason) => handleTransferSelect(ring.ringNumber, ring.currentBout?.bout || 0, reason)}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Sidebar (Queue Only) */}
+                  <div className="space-y-6">
+                    {/* Bout Queue */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                          <Calendar size={20} className="text-red-600" />
+                          Upcoming Bouts
+                        </h3>
+                        <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full">
+                          {user?.role === 'admin' ? boutQueue.length : boutQueue.filter(item => item.data.ring === user?.assignedRing).length}
+                        </span>
+                      </div>
+                      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col max-h-[400px]">
+                        <div className="p-4 overflow-y-auto space-y-3">
+                          {(user?.role === 'admin' ? boutQueue : boutQueue.filter(item => item.data.ring === user?.assignedRing)).length === 0 ? (
+                            <p className="text-sm text-slate-500 text-center py-8">No upcoming bouts.</p>
+                          ) : (
+                            (user?.role === 'admin' ? boutQueue : boutQueue.filter(item => item.data.ring === user?.assignedRing)).map(item => (
+                              <div key={item.id} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+                                <div>
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-md">Ring {item.data.ring}</span>
+                                    <span className="text-[11px] font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">Bout {item.data.bout}</span>
+                                  </div>
+                                  <p className="text-sm font-bold text-slate-800">{item.data.blue_name} vs {item.data.red_name}</p>
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{item.data.category}</p>
+                                </div>
+                                <button 
+                                  onClick={() => pullBout(item.id)}
+                                  className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors"
+                                  title="Pull to Active Ring"
+                                >
+                                  <ChevronLeft size={18} />
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+              </div>
+            </>
+          );
+        })()}
+
+          {activeTab === 'standby' && (
+            <StandbyView 
+              rings={rings} 
+              boutQueue={boutQueue} 
+              namingMode={ringNamingMode} 
+              activeAnnouncement={activeAnnouncement}
+              onAnnouncementClose={() => setActiveAnnouncement(null)}
+            />
+          )}
+
+          {activeTab === 'general' && (
+            <OnsiteView 
+              rings={rings} 
+              boutQueue={boutQueue} 
+              namingMode={ringNamingMode} 
+              activeAnnouncement={activeAnnouncement}
+              onAnnouncementClose={() => setActiveAnnouncement(null)}
+            />
+          )}
+
+          {activeTab === 'mats' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <LayoutDashboard size={20} className="text-red-600" />
+                  {user?.role === 'admin' ? "Live Ring Control Center" : `Ring ${getRingName(user?.assignedRing || 1)} Controller`}
+                  {isSyncing && (
+                    <span className="ml-4 flex items-center gap-2 text-green-600 text-[10px] font-black animate-pulse">
+                      <div className="w-1.5 h-1.5 bg-green-600 rounded-full" />
+                      SYNCING TO SHEETS...
+                    </span>
+                  )}
+                </h3>
+                {user?.role === 'admin' && (
+                  <button 
+                    onClick={() => setShowAddRingModal(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition-colors shadow-lg shadow-red-200"
+                  >
+                    <Plus size={18} />
+                    Add New Ring
+                  </button>
+                )}
+              </div>
+              <div className={user?.role === 'admin' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"}>
+                {user?.role === 'admin' ? (
+                  rings.map((ring) => (
+                    <RingCard 
+                      key={ring.ringNumber} 
+                      ring={ring} 
+                      namingMode={ringNamingMode}
+                      categories={categories}
+                      clubs={clubs}
+                      queueCount={boutQueue.filter(q => q.data.ring === ring.ringNumber).length}
+                      onUpdate={(data) => handleBoutUpdate(ring.ringNumber, data)}
+                      onUpdateTotalBouts={(total) => handleUpdateTotalBouts(ring.ringNumber, total)}
+                      onStart={() => startRing(ring.ringNumber)}
+                      onDelete={() => deleteRing(ring.ringNumber)}
+                      onWinnerSelect={(winner) => handleWinnerSelect(ring.ringNumber, ring.currentBout?.bout || 0, winner)}
+                      onTransferSelect={(reason) => handleTransferSelect(ring.ringNumber, ring.currentBout?.bout || 0, reason)}
+                    />
+                  ))
+                ) : (
+                  <>
+                    <div className="lg:col-span-2">
+                      {rings.filter(r => r.ringNumber === user?.assignedRing).map((ring) => (
+                        <RingCard 
+                          key={ring.ringNumber} 
+                          ring={ring} 
+                          namingMode={ringNamingMode}
+                          categories={categories}
+                          clubs={clubs}
+                          queueCount={boutQueue.filter(q => q.data.ring === ring.ringNumber).length}
+                          onUpdate={(data) => handleBoutUpdate(ring.ringNumber, data)}
+                          onUpdateTotalBouts={(total) => handleUpdateTotalBouts(ring.ringNumber, total)}
+                          onStart={() => startRing(ring.ringNumber)}
+                          onWinnerSelect={(winner) => handleWinnerSelect(ring.ringNumber, ring.currentBout?.bout || 0, winner)}
+                          onTransferSelect={(reason) => handleTransferSelect(ring.ringNumber, ring.currentBout?.bout || 0, reason)}
+                        />
+                      ))}
+                    </div>
+                    <div className="lg:col-span-2 space-y-6">
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                            <Calendar size={20} className="text-red-600" />
+                            Upcoming Bouts
+                          </h3>
+                          <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full">
+                            {boutQueue.filter(item => item.data.ring === user?.assignedRing).length}
+                          </span>
+                        </div>
+                        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col max-h-[600px]">
+                          <div className="p-4 overflow-y-auto space-y-3">
+                            {boutQueue.filter(item => item.data.ring === user?.assignedRing).length === 0 ? (
+                              <p className="text-sm text-slate-500 text-center py-8">No upcoming bouts.</p>
+                            ) : (
+                              boutQueue.filter(item => item.data.ring === user?.assignedRing).map(item => (
+                                <div key={item.id} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+                                  <div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-md">Ring {item.data.ring}</span>
+                                      <span className="text-[11px] font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">Bout {item.data.bout}</span>
+                                    </div>
+                                    <p className="text-sm font-bold text-slate-800">{item.data.blue_name} vs {item.data.red_name}</p>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{item.data.category}</p>
+                                  </div>
+                                  <button 
+                                    onClick={() => pullBout(item.id)}
+                                    className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors"
+                                    title="Pull to Active Ring"
+                                  >
+                                    <ChevronLeft size={18} />
+                                  </button>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'athletes' && user?.role === 'admin' && (
+            <div className="space-y-8">
+              <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between mb-8">
+                  <div>
+                    <h3 className="text-xl font-bold">Athlete Database</h3>
+                    <p className="text-sm text-slate-500">Verify IC numbers and manage registrations</p>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <input 
+                        type="text" 
+                        placeholder="Search by name or IC..."
+                        className="pl-10 pr-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-red-500 outline-none transition-all w-64"
+                      />
+                    </div>
+                    <button 
+                      onClick={() => {
+                        const name = prompt("Enter Athlete Name:");
+                        const ic = prompt("Enter IC Number (YYMMDD-PB-####):");
+                        if (name && ic) {
+                          setAthletes(prev => [...prev, { name, ic, club: "NEW", category: "TBD", status: "Pending" }]);
+                        }
+                      }}
+                      className="px-4 py-2 bg-slate-900 text-white rounded-lg font-bold text-sm flex items-center gap-2"
+                    >
+                      <Plus size={18} />
+                      Add Athlete
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b border-slate-100">
+                        <th className="pb-4 font-bold text-xs text-slate-400 uppercase tracking-widest">Athlete</th>
+                        <th className="pb-4 font-bold text-xs text-slate-400 uppercase tracking-widest">IC Number</th>
+                        <th className="pb-4 font-bold text-xs text-slate-400 uppercase tracking-widest">Club</th>
+                        <th className="pb-4 font-bold text-xs text-slate-400 uppercase tracking-widest">Category</th>
+                        <th className="pb-4 font-bold text-xs text-slate-400 uppercase tracking-widest">Status</th>
+                        <th className="pb-4"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {athletes.map((athlete, idx) => (
+                        <AthleteRow 
+                          key={idx}
+                          name={athlete.name} 
+                          ic={athlete.ic} 
+                          club={athlete.club} 
+                          category={athlete.category} 
+                          status={athlete.status}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'settings' && (
+            <div className="max-w-4xl mx-auto space-y-8">
+              {user?.role === 'admin' ? (
+                <>
+                  <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                    <h3 className="text-xl font-bold flex items-center gap-2">
+                      <Settings size={24} className="text-slate-400" />
+                      System Configuration
+                    </h3>
+                    
+                    <div className="space-y-4">
+                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Google Sheets Web App URL</label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            value={googleSheetUrl}
+                            onChange={(e) => setGoogleSheetUrl(e.target.value)}
+                            placeholder="https://script.google.com/macros/s/.../exec"
+                            className="flex-1 px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-red-500 outline-none transition-all"
+                          />
+                          <button 
+                            onClick={() => {
+                              localStorage.setItem('tkd_sheet_url', googleSheetUrl);
+                              setIsSheetSaved(true);
+                              setTimeout(() => setIsSheetSaved(false), 2000);
+                            }}
+                            className={cn(
+                              "px-4 py-2 rounded-lg font-bold text-sm transition-all",
+                              isSheetSaved ? "bg-green-600 text-white" : "bg-slate-900 text-white"
+                            )}
+                          >
+                            {isSheetSaved ? "Saved!" : "Save URL"}
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-2">
+                          Deploy a Google Apps Script as a Web App to receive match data.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-bold text-slate-700">Ring Naming Mode</p>
+                            <p className="text-[10px] text-slate-500">Numbers vs Alphabets</p>
+                          </div>
+                          <div className="flex bg-slate-200 p-1 rounded-lg">
+                            <button 
+                              onClick={() => setRingNamingMode('number')}
+                              className={cn(
+                                "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                                ringNamingMode === 'number' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                              )}
+                            >
+                              1, 2, 3
+                            </button>
+                            <button 
+                              onClick={() => setRingNamingMode('alphabet')}
+                              className={cn(
+                                "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                                ringNamingMode === 'alphabet' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                              )}
+                            >
+                              A, B, C
+                            </button>
+                          </div>
+                        </div>
+                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-bold text-slate-700">PDPA Privacy Mode</p>
+                            <p className="text-[10px] text-slate-500">Global override for minors</p>
+                          </div>
+                          <div className="w-12 h-6 bg-red-600 rounded-full relative cursor-pointer">
+                            <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full" />
+                          </div>
+                        </div>
+                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-bold text-slate-700">Multilingual Engine</p>
+                            <p className="text-[10px] text-slate-500">English & Bahasa Melayu</p>
+                          </div>
+                          <CheckCircle2 className="text-green-500" size={20} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <EventManagement 
+                    events={events}
+                    onAdd={handleAddEvent}
+                    onDelete={handleDeleteEvent}
+                  />
+
+                  <UserManagement 
+                    accounts={accounts} 
+                    onAdd={handleAddAccount} 
+                    onDelete={handleDeleteAccount} 
+                    onEditPassword={handleEditPassword}
+                  />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <IntegrationCard 
+                      title="Billplz" 
+                      description="Malaysian Payment Gateway" 
+                      icon={<CreditCard className="text-blue-600" />}
+                    />
+                    <IntegrationCard 
+                      title="WhatsApp API" 
+                      description="Coach Notifications" 
+                      icon={<Bell className="text-green-600" />}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                  <h3 className="text-xl font-bold flex items-center gap-2">
+                    <UserIcon size={24} className="text-slate-400" />
+                    My Account
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Username</p>
+                      <p className="text-lg font-black text-slate-800">{user?.username}</p>
+                    </div>
+                    <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Assigned Access</p>
+                      <p className="text-lg font-black text-slate-800">Ring {getRingName(user?.assignedRing || 1)}</p>
+                    </div>
+                  </div>
+                  <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl flex items-start gap-3">
+                    <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={18} />
+                    <p className="text-xs font-medium text-amber-800 leading-relaxed">
+                      You have restricted access. Only administrators can modify system-wide configurations, manage users, or access the full athlete database.
+                    </p>
+                  </div>
+                  <div className="pt-6 border-t border-slate-100">
+                    <button 
+                      onClick={() => {
+                        if (window.confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
+                          handleDeleteAccount(user?.username || '');
+                        }
+                      }}
+                      className="flex items-center gap-2 px-6 py-3 bg-red-50 text-red-600 rounded-xl text-sm font-bold hover:bg-red-600 hover:text-white transition-all"
+                    >
+                      <Trash2 size={18} />
+                      Delete My Account
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </main>
+
+      {showNewBoutModal && (
+        <NewBoutModal 
+          onClose={() => {
+            setShowNewBoutModal(false);
+            setNewBoutInitialRing(undefined);
+          }}
+          onSubmit={(ringNumber, data) => handleNewBoutSubmit(ringNumber, data)}
+          categories={categories}
+          clubs={clubs}
+          rings={rings}
+          queue={boutQueue}
+          user={user}
+          initialRing={newBoutInitialRing}
+        />
+      )}
+
+      {finalBoutCheck && (
+        <FinalBoutCheckModal 
+          ringNumber={finalBoutCheck.ringNumber}
+          remainingCount={finalBoutCheck.remainingCount}
+          onConfirmFinal={() => {
+            setRings(prev => {
+              const updated = prev.map(r => r.ringNumber === finalBoutCheck.ringNumber ? { ...r, isFinalBouts: true } : r);
+              localStorage.setItem('tkd_rings', JSON.stringify(updated));
+              return updated;
+            });
+            setFinalBoutCheck(null);
+          }}
+          onAddBout={() => {
+            setNewBoutInitialRing(finalBoutCheck.ringNumber);
+            setFinalBoutCheck(null);
+            setShowNewBoutModal(true);
+          }}
+        />
+      )}
+
+      {showEditResultModal && (
+        <EditResultModal
+          onClose={() => setShowEditResultModal(false)}
+          onSubmit={(ringNumber, boutNumber, winner) => {
+            if (googleSheetUrl) {
+              setIsSyncing(true);
+              updateWinnerInGoogleSheets(
+                googleSheetUrl,
+                ringNumber,
+                boutNumber,
+                winner,
+                winner
+              ).finally(() => setIsSyncing(false));
+            }
+          }}
+          rings={rings}
+          user={user}
+        />
+      )}
+
+      <AnnouncementPopup announcement={activeAnnouncement} onClose={() => setActiveAnnouncement(null)} />
+
+      {/* Announcement Input Modal */}
+      <AnimatePresence>
+        {showAnnouncementInput && (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-[110]">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden"
+            >
+              <div className="p-8 bg-slate-900 text-white flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-900/20">
+                    <Bell size={24} className="text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black uppercase tracking-tight italic">Broadcast Message</h2>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Send to all users instantly</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowAnnouncementInput(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
+              
+              <div className="p-8 space-y-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Target Audience</label>
+                  <select
+                    value={announcementTarget}
+                    onChange={(e) => setAnnouncementTarget(e.target.value as 'all' | 'users')}
+                    className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-3xl text-sm font-bold text-slate-800 focus:border-red-600 focus:ring-0 outline-none transition-all"
+                  >
+                    <option value="all">Broadcast to All (Including Viewers)</option>
+                    <option value="users">Ring Controllers Only</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Announcement Text</label>
+                  <textarea 
+                    value={announcementText}
+                    onChange={(e) => setAnnouncementText(e.target.value)}
+                    placeholder="Enter your message here..."
+                    className="w-full h-32 px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-3xl text-lg font-bold text-slate-800 focus:border-red-600 focus:ring-0 outline-none transition-all resize-none"
+                  />
+                </div>
+                
+                <div className="flex gap-4">
+                  <button 
+                    onClick={() => setShowAnnouncementInput(false)}
+                    className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleSendAnnouncement}
+                    disabled={!announcementText.trim()}
+                    className="flex-2 py-4 bg-red-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-red-700 disabled:bg-slate-200 disabled:text-slate-400 transition-all shadow-lg shadow-red-200"
+                  >
+                    Send Broadcast
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {showAddRingModal && (
+        <AddRingModal
+          onClose={() => setShowAddRingModal(false)}
+          onAdd={addRing}
+          existingRings={rings.map(r => r.ringNumber)}
+          namingMode={ringNamingMode}
+        />
+      )}
+
+      {missingBoutPrompt && (
+        <MissingBoutModal
+          prompt={missingBoutPrompt}
+          onClose={() => setMissingBoutPrompt(null)}
+          onSubmitReason={handleMissingBoutReason}
+          onSubmitManual={handleMissingBoutManual}
+          categories={categories}
+          clubs={clubs}
+        />
+      )}
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-6 py-3 flex items-center justify-between z-[60] shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+        {user?.role === 'admin' && (
+          <>
+            <button 
+              onClick={() => setActiveTab('dashboard')}
+              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'dashboard' ? "text-red-600" : "text-slate-400")}
+            >
+              <LayoutDashboard size={20} />
+              <span className="text-[10px] font-bold">Home</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('mats')}
+              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'mats' ? "text-red-600" : "text-slate-400")}
+            >
+              <Monitor size={20} />
+              <span className="text-[10px] font-bold">Rings</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('athletes')}
+              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'athletes' ? "text-red-600" : "text-slate-400")}
+            >
+              <Users size={20} />
+              <span className="text-[10px] font-bold">DB</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('settings')}
+              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'settings' ? "text-red-600" : "text-slate-400")}
+            >
+              <Settings size={20} />
+              <span className="text-[10px] font-bold">System</span>
+            </button>
+          </>
+        )}
+        {user?.role === 'user' && (
+          <>
+            <button 
+              onClick={() => setActiveTab('mats')}
+              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'mats' ? "text-red-600" : "text-slate-400")}
+            >
+              <LayoutDashboard size={24} />
+              <span className="text-[10px] font-bold">My Ring</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('general')}
+              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'general' ? "text-red-600" : "text-slate-400")}
+            >
+              <Monitor size={24} />
+              <span className="text-[10px] font-bold">Live View</span>
+            </button>
+          </>
+        )}
+      </nav>
+    </div>
+  );
+}
+
+interface MissingBoutModalProps {
+  prompt: { ringNumber: number; expectedBout: number; totalBouts: number };
+  onClose: () => void;
+  onSubmitReason: (ringNumber: number, boutNumber: number, reason: string) => void;
+  onSubmitManual: (ringNumber: number, data: MatchData) => void;
+  categories: string[];
+  clubs: string[];
+}
+
+function MissingBoutModal({ prompt, onClose, onSubmitReason, onSubmitManual, categories, clubs }: MissingBoutModalProps) {
+  const [mode, setMode] = useState<'reason' | 'manual'>('reason');
+  const [reason, setReason] = useState('Walkover');
+  const [customReason, setCustomReason] = useState('');
+
+  const [manualData, setManualData] = useState<MatchData>(() => {
+    const savedCategory = localStorage.getItem('tkd_last_category') || categories[0] || '';
+    const savedBlueClub = localStorage.getItem('tkd_last_blue_club') || '';
+    const savedRedClub = localStorage.getItem('tkd_last_red_club') || '';
+    
+    return {
+      ring: prompt.ringNumber,
+      bout: prompt.expectedBout,
+      category: savedCategory,
+      blue_name: '',
+      blue_club: savedBlueClub,
+      red_name: '',
+      red_club: savedRedClub,
+      privacy_mode: false
+    };
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (mode === 'reason') {
+      const finalReason = reason === 'Other' ? customReason : reason;
+      onSubmitReason(prompt.ringNumber, prompt.expectedBout, finalReason);
+    } else {
+      localStorage.setItem('tkd_last_category', manualData.category);
+      localStorage.setItem('tkd_last_blue_club', manualData.blue_club);
+      localStorage.setItem('tkd_last_red_club', manualData.red_club);
+      onSubmitManual(prompt.ringNumber, manualData);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
+      >
+        <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-black">Queue Empty</h2>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Bout {prompt.expectedBout} of {prompt.totalBouts}</p>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-6">
+          <div className="flex bg-slate-100 p-1 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setMode('reason')}
+              className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-colors ${mode === 'reason' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Record Reason
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('manual')}
+              className={`flex-1 py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-colors ${mode === 'manual' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Manual Entry
+            </button>
+          </div>
+
+          <form id="missing-bout-form" onSubmit={handleSubmit} className="space-y-4">
+            {mode === 'reason' ? (
+              <div className="space-y-4">
+                <p className="text-sm text-slate-600">
+                  There are no upcoming bouts in the queue for Ring {prompt.ringNumber}. Please provide a reason to skip Bout {prompt.expectedBout} and continue.
+                </p>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Reason</label>
+                  <select
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+                  >
+                    <option value="Walkover">Walkover</option>
+                    <option value="Player No-Show">Player No-Show</option>
+                    <option value="Disqualification">Disqualification</option>
+                    <option value="Break / Lunch">Break / Lunch</option>
+                    <option value="Other">Other...</option>
+                  </select>
+                </div>
+                {reason === 'Other' && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Specify Reason</label>
+                    <input
+                      type="text"
+                      value={customReason}
+                      onChange={(e) => setCustomReason(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+                      required
+                      placeholder="Enter reason..."
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Category</label>
+                  <select
+                    value={manualData.category}
+                    onChange={(e) => setManualData({...manualData, category: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+                    required
+                  >
+                    <option value="" disabled>Select Category</option>
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-1">Blue Player</label>
+                    <input
+                      type="text"
+                      value={manualData.blue_name}
+                      onChange={(e) => setManualData({...manualData, blue_name: e.target.value})}
+                      className="w-full px-3 py-2 bg-white border border-blue-200 rounded-xl text-sm font-bold"
+                      placeholder="Name"
+                      required
+                    />
+                    <select
+                      value={manualData.blue_club}
+                      onChange={(e) => setManualData({...manualData, blue_club: e.target.value})}
+                      className="w-full px-3 py-2 bg-white border border-blue-200 rounded-xl text-sm font-bold"
+                      required
+                    >
+                      <option value="" disabled>Select Club</option>
+                      {clubs.map(club => (
+                        <option key={club} value={club}>{club}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-red-500 uppercase tracking-widest ml-1">Red Player</label>
+                    <input
+                      type="text"
+                      value={manualData.red_name}
+                      onChange={(e) => setManualData({...manualData, red_name: e.target.value})}
+                      className="w-full px-3 py-2 bg-white border border-red-200 rounded-xl text-sm font-bold"
+                      placeholder="Name"
+                      required
+                    />
+                    <select
+                      value={manualData.red_club}
+                      onChange={(e) => setManualData({...manualData, red_club: e.target.value})}
+                      className="w-full px-3 py-2 bg-white border border-red-200 rounded-xl text-sm font-bold"
+                      required
+                    >
+                      <option value="" disabled>Select Club</option>
+                      {clubs.map(club => (
+                        <option key={club} value={club}>{club}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+          </form>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="submit"
+              form="missing-bout-form"
+              className="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-red-200 transition-all"
+            >
+              {mode === 'reason' ? 'Record & Continue' : 'Start Bout'}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, label: string, active?: boolean, onClick: () => void }) {
+  return (
+    <button 
+      onClick={onClick}
+      className={cn(
+        "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all duration-200",
+        active 
+          ? "bg-red-50 text-red-600 shadow-sm" 
+          : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function StatCard({ label, value, trend }: { label: string, value: string, trend: string }) {
+  return (
+    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">{label}</p>
+      <div className="flex items-baseline gap-2">
+        <h4 className="text-3xl font-black text-slate-800">{value}</h4>
+        <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">{trend}</span>
+      </div>
+    </div>
+  );
+}
+
+interface RingCardProps {
+  key?: React.Key;
+  ring: RingStatus;
+  namingMode: 'number' | 'alphabet';
+  categories: string[];
+  clubs: string[];
+  queueCount?: number;
+  onUpdate: (data: MatchData) => void;
+  onUpdateTotalBouts?: (total: number) => void;
+  onStart?: () => void;
+  onDelete?: () => void;
+  onWinnerSelect?: (winner: string) => void;
+  onTransferSelect?: (reason: string) => void;
+}
+
+interface EditResultModalProps {
+  onClose: () => void;
+  onSubmit: (ringNumber: number, boutNumber: string | number, winner: string) => void;
+  rings: RingStatus[];
+  user: UserAccount | null;
+}
+
+function EditResultModal({ onClose, onSubmit, rings, user }: EditResultModalProps) {
+  const defaultRing = user?.role === 'admin' ? (rings[0]?.ringNumber || 1) : (user?.assignedRing || 1);
+  
+  const [formData, setFormData] = useState({
+    ring: defaultRing,
+    bout: '',
+    winner: 'Blue'
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.bout) return;
+    onSubmit(formData.ring, formData.bout, formData.winner);
+    onClose();
+  };
+
+  const availableRings = user?.role === 'admin' 
+    ? rings 
+    : rings.filter(r => r.ringNumber === user?.assignedRing);
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
+      >
+        <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
+              <Edit2 size={20} />
+            </div>
+            <div>
+              <h2 className="text-lg font-black tracking-tight">Edit Result</h2>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Update Winner</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Ring</label>
+              <select 
+                value={formData.ring}
+                onChange={(e) => setFormData({...formData, ring: parseInt(e.target.value)})}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+                required
+              >
+                {availableRings.map(r => (
+                  <option key={r.ringNumber} value={r.ringNumber}>Ring {r.ringNumber}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Bout Number</label>
+              <input 
+                type="text" 
+                value={formData.bout}
+                onChange={(e) => setFormData({...formData, bout: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Winner</label>
+            <select 
+              value={formData.winner}
+              onChange={(e) => setFormData({...formData, winner: e.target.value})}
+              className={cn(
+                "w-full px-4 py-3 border rounded-xl text-sm font-bold transition-colors",
+                formData.winner === 'Blue' ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-red-50 border-red-200 text-red-700"
+              )}
+              required
+            >
+              <option value="Blue">Blue Corner</option>
+              <option value="Red">Red Corner</option>
+            </select>
+          </div>
+
+          <button 
+            type="submit"
+            className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black uppercase tracking-widest text-sm transition-all shadow-lg shadow-slate-200"
+          >
+            Update Result
+          </button>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
+
+interface FinalBoutCheckModalProps {
+  ringNumber: number;
+  remainingCount: number;
+  onConfirmFinal: () => void;
+  onAddBout: () => void;
+}
+
+function FinalBoutCheckModal({ ringNumber, remainingCount, onConfirmFinal, onAddBout }: FinalBoutCheckModalProps) {
+  return (
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
+      >
+        <div className="p-6 bg-red-600 text-white flex items-center gap-4">
+          <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
+            <AlertTriangle size={24} />
+          </div>
+          <div>
+            <h2 className="text-xl font-black tracking-tight">Upcoming Bouts Alert</h2>
+            <p className="text-xs text-red-100 font-bold uppercase tracking-widest">Ring {ringNumber}</p>
+          </div>
+        </div>
+        
+        <div className="p-8 space-y-6">
+          <div className="space-y-2 text-center">
+            <p className="text-slate-600 font-medium">
+              There are only <span className="text-red-600 font-black">{remainingCount}</span> upcoming bouts remaining for this ring.
+            </p>
+            <p className="text-sm text-slate-500">
+              A minimum of 3 standby bouts is required unless these are the final bouts of the session.
+            </p>
+          </div>
+          
+          <div className="flex flex-col gap-3">
+            <button 
+              onClick={onConfirmFinal}
+              className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+            >
+              Yes, these are final bouts
+            </button>
+            <button 
+              onClick={onAddBout}
+              className="w-full py-4 bg-white text-slate-900 border-2 border-slate-200 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
+            >
+              No, add more bouts
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+interface NewBoutModalProps {
+  onClose: () => void;
+  onSubmit: (ringNumber: number, data: MatchData) => void;
+  categories: string[];
+  clubs: string[];
+  rings: RingStatus[];
+  queue: { id: string; data: MatchData }[];
+  user: UserAccount | null;
+  initialRing?: number;
+}
+
+function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user, initialRing }: NewBoutModalProps) {
+  const defaultRing = initialRing || (user?.role === 'admin' ? (rings[0]?.ringNumber || 1) : (user?.assignedRing || 1));
+  
+  const getNextBoutNumber = (ringNum: number) => {
+    let maxBout = ringNum * 1000;
+    let foundAny = false;
+
+    queue.forEach(q => {
+      if (q.data.ring === ringNum) {
+        let boutNum = parseInt(q.data.bout.toString().replace(/\D/g, '')) || 0;
+        if (boutNum < 1000) {
+          boutNum = ringNum * 1000 + boutNum;
+        }
+        if (boutNum > maxBout) {
+          maxBout = boutNum;
+          foundAny = true;
+        }
+      }
+    });
+
+    const ringStatus = rings.find(r => r.ringNumber === ringNum);
+    if (ringStatus?.currentBout) {
+      let boutNum = parseInt(ringStatus.currentBout.bout.toString().replace(/\D/g, '')) || 0;
+      if (boutNum < 1000) {
+        boutNum = ringNum * 1000 + boutNum;
+      }
+      if (boutNum > maxBout) {
+        maxBout = boutNum;
+        foundAny = true;
+      }
+    }
+    
+    // Also check nextBoutNumber from ringStatus to ensure we don't reuse completed bouts
+    if (ringStatus?.nextBoutNumber) {
+      let nextBout = ringStatus.nextBoutNumber;
+      if (nextBout < 1000) {
+        nextBout = ringNum * 1000 + nextBout;
+      }
+      if (nextBout > maxBout) {
+        maxBout = nextBout - 1; // maxBout is the highest existing, so nextBout - 1
+        foundAny = true;
+      }
+    }
+    
+    return foundAny ? maxBout + 1 : ringNum * 1000 + 1;
+  };
+
+  const [formData, setFormData] = useState<MatchData>(() => {
+    const savedCategory = localStorage.getItem('tkd_last_category') || '';
+    const savedBlueClub = localStorage.getItem('tkd_last_blue_club') || '';
+    const savedRedClub = localStorage.getItem('tkd_last_red_club') || '';
+    
+    return {
+      ring: defaultRing,
+      bout: getNextBoutNumber(defaultRing),
+      category: savedCategory,
+      blue_name: '',
+      blue_club: savedBlueClub,
+      red_name: '',
+      red_club: savedRedClub,
+      privacy_mode: false
+    };
+  });
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const handleRingChange = (newRing: number) => {
+    setFormData(prev => ({
+      ...prev,
+      ring: newRing,
+      bout: getNextBoutNumber(newRing)
+    }));
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const normalizeBout = (ring: number, bout: string | number) => {
+      let num = parseInt(bout.toString().replace(/\D/g, '')) || 0;
+      if (num < 1000) num = ring * 1000 + num;
+      return num.toString() + bout.toString().replace(/[0-9]/g, '');
+    };
+
+    const targetBout = normalizeBout(formData.ring, formData.bout);
+
+    // Check if bout number already exists in queue or current bout
+    const boutExists = queue.some(q => q.data.ring === formData.ring && normalizeBout(q.data.ring, q.data.bout) === targetBout) ||
+                       rings.some(r => r.ringNumber === formData.ring && r.currentBout && normalizeBout(r.ringNumber, r.currentBout.bout) === targetBout);
+                       
+    if (boutExists) {
+      setErrorMsg(`Bout ${targetBout} already exists in Ring ${formData.ring}.`);
+      return;
+    }
+    
+    // Update formData with normalized bout number before submitting
+    const finalData = { ...formData, bout: targetBout };
+    
+    // Save to localStorage
+    localStorage.setItem('tkd_last_category', finalData.category);
+    localStorage.setItem('tkd_last_blue_club', finalData.blue_club);
+    localStorage.setItem('tkd_last_red_club', finalData.red_club);
+    
+    onSubmit(formData.ring, finalData);
+    onClose();
+  };
+
+  const availableRings = user?.role === 'admin' 
+    ? rings 
+    : rings.filter(r => r.ringNumber === user?.assignedRing);
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden"
+      >
+        <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center">
+              <Plus size={20} />
+            </div>
+            <div>
+              <h2 className="text-lg font-black tracking-tight">Create New Bout</h2>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Manual Entry</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {errorMsg && (
+            <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm font-bold border border-red-100">
+              {errorMsg}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Ring</label>
+              <select 
+                value={formData.ring}
+                onChange={(e) => handleRingChange(parseInt(e.target.value))}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+                required
+              >
+                {availableRings.map(r => (
+                  <option key={r.ringNumber} value={r.ringNumber}>Ring {r.ringNumber}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Bout Number</label>
+              <input 
+                type="text" 
+                value={formData.bout}
+                onChange={(e) => setFormData({...formData, bout: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Category / Weight</label>
+            <input 
+              type="text" 
+              list="new-bout-cats"
+              value={formData.category}
+              onChange={(e) => setFormData({...formData, category: e.target.value})}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+              placeholder="Select or type category (e.g. -45kg)"
+              required
+            />
+            <datalist id="new-bout-cats">
+              {categories.map(cat => <option key={cat} value={cat} />)}
+            </datalist>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            {/* Blue Corner */}
+            <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100 space-y-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 bg-blue-600 rounded-full" />
+                <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Blue Corner</span>
+              </div>
+              <input 
+                type="text" 
+                value={formData.blue_name}
+                onChange={(e) => setFormData({...formData, blue_name: e.target.value})}
+                className="w-full px-3 py-2 bg-white border border-blue-200 rounded-xl text-sm font-bold"
+                placeholder="Player Name"
+                required
+              />
+              <input 
+                type="text" 
+                list="new-bout-clubs"
+                value={formData.blue_club}
+                onChange={(e) => setFormData({...formData, blue_club: e.target.value})}
+                className="w-full px-3 py-2 bg-white border border-blue-200 rounded-xl text-sm font-bold"
+                placeholder="Club Name"
+                required
+              />
+            </div>
+
+            {/* Red Corner */}
+            <div className="p-4 bg-red-50/50 rounded-2xl border border-red-100 space-y-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 bg-red-600 rounded-full" />
+                <span className="text-[10px] font-black text-red-600 uppercase tracking-widest">Red Corner</span>
+              </div>
+              <input 
+                type="text" 
+                value={formData.red_name}
+                onChange={(e) => setFormData({...formData, red_name: e.target.value})}
+                className="w-full px-3 py-2 bg-white border border-red-200 rounded-xl text-sm font-bold"
+                placeholder="Player Name"
+                required
+              />
+              <input 
+                type="text" 
+                list="new-bout-clubs"
+                value={formData.red_club}
+                onChange={(e) => setFormData({...formData, red_club: e.target.value})}
+                className="w-full px-3 py-2 bg-white border border-red-200 rounded-xl text-sm font-bold"
+                placeholder="Club Name"
+                required
+              />
+            </div>
+          </div>
+          <datalist id="new-bout-clubs">
+            {clubs.map(club => <option key={club} value={club} />)}
+          </datalist>
+
+          <div className="pt-4 flex gap-3">
+            <button 
+              type="button"
+              onClick={onClose}
+              className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-black text-xs uppercase tracking-widest transition-colors"
+            >
+              Cancel
+            </button>
+            <button 
+              type="submit"
+              className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-red-200 transition-all"
+            >
+              Create Bout & Sync
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
+
+interface AddRingModalProps {
+  onClose: () => void;
+  onAdd: (ringNumber: number) => void;
+  existingRings: number[];
+  namingMode: 'number' | 'alphabet';
+}
+
+function AddRingModal({ onClose, onAdd, existingRings, namingMode }: AddRingModalProps) {
+  const availableRings = Array.from({ length: 20 }, (_, i) => i + 1).filter(r => !existingRings.includes(r));
+  const [selectedRing, setSelectedRing] = useState<number>(availableRings[0] || 1);
+
+  useEffect(() => {
+    if (availableRings.length > 0 && !availableRings.includes(selectedRing)) {
+      setSelectedRing(availableRings[0]);
+    }
+  }, [availableRings, selectedRing]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (availableRings.includes(selectedRing)) {
+      onAdd(selectedRing);
+      onClose();
+    }
+  };
+
+  const getRingName = (num: number) => namingMode === 'number' ? num.toString() : String.fromCharCode(64 + num);
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
+      >
+        <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+          <h2 className="text-xl font-black">Add New Ring</h2>
+          <button type="button" onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {availableRings.length === 0 ? (
+            <p className="text-sm text-slate-500 text-center">All 20 rings are already active.</p>
+          ) : (
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Select Ring Number</label>
+              <select 
+                value={selectedRing}
+                onChange={(e) => setSelectedRing(parseInt(e.target.value))}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-red-500"
+              >
+                {availableRings.map(r => (
+                  <option key={r} value={r}>Ring {getRingName(r)}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          
+          <div className="flex gap-3 pt-4">
+            <button 
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-black text-xs uppercase tracking-widest transition-colors"
+            >
+              Cancel
+            </button>
+            <button 
+              type="submit"
+              disabled={availableRings.length === 0}
+              className="flex-1 py-3 bg-red-600 hover:bg-red-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-red-200 transition-all"
+            >
+              Add Ring
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
+
+function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, onTransferSelect }: RingCardProps) {
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isFinalBoutSelection, setIsFinalBoutSelection] = useState(false);
+  const [transferReason, setTransferReason] = useState('');
+  const current = ring.currentBout;
+  
+  const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
+  
+  const formatBoutNumber = (ring: number, bout: string | number) => {
+    const numBout = parseInt(bout.toString());
+    const suffix = bout.toString().replace(/[0-9]/g, '');
+    if (numBout >= ring * 1000) {
+      return numBout.toString() + suffix;
+    }
+    return (ring * 1000 + numBout).toString() + suffix;
+  };
+
+  const progress = ring.totalBouts && current ? Math.min(100, (parseInt(current.bout.toString()) / ring.totalBouts) * 100) : 0;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:border-red-200 transition-colors">
+      <div className="p-4 bg-slate-900 flex items-center justify-between text-white">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center font-black text-sm">
+            {ringName}
+          </div>
+          <div>
+            <span className="font-bold text-sm uppercase tracking-wider block leading-none">Ring {ringName}</span>
+            {ring.totalBouts && (
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                {current?.bout || 0} / {ring.totalBouts} Bouts
+                {onUpdateTotalBouts && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); onUpdateTotalBouts(ring.totalBouts! + 1); }}
+                    className="p-0.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 transition-colors"
+                    title="Add 1 bout to total"
+                  >
+                    <Plus size={10} />
+                  </button>
+                )}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {onDelete && (
+            <div className="flex items-center">
+              {isConfirmingDelete ? (
+                <div className="flex items-center gap-1 bg-red-600 rounded px-1 py-0.5 mr-1">
+                  <button 
+                    onClick={onDelete}
+                    className="text-[8px] font-black uppercase hover:underline"
+                  >
+                    Confirm
+                  </button>
+                  <button 
+                    onClick={() => setIsConfirmingDelete(false)}
+                    className="text-[8px] font-black uppercase opacity-50 hover:opacity-100"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  onClick={() => setIsConfirmingDelete(true)}
+                  className="p-1.5 hover:bg-red-500/20 text-slate-400 hover:text-red-500 rounded transition-colors mr-1"
+                  title="Delete Ring"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
+            </div>
+          )}
+          {!current && (
+            <button 
+              onClick={onStart}
+              className="px-3 py-1 bg-green-600 hover:bg-green-700 rounded text-[10px] font-bold uppercase transition-colors"
+            >
+              Start Ring
+            </button>
+          )}
+        </div>
+      </div>
+
+      {ring.totalBouts && (
+        <div className="h-1 bg-slate-800 w-full">
+          <motion.div 
+            initial={{ width: 0 }}
+            animate={{ width: `${progress}%` }}
+            className="h-full bg-red-600"
+          />
+        </div>
+      )}
+      
+      <div className="p-6 space-y-6">
+        {current ? (
+          <>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  Bout {formatBoutNumber(ring.ringNumber, current.bout)} {ring.totalBouts ? `of ${ring.totalBouts}` : ''}
+                </span>
+                <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded uppercase">Live</span>
+              </div>
+              
+              <div className="flex items-center gap-4">
+                <FighterSide color="blue" name={current.blue_name} club={current.blue_club} privacy={current.privacy_mode} />
+                <div className="text-xs font-black text-slate-300 italic">VS</div>
+                <FighterSide color="red" name={current.red_name} club={current.red_club} privacy={current.privacy_mode} />
+              </div>
+              
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Shield size={14} className={current.privacy_mode ? "text-red-500" : "text-green-500"} />
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">{current.category}</span>
+                </div>
+                {current.privacy_mode && (
+                  <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded">PDPA ACTIVE</span>
+                )}
+              </div>
+
+              {onWinnerSelect && (
+                <div className="pt-4 border-t border-slate-100">
+                  <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Select Winner</p>
+                  <div className="flex gap-3 mb-4">
+                    <button 
+                      onClick={() => onWinnerSelect('Blue')}
+                      className="flex-1 py-3 md:py-2 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl md:rounded-lg font-black md:font-bold text-xs uppercase transition-all border border-blue-200 hover:border-blue-600 active:scale-95"
+                    >
+                      Blue Wins
+                    </button>
+                    <button 
+                      onClick={() => onWinnerSelect('Red')}
+                      className="flex-1 py-3 md:py-2 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-xl md:rounded-lg font-black md:font-bold text-xs uppercase transition-all border border-red-200 hover:border-red-600 active:scale-95"
+                    >
+                      Red Wins
+                    </button>
+                  </div>
+                  
+                  {onTransferSelect && (
+                    <div className="space-y-2">
+                      <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Transfer Bout</p>
+                      <div className="flex gap-2">
+                        <input 
+                          type="text"
+                          value={transferReason}
+                          onChange={(e) => setTransferReason(e.target.value)}
+                          placeholder="Reason (e.g. Ring 2)"
+                          className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-red-500"
+                        />
+                        <button 
+                          onClick={() => {
+                            if (transferReason.trim()) {
+                              onTransferSelect(transferReason);
+                              setTransferReason('');
+                            }
+                          }}
+                          disabled={!transferReason.trim()}
+                          className="px-6 py-3 md:px-4 md:py-2 bg-slate-800 text-white rounded-xl md:rounded-lg text-xs font-black md:font-bold uppercase tracking-widest hover:bg-slate-900 disabled:bg-slate-200 disabled:text-slate-400 transition-all active:scale-95"
+                        >
+                          Send
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
+            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
+              <Trophy size={32} />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-bold text-slate-800">Ring is currently inactive</p>
+              <p className="text-xs text-slate-500">Set total bouts and start the session</p>
+            </div>
+            
+            <div className="w-full max-w-[200px] space-y-4">
+              <div className="space-y-1 text-left">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Total Bouts Today</label>
+                {(() => {
+                  const isSessionInProgress = ring.nextBoutNumber && ring.nextBoutNumber > 1 && ring.totalBouts && ring.nextBoutNumber <= ring.totalBouts;
+                  return (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <input 
+                          type="number" 
+                          value={ring.totalBouts || ''}
+                          onChange={(e) => onUpdateTotalBouts?.(parseInt(e.target.value) || 0)}
+                          disabled={!!isSessionInProgress}
+                          className={cn(
+                            "w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-center",
+                            isSessionInProgress && "opacity-50 cursor-not-allowed bg-slate-100"
+                          )}
+                          placeholder="e.g. 50"
+                        />
+                        {isSessionInProgress && (
+                          <button 
+                            type="button"
+                            onClick={() => onUpdateTotalBouts?.((ring.totalBouts || 0) + 1)}
+                            className="p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl transition-colors flex-shrink-0"
+                            title="Add 1 bout"
+                          >
+                            <Plus size={20} />
+                          </button>
+                        )}
+                      </div>
+                      {isSessionInProgress && (
+                        <p className="text-[9px] text-red-500 font-bold uppercase mt-1 text-center">
+                          Finish current session ({ring.nextBoutNumber - 1}/{ring.totalBouts}) to change
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+              
+              {(!ring.totalBouts || ring.totalBouts < 3 || queueCount < 3) && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={isFinalBoutSelection}
+                    onChange={(e) => setIsFinalBoutSelection(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500"
+                  />
+                  <span className="text-xs font-bold text-slate-600">Final bout selection</span>
+                </label>
+              )}
+
+              <button 
+                onClick={onStart}
+                disabled={!ring.totalBouts || ((ring.totalBouts < 3 || queueCount < 3) && !isFinalBoutSelection)}
+                className="w-full py-3 bg-red-600 hover:bg-red-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-red-200 transition-all"
+              >
+                Start Ring Session
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FighterSide({ color, name, club, privacy }: { color: 'blue' | 'red', name: string, club: string, privacy: boolean }) {
+  return (
+    <div className="flex-1 space-y-1">
+      <div className={cn(
+        "h-1 w-full rounded-full mb-2",
+        color === 'blue' ? "bg-blue-600" : "bg-red-600"
+      )} />
+      <p className="text-sm font-black text-slate-800 truncate">
+        {privacy ? "---" : name}
+      </p>
+      <p className="text-[10px] font-bold text-slate-400 uppercase">{club}</p>
+    </div>
+  );
+}
+
+function QueueItem({ label, data }: { label: string, data: MatchData | null }) {
+  return (
+    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+      <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">{label}</p>
+      {data ? (
+        <div className="space-y-0.5">
+          <p className="text-[10px] font-bold text-slate-700 truncate">
+            {data.privacy_mode ? "---" : data.blue_name} vs {data.privacy_mode ? "---" : data.red_name}
+          </p>
+          <p className="text-[8px] font-medium text-slate-400 uppercase">{data.blue_club} / {data.red_club}</p>
+        </div>
+      ) : (
+        <p className="text-[10px] font-medium text-slate-300">TBD</p>
+      )}
+    </div>
+  );
+}
+
+function IntegrationCard({ title, description, icon }: { title: string, description: string, icon: React.ReactNode }) {
+  return (
+    <div className="bg-white p-6 rounded-2xl border border-slate-200 flex items-center gap-4 shadow-sm hover:shadow-md transition-all cursor-pointer">
+      <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center">
+        {icon}
+      </div>
+      <div>
+        <h4 className="font-bold text-slate-800">{title}</h4>
+        <p className="text-xs text-slate-500">{description}</p>
+      </div>
+      <ChevronRight className="ml-auto text-slate-300" size={20} />
+    </div>
+  );
+}
+
+interface AthleteRowProps {
+  key?: React.Key;
+  name: string;
+  ic: string;
+  club: string;
+  category: string;
+  status: 'Verified' | 'Pending';
+}
+
+function AthleteRow({ name, ic, club, category, status }: AthleteRowProps) {
+  return (
+    <tr className="group hover:bg-slate-50 transition-colors">
+      <td className="py-4">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-xs">
+            {name.charAt(0)}
+          </div>
+          <span className="font-bold text-slate-700">{name}</span>
+        </div>
+      </td>
+      <td className="py-4 font-mono text-xs text-slate-500">{ic}</td>
+      <td className="py-4 font-bold text-slate-600">{club}</td>
+      <td className="py-4 text-xs font-medium text-slate-500">{category}</td>
+      <td className="py-4">
+        <span className={cn(
+          "px-2 py-1 rounded-full text-[10px] font-bold uppercase",
+          status === 'Verified' ? "bg-green-50 text-green-600" : "bg-amber-50 text-amber-600"
+        )}>
+          {status}
+        </span>
+      </td>
+      <td className="py-4 text-right">
+        <button className="p-2 text-slate-300 hover:text-slate-600 transition-colors">
+          <ChevronRight size={18} />
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+interface PublicRingCardProps {
+  key?: React.Key;
+  ring: RingStatus;
+  namingMode: 'number' | 'alphabet';
+  queueCount?: number;
+}
+
+function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void }) {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [currentPage, setCurrentPage] = React.useState(0);
+  const ringsPerPage = 3;
+  const totalPages = Math.ceil(rings.length / ringsPerPage);
+
+  const toggleFullScreen = () => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen().catch(err => {
+        console.error(`Error attempting to enable full-screen mode: ${err.message}`);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  React.useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+      if (!document.fullscreenElement) {
+        setCurrentPage(0);
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  React.useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isFullscreen && totalPages > 1) {
+      interval = setInterval(() => {
+        setCurrentPage((prev) => (prev + 1) % totalPages);
+      }, 30000); // 30 seconds
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isFullscreen, totalPages]);
+
+  const displayedRings = isFullscreen 
+    ? rings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
+    : rings;
+
+  return (
+    <div 
+      ref={containerRef}
+      className={cn(
+        "bg-[#0a0e1a] min-h-full shadow-2xl border border-slate-800 transition-all duration-500 flex flex-col relative overflow-hidden",
+        isFullscreen ? "rounded-none p-0" : "rounded-[2.5rem] p-6 space-y-8"
+      )}
+      style={{
+        backgroundImage: `radial-gradient(circle at 2px 2px, rgba(255,255,255,0.03) 1px, transparent 0)`,
+        backgroundSize: '4px 4px'
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-8 py-4 bg-[#1a2235]/50 border-b border-white/10 backdrop-blur-sm">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-900/20">
+            <Trophy size={24} className="text-white" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic leading-none">Standby View</h2>
+            <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Tournament Standby Monitoring</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-6">
+          <button 
+            onClick={toggleFullScreen}
+            className="p-3 bg-slate-900 text-white hover:bg-slate-800 rounded-2xl border border-slate-800 transition-all group"
+          >
+            {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 p-4 space-y-4">
+        {displayedRings.map((ring) => {
+          const ringQueue = boutQueue.filter(q => q.data.ring === ring.ringNumber).slice(0, 4);
+          const current = ring.currentBout;
+          const standby = ringQueue.slice(1, 4);
+          const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
+
+          return (
+            <div key={ring.ringNumber} className="flex gap-1 h-48">
+              {/* Left: Current Match */}
+              <div className="flex-[3] flex flex-col bg-[#0d1526] border border-white/10 rounded-lg overflow-hidden">
+                {/* Header */}
+                <div className="grid grid-cols-12 bg-[#1a2235] border-b border-white/10 py-2 px-4">
+                  <div className="col-span-2 bg-lime-500 text-slate-950 text-[16px] font-black px-3 py-1 rounded flex items-center justify-center mr-4">
+                    {current?.category.split(' ')[0] || "---"}
+                  </div>
+                  <div className="col-span-10 text-white text-[18px] font-bold flex items-center">
+                    {current?.category || "---"}
+                  </div>
+                </div>
+                {/* Content */}
+                <div className="flex-1 grid grid-cols-12">
+                  {/* Bout Num */}
+                  <div className="col-span-2 flex items-center justify-center text-3xl font-black text-white border-r border-white/10 bg-[#161f33]">
+                    {current?.bout || "---"}
+                  </div>
+                  {/* Players */}
+                  <div className="col-span-10 flex flex-col">
+                    <div className="flex-1 bg-blue-600/90 flex flex-col justify-center px-4 border-b border-white/10">
+                      <p className="text-[10px] font-bold text-blue-200 uppercase leading-none mb-1">{current?.blue_club || "---"}</p>
+                      <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current?.blue_name || "---"}</h4>
+                    </div>
+                    <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4">
+                      <p className="text-[10px] font-bold text-red-200 uppercase leading-none mb-1">{current?.red_club || "---"}</p>
+                      <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current?.red_name || "---"}</h4>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Middle: Ring Num */}
+              <div className="flex-1 flex flex-col items-center justify-center">
+                <span className="text-9xl font-black text-white italic tracking-tighter leading-none">{ringName}</span>
+                <span className="text-[18px] font-black text-white uppercase tracking-[0.5em] mt-4">COURT</span>
+              </div>
+
+              {/* Right: Standby Queue */}
+              <div className="flex-[2] flex flex-col gap-1">
+                {[0, 1, 2].map((idx) => {
+                  const b = standby[idx];
+                  return (
+                    <div key={idx} className="flex-1 grid grid-cols-12 bg-[#0d1526] border border-white/10 rounded overflow-hidden">
+                      <div className="col-span-3 flex items-center justify-center text-xl font-black text-white bg-[#161f33] border-r border-white/10">
+                        {b?.data.bout || "---"}
+                      </div>
+                      <div className="col-span-5 bg-blue-600/80 flex items-center px-3 border-r border-white/10">
+                        <span className="text-[18px] font-black text-white uppercase truncate">{b?.data.blue_name || "---"}</span>
+                      </div>
+                      <div className="col-span-4 bg-red-600/80 flex items-center px-3">
+                        <span className="text-[18px] font-black text-white uppercase truncate">{b?.data.red_name || "---"}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <AnnouncementPopup announcement={activeAnnouncement || null} onClose={onAnnouncementClose || (() => {})} size={isFullscreen ? 'large' : 'normal'} />
+    </div>
+  );
+}
+
+function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void }) {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [currentPage, setCurrentPage] = React.useState(0);
+  const ringsPerPage = 3;
+  const totalPages = Math.ceil(rings.length / ringsPerPage);
+
+  const toggleFullScreen = () => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen().catch(err => {
+        console.error(`Error attempting to enable full-screen mode: ${err.message}`);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  React.useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+      if (!document.fullscreenElement) {
+        setCurrentPage(0);
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  // Auto-scroll logic for fullscreen mode
+  React.useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isFullscreen && totalPages > 1) {
+      interval = setInterval(() => {
+        setCurrentPage((prev) => (prev + 1) % totalPages);
+      }, 30000); // 30 seconds
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isFullscreen, totalPages]);
+
+  const displayedRings = isFullscreen 
+    ? rings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
+    : rings;
+
+  return (
+    <div 
+      ref={containerRef}
+      className={cn(
+        "bg-slate-950 min-h-full shadow-2xl border border-slate-800 transition-all duration-500 flex flex-col relative",
+        isFullscreen ? "rounded-none px-12 py-6 overflow-hidden" : "rounded-[2.5rem] p-6 space-y-8"
+      )}
+    >
+      {!isFullscreen && (
+        <div className="flex items-center justify-between px-4 flex-shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-900/20">
+              <Trophy size={24} className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic leading-none">Onsite Tournament Overview</h2>
+              <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Multi-Court Monitoring System</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="flex flex-col items-end">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                <span className="text-xs font-black text-green-500 uppercase tracking-widest">System Live</span>
+              </div>
+              <p className="text-[9px] font-bold text-white uppercase tracking-widest mt-1">Real-time Data Sync</p>
+            </div>
+            <button 
+              onClick={toggleFullScreen}
+              className="p-3 bg-slate-900 text-white hover:text-white hover:bg-slate-800 rounded-2xl border border-slate-800 transition-all group"
+              title="Enter Fullscreen"
+            >
+              <Maximize size={20} className="group-hover:scale-110 transition-transform" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isFullscreen && (
+        <>
+          <div className="absolute top-6 left-12 flex items-center gap-4 z-50">
+            <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-900/20">
+              <Trophy size={24} className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic leading-none">Onsite Tournament Overview</h2>
+              <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Multi-Court Monitoring System</p>
+            </div>
+          </div>
+          <button 
+            onClick={toggleFullScreen}
+            className="absolute top-6 right-6 p-3 bg-slate-900/50 hover:bg-slate-800 text-slate-400 hover:text-white rounded-2xl border border-slate-800 transition-all z-50 opacity-0 hover:opacity-100"
+            title="Exit Fullscreen"
+          >
+            <Minimize size={20} />
+          </button>
+        </>
+      )}
+
+      <div className={cn(
+        "flex-1 overflow-y-auto custom-scrollbar px-4",
+        isFullscreen ? "flex flex-col justify-around pt-24 pb-4 gap-y-8" : "space-y-24 py-12"
+      )}>
+        {displayedRings.map((ring) => {
+          const ringQueue = boutQueue.filter(q => q.data.ring === ring.ringNumber).slice(0, 3);
+          const current = ring.currentBout;
+          const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
+          
+          const formatBoutNumber = (ringNum: number, bout: string | number) => {
+            const numBout = parseInt(bout.toString());
+            const suffix = bout.toString().replace(/[0-9]/g, '');
+            if (numBout >= ringNum * 1000) return numBout.toString() + suffix;
+            return (ringNum * 1000 + numBout).toString() + suffix;
+          };
+
+          return (
+            <div key={ring.ringNumber} className="grid grid-cols-12 gap-8 items-center">
+              {/* Ring Number */}
+              <div className="col-span-1 flex flex-col items-center justify-center">
+                <div className="text-7xl font-black text-white italic leading-none tracking-tighter">{ringName}</div>
+                <div className="text-[10px] font-black text-white uppercase tracking-[0.4em] mt-2 ml-1">Court</div>
+              </div>
+
+              {/* Active Match Capsule */}
+              <div className="col-span-8">
+                <div className="relative">
+                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 flex items-center gap-3">
+                    <div className="h-[1px] w-12 bg-slate-800" />
+                    <div className="bg-yellow-400 text-slate-950 px-6 py-1 rounded-full text-[13px] font-black uppercase tracking-[0.2em] whitespace-nowrap shadow-lg shadow-yellow-900/20">
+                      {current?.category || "Waiting for Session"}
+                    </div>
+                    <div className="h-[1px] w-12 bg-slate-800" />
+                  </div>
+                  
+                  <div className={cn(
+                    "flex items-center bg-slate-900 rounded-[3rem] border-4 border-slate-800 shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-500",
+                    isFullscreen ? "h-32" : "h-36"
+                  )}>
+                    {/* Blue Side */}
+                    <div className="flex-1 h-full bg-blue-600 flex flex-col justify-center px-10 relative overflow-hidden group">
+                      <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/20 to-transparent pointer-events-none" />
+                      <div className="absolute -right-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">BLUE</div>
+                      <p className="text-[15px] font-black text-blue-200 uppercase tracking-[0.2em] mb-1 relative z-10">{current?.blue_club || "---"}</p>
+                      <h4 className="text-[28px] font-black text-white uppercase tracking-[3px] relative z-10 leading-tight line-clamp-2">
+                        {current?.privacy_mode ? "---" : (current?.blue_name || "---")}
+                      </h4>
+                    </div>
+
+                    {/* Bout Number Circle */}
+                    <div className="z-20 -mx-10 w-[120px] h-[120px] bg-white rounded-full border-[10px] border-slate-800 flex items-center justify-center shadow-2xl transform hover:scale-105 transition-transform">
+                      <span className="text-[36px] font-black text-slate-900 leading-none">
+                        {current ? formatBoutNumber(ring.ringNumber, current.bout) : "---"}
+                      </span>
+                    </div>
+
+                    {/* Red Side */}
+                    <div className="flex-1 h-full bg-red-600 flex flex-col justify-center px-10 text-right relative overflow-hidden group">
+                      <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/20 to-transparent pointer-events-none" />
+                      <div className="absolute -left-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">RED</div>
+                      <p className="text-[15px] font-black text-red-200 uppercase tracking-[0.2em] mb-1 relative z-10">{current?.red_club || "---"}</p>
+                      <h4 className="text-[28px] font-black text-white uppercase tracking-[3px] relative z-10 leading-tight line-clamp-2">
+                        {current?.privacy_mode ? "---" : (current?.red_name || "---")}
+                      </h4>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Standby Queue */}
+              <div className={cn(
+                "col-span-3 transition-all duration-500",
+                isFullscreen ? "space-y-2" : "space-y-3"
+              )}>
+                <div className="flex items-center justify-between px-2">
+                  <div className="text-[10px] font-black text-white uppercase tracking-[0.2em] flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 bg-red-600 rounded-full" />
+                    Ring {ringName}
+                  </div>
+                  <div className="text-[9px] font-bold text-white uppercase tracking-widest">Next 3 Bouts</div>
+                </div>
+                <div className={cn(
+                  "transition-all duration-500",
+                  isFullscreen ? "space-y-1.5" : "space-y-2.5"
+                )}>
+                  {[0, 1, 2].map((idx) => {
+                    const bout = ringQueue[idx];
+                    return (
+                      <div key={idx} className="flex items-center bg-slate-900 rounded-full border border-slate-800 overflow-hidden min-h-[2.5rem] py-1 shadow-lg group hover:border-slate-600 transition-colors">
+                        {/* Blue Side */}
+                        <div className="flex-1 self-stretch bg-blue-600/90 flex items-center px-3 min-w-0 relative">
+                          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
+                          <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
+                            {bout ? (bout.data.privacy_mode ? "---" : bout.data.blue_name) : "---"}
+                          </p>
+                        </div>
+                        
+                        {/* Bout Number */}
+                        <div className="z-10 -mx-4 w-10 h-10 bg-white rounded-full border-4 border-slate-900 flex items-center justify-center flex-shrink-0 shadow-xl group-hover:scale-110 transition-transform">
+                          <span className="text-[10px] font-black text-slate-900">
+                            {bout ? formatBoutNumber(ring.ringNumber, bout.data.bout) : "---"}
+                          </span>
+                        </div>
+
+                        {/* Red Side */}
+                        <div className="flex-1 self-stretch bg-red-600/90 flex items-center justify-end px-3 min-w-0 text-right relative">
+                          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/10 to-transparent pointer-events-none" />
+                          <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
+                            {bout ? (bout.data.privacy_mode ? "---" : bout.data.red_name) : "---"}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {isFullscreen && totalPages > 1 && (
+        <div className="flex justify-center gap-3 py-4 flex-shrink-0">
+          {Array.from({ length: totalPages }).map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setCurrentPage(i)}
+              className={cn(
+                "w-3 h-3 rounded-full transition-all duration-300",
+                currentPage === i 
+                  ? "bg-red-600 w-8 shadow-[0_0_15px_rgba(220,38,38,0.5)]" 
+                  : "bg-slate-800 hover:bg-slate-700"
+              )}
+            />
+          ))}
+        </div>
+      )}
+      <AnnouncementPopup announcement={activeAnnouncement || null} onClose={onAnnouncementClose || (() => {})} size={isFullscreen ? 'large' : 'normal'} />
+    </div>
+  );
+}
+
+function PublicDashboardView({ rings, boutQueue, namingMode, onBack }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', onBack: () => void }) {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [currentPage, setCurrentPage] = React.useState(0);
+  const ringsPerPage = 9; // Show 9 rings per page in fullscreen
+  const totalPages = Math.ceil(rings.length / ringsPerPage);
+
+  const toggleFullScreen = () => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen().catch(err => {
+        console.error(`Error attempting to enable full-screen mode: ${err.message}`);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  React.useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+      if (!document.fullscreenElement) {
+        setCurrentPage(0);
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  React.useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isFullscreen && totalPages > 1) {
+      interval = setInterval(() => {
+        setCurrentPage((prev) => (prev + 1) % totalPages);
+      }, 30000); // 30 seconds
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isFullscreen, totalPages]);
+
+  const displayedRings = isFullscreen 
+    ? rings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
+    : rings;
+
+  return (
+    <div ref={containerRef} className="min-h-screen bg-slate-900 text-white font-sans overflow-x-hidden flex flex-col">
+      {/* Public Header */}
+      <header className={cn(
+        "p-6 bg-slate-800 border-b border-slate-700 flex items-center justify-between sticky top-0 z-50 transition-all",
+        isFullscreen && "opacity-0 h-0 p-0 overflow-hidden"
+      )}>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-red-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-red-900/20">
+            <Trophy size={24} />
+          </div>
+          <div>
+            <h1 className="font-black text-xl leading-tight tracking-tighter">MY-TKD LIVE</h1>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Web View Dashboard</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={toggleFullScreen}
+            className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white transition-colors"
+            title="Fullscreen Mode"
+          >
+            <Maximize size={20} />
+          </button>
+          <button 
+            onClick={onBack}
+            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-bold transition-colors"
+          >
+            Back to Admin
+          </button>
+        </div>
+      </header>
+
+      <div className={cn(
+        "p-4 md:p-8 space-y-8 max-w-[1600px] mx-auto flex-1",
+        isFullscreen && "max-w-none w-full flex flex-col justify-center p-12"
+      )}>
+        <div className="grid grid-cols-1 gap-8">
+          {/* Mats Grid */}
+          <div className="space-y-6">
+            {!isFullscreen && (
+              <h3 className="text-lg font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                <LayoutDashboard size={20} className="text-red-500" />
+                Live Ring Status
+              </h3>
+            )}
+            <div className={cn(
+              "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6",
+              isFullscreen && "lg:grid-cols-3 gap-8"
+            )}>
+              {displayedRings.map((ring) => (
+                <PublicRingCard 
+                  key={ring.ringNumber} 
+                  ring={ring} 
+                  namingMode={namingMode} 
+                  queueCount={boutQueue.filter(q => q.data.ring === ring.ringNumber).length}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {!isFullscreen && (
+        <footer className="p-8 bg-slate-800 border-t border-slate-700 mt-12 text-center space-y-4">
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-12 h-12 bg-white p-1 rounded-lg">
+              <QrCode size={40} className="text-slate-900" />
+            </div>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Scan for Live Updates</p>
+          </div>
+          <p className="text-xs text-slate-500 font-medium">© 2024 MY-TKD Tournament Management System</p>
+        </footer>
+      )}
+
+      {isFullscreen && totalPages > 1 && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex gap-2">
+          {[...Array(totalPages)].map((_, i) => (
+            <div 
+              key={i} 
+              className={cn(
+                "w-2 h-2 rounded-full transition-all duration-500",
+                currentPage === i ? "w-8 bg-red-500" : "bg-slate-700"
+              )}
+            />
+          ))}
+        </div>
+      )}
+      
+      {isFullscreen && (
+        <button 
+          onClick={toggleFullScreen}
+          className="fixed top-8 right-8 p-4 bg-slate-800/50 hover:bg-slate-800 text-white rounded-2xl border border-slate-700 transition-all opacity-0 hover:opacity-100 z-50"
+        >
+          <Minimize size={24} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function PublicRingCard({ ring, namingMode, queueCount }: PublicRingCardProps) {
+  const current = ring.currentBout;
+  const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
+  const formatBoutNumber = (ring: number, bout: string | number) => {
+    const numBout = parseInt(bout.toString());
+    const suffix = bout.toString().replace(/[0-9]/g, '');
+    if (numBout >= ring * 1000) {
+      return numBout.toString() + suffix;
+    }
+    return (ring * 1000 + numBout).toString() + suffix;
+  };
+  
+  return (
+    <div className="bg-slate-800 border border-slate-700 rounded-3xl overflow-hidden shadow-2xl">
+      <div className="p-4 bg-slate-700/50 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center font-black text-xl shadow-lg shadow-red-900/20">
+            {ringName}
+          </div>
+          <div>
+            <h4 className="font-black text-[20px] uppercase tracking-widest text-white">Ring {ringName}</h4>
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+              <span className="text-[10px] font-bold text-green-500 uppercase tracking-widest">Live Match</span>
+            </div>
+          </div>
+        </div>
+        {current && (
+          <div className="text-right">
+            <p className="text-[40px] font-black text-white leading-none">
+              {formatBoutNumber(ring.ringNumber, current.bout)}
+              <span className="mx-2 text-white/40">/</span>
+              {ring.totalBouts || queueCount || 0}
+            </p>
+          </div>
+        )}
+      </div>
+      
+      <div className="p-6 space-y-4">
+        {current ? (
+          <>
+            <div className="space-y-4">
+              <div className="flex items-center justify-center">
+                <span className="text-[20px] font-black text-white uppercase tracking-widest">{current.category}</span>
+              </div>
+              
+              <div className="flex items-center gap-6">
+                <PublicFighterSide color="blue" name={current.blue_name} club={current.blue_club} privacy={current.privacy_mode} />
+                <div className="text-xl font-black text-white italic">VS</div>
+                <PublicFighterSide color="red" name={current.red_name} club={current.red_club} privacy={current.privacy_mode} />
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="py-8 flex flex-col items-center justify-center text-slate-600 space-y-4">
+            <AlertCircle size={48} />
+            <p className="text-sm font-black uppercase tracking-widest">Ring Inactive</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PublicFighterSide({ color, name, club, privacy }: { color: 'blue' | 'red', name: string, club: string, privacy: boolean }) {
+  return (
+    <div className="flex-1 space-y-2">
+      <div className={cn(
+        "h-2 w-full rounded-full shadow-inner",
+        color === 'blue' ? "bg-blue-500 shadow-blue-900/50" : "bg-red-500 shadow-red-900/50"
+      )} />
+      <p className="text-lg font-black text-white tracking-tight">
+        {privacy ? "---" : name}
+      </p>
+      <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">{club}</p>
+    </div>
+  );
+}
+
+function LoginScreen({ onLogin, events }: { onLogin: (u: string, p: string, eventId?: string) => boolean, events: EventData[] }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [eventId, setEventId] = useState('');
+  const [error, setError] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onLogin(username, password, eventId)) {
+      setError(true);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-md bg-white p-8 rounded-3xl border border-slate-200 shadow-xl"
+      >
+        <div className="flex flex-col items-center mb-8">
+          <div className="w-16 h-16 bg-red-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-red-200 mb-4">
+            <Trophy size={32} />
+          </div>
+          <h1 className="text-2xl font-black text-slate-800 tracking-tighter">MY-TKD LIVE</h1>
+          <p className="text-sm text-slate-500 font-bold uppercase tracking-widest mt-1">Tournament Management</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1">Username</label>
+            <div className="relative">
+              <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+              <input 
+                type="text" 
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all font-bold"
+                placeholder="Enter username"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1">Password</label>
+            <div className="relative">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+              <input 
+                type="password" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all font-bold"
+                placeholder="••••••••"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1">Event</label>
+            <div className="relative">
+              <Trophy className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10" size={18} />
+              <select
+                value={eventId}
+                onChange={(e) => setEventId(e.target.value)}
+                className="w-full pl-12 pr-10 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all font-bold relative z-20 appearance-none cursor-pointer"
+                required={username !== 'admin' && events.length > 0}
+              >
+                <option value="" disabled>
+                  {events.length === 0 ? "No events available (Admin must create one)" : "Select an Event"}
+                </option>
+                {events.map(ev => (
+                  <option key={ev.id} value={ev.id}>{ev.name}</option>
+                ))}
+              </select>
+              {/* Custom dropdown arrow to replace the default one since we use appearance-none */}
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none z-30 text-slate-400">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              </div>
+            </div>
+          </div>
+
+          {error && (
+            <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600">
+              <AlertCircle size={18} />
+              <p className="text-xs font-bold">Invalid username or password</p>
+            </div>
+          )}
+
+          <button 
+            type="submit"
+            className="w-full py-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-red-200 transition-all flex items-center justify-center gap-2"
+          >
+            <LogIn size={20} />
+            Login to System
+          </button>
+        </form>
+
+        <div className="mt-8 pt-8 border-t border-slate-100 text-center">
+          <div className="text-xs text-slate-500 mb-4 space-y-1">
+            <p className="font-bold text-slate-700">Demo Accounts</p>
+            <p>Admin: <span className="font-mono bg-slate-100 px-1 rounded">admin</span> (Password: lee093)</p>
+            <p>Ring User: <span className="font-mono bg-slate-100 px-1 rounded">ring1</span> ... <span className="font-mono bg-slate-100 px-1 rounded">ring12</span> (Password: 123)</p>
+            <p>Viewer: <span className="font-mono bg-slate-100 px-1 rounded">viewer</span> (Password: 123)</p>
+          </div>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+            © 2024 MY-TKD Tournament Management System
+          </p>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onAdd: (e: EventData) => void, onDelete: (id: string) => void }) {
+  const [name, setName] = useState('');
+  const [ringQuantity, setRingQuantity] = useState(1);
+  const [sheetUrl, setSheetUrl] = useState('');
+  const [showScript, setShowScript] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const finalSheetUrl = sheetUrl.trim() || 'https://script.google.com/macros/s/AKfycbwO3CAi7OVpZQwD-r6-WF6M-iOGjPnVFayaglH2-arQcs_LGqDYKaTl3HRKdMEUGYio/exec';
+
+    onAdd({
+      id: Math.random().toString(36).substr(2, 9),
+      name,
+      ringQuantity,
+      sheetUrl: finalSheetUrl,
+      createdAt: new Date()
+    });
+    setName('');
+    setRingQuantity(1);
+    setSheetUrl('');
+  };
+
+  return (
+    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xl font-bold flex items-center gap-2">
+          <Calendar size={24} className="text-slate-400" />
+          Event Management
+        </h3>
+        <button onClick={() => setShowScript(!showScript)} className="text-xs text-blue-600 hover:underline">
+          How to auto-create Google Sheets?
+        </button>
+      </div>
+
+      {showScript && (
+        <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-800 space-y-2">
+          <p className="font-bold">Google Apps Script Setup:</p>
+          <p>1. Go to script.google.com and create a new project.</p>
+          <p>2. Paste the provided script (which handles creating sheets in your specific folder and receiving data).</p>
+          <p>3. Deploy as a Web App and paste the URL below when creating an event.</p>
+          <pre className="bg-white p-2 text-[10px] rounded border border-blue-200 overflow-x-auto">
+{`function doPost(e) {
+  const data = JSON.parse(e.postData.contents);
+  if (data.action === 'createEvent') {
+    const folder = DriveApp.getFolderById('11R11mXcCrQb6tVtzatGonVM0HylgVnd6');
+    const ss = SpreadsheetApp.create(data.eventName);
+    const file = DriveApp.getFileById(ss.getId());
+    folder.addFile(file);
+    DriveApp.getRootFolder().removeFile(file);
+    const sheet = ss.getSheets()[0];
+    sheet.setName("Sheet 1");
+    sheet.appendRow(["Timestamp", "Ring Number", "Bout ID", "Category", "Player Blue Name", "Club Name", "Player Red Name", "Club Name", "Winner"]);
+    return ContentService.createTextOutput(JSON.stringify({ url: ss.getUrl() })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Sheet 1") || SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  
+  if (data.action === 'updateWinner') {
+    if (sheet) {
+      const dataRange = sheet.getDataRange();
+      const values = dataRange.getValues();
+      for (let i = 1; i < values.length; i++) {
+        if (values[i][1] == data.ring && values[i][2] == data.bout) {
+          sheet.getRange(i + 1, 9).setValue(data.winner); // Column I is Winner
+          break;
+        }
+      }
+    }
+    return ContentService.createTextOutput("Winner Updated");
+  }
+  
+  // Handle new bout
+  if (data.action === 'newBout' && sheet) {
+    sheet.appendRow([
+      data.timestamp,
+      data.ring,
+      data.bout,
+      data.category,
+      data.blue_name,
+      data.blue_club,
+      data.red_name,
+      data.red_club,
+      "" // Winner column empty initially
+    ]);
+  }
+  return ContentService.createTextOutput("Success");
+}`}
+          </pre>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <div className="space-y-1 md:col-span-1">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Event Name</label>
+          <input 
+            type="text" 
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+            placeholder="e.g. National Open 2024"
+            required
+          />
+        </div>
+        <div className="space-y-1 md:col-span-1">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Ring Quantity</label>
+          <input 
+            type="number" 
+            min="1"
+            max="20"
+            value={ringQuantity}
+            onChange={(e) => setRingQuantity(parseInt(e.target.value))}
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+            required
+          />
+        </div>
+        <div className="space-y-1 md:col-span-1">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Google Sheet Web App URL</label>
+          <input 
+            type="text" 
+            value={sheetUrl}
+            onChange={(e) => setSheetUrl(e.target.value)}
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+            placeholder="Leave blank for default"
+          />
+        </div>
+        <button 
+          type="submit"
+          className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all h-[38px] md:col-span-1"
+        >
+          Create Event
+        </button>
+      </form>
+
+      <div className="space-y-2">
+        {events.map(ev => (
+          <div key={ev.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+            <div>
+              <p className="text-sm font-bold text-slate-800">{ev.name}</p>
+              <p className="text-[10px] text-slate-500">{ev.ringQuantity} Rings • {new Date(ev.createdAt).toLocaleDateString()}</p>
+            </div>
+            <button 
+              onClick={() => onDelete(ev.id)}
+              className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        ))}
+        {events.length === 0 && (
+          <p className="text-sm text-slate-500 text-center py-4">No events created yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function UserManagement({ accounts, onAdd, onDelete, onEditPassword }: { accounts: UserAccount[], onAdd: (a: UserAccount) => void, onDelete: (u: string) => void, onEditPassword: (u: string, p: string) => void }) {
+  const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newRole, setNewRole] = useState<'admin' | 'user'>('user');
+  const [assignedRing, setAssignedRing] = useState<number>(1);
+  const [editingUser, setEditingUser] = useState<string | null>(null);
+  const [editPasswordValue, setEditPasswordValue] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newUsername && newPassword) {
+      onAdd({
+        username: newUsername,
+        password: newPassword,
+        role: newRole,
+        assignedRing: newRole === 'user' ? assignedRing : undefined
+      });
+      setNewUsername('');
+      setNewPassword('');
+    }
+  };
+
+  return (
+    <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+      <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+        <UserPlus className="text-red-500" size={24} />
+        User Management
+      </h3>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Add User Form */}
+        <div className="lg:col-span-1 p-6 bg-slate-50 rounded-2xl border border-slate-100">
+          <h4 className="font-bold text-slate-800 mb-4 text-sm uppercase tracking-widest">Add New Account</h4>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Username</label>
+              <input 
+                type="text" 
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
+                className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold"
+                placeholder="e.g. ring2"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Password</label>
+              <input 
+                type="text" 
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold"
+                placeholder="e.g. 1234"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Role</label>
+              <select 
+                value={newRole}
+                onChange={(e) => setNewRole(e.target.value as 'admin' | 'user')}
+                className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold"
+              >
+                <option value="user">Ring Controller</option>
+                <option value="admin">System Admin</option>
+              </select>
+            </div>
+            {newRole === 'user' && (
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Assigned Ring</label>
+                <input 
+                  type="number" 
+                  value={assignedRing}
+                  onChange={(e) => setAssignedRing(parseInt(e.target.value))}
+                  className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold"
+                  min="1"
+                />
+              </div>
+            )}
+            <button 
+              type="submit"
+              className="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-all"
+            >
+              Create Account
+            </button>
+          </form>
+        </div>
+
+        {/* User List */}
+        <div className="lg:col-span-2">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="text-left border-b border-slate-100">
+                  <th className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Username</th>
+                  <th className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Password</th>
+                  <th className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Role</th>
+                  <th className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Access</th>
+                  <th className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {accounts.map((acc) => (
+                  <tr key={acc.username} className="group">
+                    <td className="py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500">
+                          <UserIcon size={16} />
+                        </div>
+                        <span className="font-bold text-slate-700">{acc.username}</span>
+                      </div>
+                    </td>
+                    <td className="py-4">
+                      <div className="flex items-center gap-2">
+                        <Key size={12} className="text-slate-300" />
+                        {editingUser === acc.username ? (
+                          <div className="flex items-center gap-2">
+                            <input 
+                              type="text" 
+                              value={editPasswordValue} 
+                              onChange={e => setEditPasswordValue(e.target.value)} 
+                              className="w-24 px-2 py-1 text-xs border border-slate-200 rounded outline-none focus:border-red-500"
+                            />
+                            <button onClick={() => { onEditPassword(acc.username, editPasswordValue); setEditingUser(null); }} className="text-green-600 hover:text-green-700"><Check size={14}/></button>
+                            <button onClick={() => setEditingUser(null)} className="text-red-600 hover:text-red-700"><X size={14}/></button>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="font-mono text-xs font-bold text-slate-600">{acc.password}</span>
+                            <button onClick={() => { setEditingUser(acc.username); setEditPasswordValue(acc.password); }} className="text-slate-400 hover:text-blue-600 ml-2"><Edit2 size={12}/></button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-4">
+                      <span className={cn(
+                        "px-2 py-1 rounded-lg text-[10px] font-bold uppercase",
+                        acc.role === 'admin' ? "bg-red-50 text-red-600" : "bg-blue-50 text-blue-600"
+                      )}>
+                        {acc.role}
+                      </span>
+                    </td>
+                    <td className="py-4 text-xs font-bold text-slate-500">
+                      {acc.role === 'admin' ? "Full System" : `Ring ${acc.assignedRing}`}
+                    </td>
+                    <td className="py-4">
+                      {acc.username !== 'admin' && (
+                        <button 
+                          onClick={() => onDelete(acc.username)}
+                          className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PublicQueueItem({ label, data }: { label: string, data: MatchData | null }) {
+  return (
+    <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-700/50">
+      <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">{label}</p>
+      {data ? (
+        <div className="space-y-1">
+          <p className="text-xs font-black text-slate-300 truncate">
+            {data.privacy_mode ? "---" : data.blue_name} vs {data.privacy_mode ? "---" : data.red_name}
+          </p>
+          <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{data.blue_club} / {data.red_club}</p>
+        </div>
+      ) : (
+        <p className="text-xs font-bold text-slate-700 uppercase tracking-widest">TBD</p>
+      )}
+    </div>
+  );
+}

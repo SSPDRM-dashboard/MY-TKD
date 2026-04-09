@@ -1,0 +1,28 @@
+export interface EventData {
+  id: string;
+  name: string;
+  sheetUrl: string;
+  ringQuantity: number;
+  createdAt: Date;
+}
+
+export interface MatchData {
+  ring: number;
+  bout: string | number;
+  blue_name: string;
+  blue_club: string;
+  red_name: string;
+  red_club: string;
+  category: string;
+  privacy_mode: boolean;
+}
+
+export interface RingStatus {
+  ringNumber: number;
+  totalBouts?: number;
+  nextBoutNumber?: number;
+  currentBout: MatchData | null;
+  onDeck: MatchData | null;
+  inTheHole: MatchData | null;
+  isFinalBouts?: boolean;
+}

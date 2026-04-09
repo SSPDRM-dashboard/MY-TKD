@@ -1,0 +1,22 @@
+{
+  "entities": {
+    "Announcement": {
+      "title": "Announcement",
+      "description": "A broadcast message from the administrator.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "message": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "author": { "type": "string" }
+      },
+      "required": ["message", "timestamp", "author"]
+    }
+  },
+  "firestore": {
+    "/announcements/{announcementId}": {
+      "schema": "Announcement",
+      "description": "Collection of broadcast announcements."
+    }
+  }
+}
