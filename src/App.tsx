@@ -206,19 +206,36 @@ export default function App() {
         const target = data.target || 'all';
         if (target === 'users' && user?.role !== 'user') return;
         
-        const lastSeen = sessionStorage.getItem('tkd_last_announcement');
-        if (lastSeen !== id) {
+        // Check if it's too old (more than 12 hours)
+        if (data.timestamp) {
+          const ts = data.timestamp.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
+          const now = new Date();
+          if (now.getTime() - ts.getTime() > 12 * 60 * 60 * 1000) return;
+        }
+
+        const lastSeen = localStorage.getItem('tkd_last_announcement');
+        const isDismissed = localStorage.getItem(`tkd_announcement_dismissed_${id}`);
+        
+        if (lastSeen !== id && !isDismissed) {
           setActiveAnnouncement({ message: data.message, id });
-          sessionStorage.setItem('tkd_last_announcement', id);
+          localStorage.setItem('tkd_last_announcement', id);
           
           const timer = setTimeout(() => {
             setActiveAnnouncement(null);
           }, 60000);
+          return () => clearTimeout(timer);
         }
       }
     });
     return () => unsubscribe();
   }, [user?.role]);
+
+  const handleAnnouncementClose = () => {
+    if (activeAnnouncement) {
+      localStorage.setItem(`tkd_announcement_dismissed_${activeAnnouncement.id}`, 'true');
+    }
+    setActiveAnnouncement(null);
+  };
 
   const handleSendAnnouncement = async () => {
     if (!announcementText.trim()) return;
@@ -273,41 +290,48 @@ export default function App() {
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Sync googleSheetUrl with current event
+  useEffect(() => {
+    if (currentEventId && events.length > 0) {
+      const event = events.find(e => e.id === currentEventId);
+      if (event && event.sheetUrl && event.sheetUrl !== googleSheetUrl) {
+        setGoogleSheetUrl(event.sheetUrl);
+      }
+    }
+  }, [currentEventId, events, googleSheetUrl, setGoogleSheetUrl]);
+
   const handleNewBoutSubmit = async (ringNumber: number, newData: MatchData) => {
+    console.log("Creating new bout:", newData);
+    console.log("Current Google Sheet URL:", googleSheetUrl);
+
     // Update categories and clubs lists
     if (newData.category && !categories.includes(newData.category)) {
-      const newCats = [...categories, newData.category];
-      setCategories(newCats);
-      localStorage.setItem('tkd_categories', JSON.stringify(newCats));
+      setCategories(prev => [...prev, newData.category]);
     }
     if (newData.blue_club && !clubs.includes(newData.blue_club)) {
-      const newClubs = [...clubs, newData.blue_club];
-      setClubs(newClubs);
-      localStorage.setItem('tkd_clubs', JSON.stringify(newClubs));
+      setClubs(prev => [...prev, newData.blue_club]);
     }
     if (newData.red_club && !clubs.includes(newData.red_club)) {
-      const newClubs = [...clubs, newData.red_club];
-      setClubs(newClubs);
-      localStorage.setItem('tkd_clubs', JSON.stringify(newClubs));
+      setClubs(prev => [...prev, newData.red_club]);
     }
 
     // Add to queue
     const queueItem = { id: Math.random().toString(36).substr(2, 9), data: newData };
-    setBoutQueue(prev => {
-      const updated = [...prev, queueItem];
-      localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
-      return updated;
-    });
+    setBoutQueue(prev => [...prev, queueItem]);
 
     // Sync to Google Sheets
     if (googleSheetUrl) {
       setIsSyncing(true);
       try {
-        await syncToGoogleSheets(googleSheetUrl, newData);
+        console.log("Syncing to Google Sheets...");
+        const success = await syncToGoogleSheets(googleSheetUrl, newData);
+        console.log("Sync result:", success);
       } catch (e) {
         console.error("Bout sync failed:", e);
       }
       setIsSyncing(false);
+    } else {
+      console.warn("Sync skipped: googleSheetUrl is empty");
     }
   };
 
@@ -732,12 +756,6 @@ export default function App() {
         </div>
         <div className="flex items-center gap-2">
           <button 
-            onClick={() => setIsPublicView(true)}
-            className="p-2 text-slate-400 hover:text-red-600 transition-colors"
-          >
-            <QrCode size={20} />
-          </button>
-          <button 
             onClick={handleLogout}
             className="p-2 text-slate-400 hover:text-red-600 transition-colors"
           >
@@ -892,25 +910,32 @@ export default function App() {
             
             <div className="flex flex-wrap items-center gap-2 md:gap-4">
               {events.length > 0 && (
-                <select
-                  value={currentEventId || ''}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    setCurrentEventId(id);
-                    localStorage.setItem('tkd_current_event', id);
-                    const event = events.find(ev => ev.id === id);
-                    if (event && event.sheetUrl) {
-                      setGoogleSheetUrl(event.sheetUrl);
-                      localStorage.setItem('tkd_sheet_url', event.sheetUrl);
-                    }
-                  }}
-                  className="flex-1 sm:flex-none px-3 md:px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs md:text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-red-500 shadow-sm"
-                >
-                  <option value="" disabled>Select Event</option>
-                  {events.map(ev => (
-                    <option key={ev.id} value={ev.id}>{ev.name}</option>
-                  ))}
-                </select>
+                currentEventId ? (
+                  <div className="px-4 py-2 bg-slate-100 rounded-xl text-[10px] md:text-xs font-black text-slate-600 border border-slate-200 uppercase tracking-widest flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                    Event: {events.find(e => e.id === currentEventId)?.name}
+                  </div>
+                ) : (
+                  <select
+                    value={currentEventId || ''}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setCurrentEventId(id);
+                      localStorage.setItem('tkd_current_event', id);
+                      const event = events.find(ev => ev.id === id);
+                      if (event && event.sheetUrl) {
+                        setGoogleSheetUrl(event.sheetUrl);
+                        localStorage.setItem('tkd_sheet_url', event.sheetUrl);
+                      }
+                    }}
+                    className="flex-1 sm:flex-none px-3 md:px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs md:text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-red-500 shadow-sm"
+                  >
+                    <option value="" disabled>Select Event</option>
+                    {events.map(ev => (
+                      <option key={ev.id} value={ev.id}>{ev.name}</option>
+                    ))}
+                  </select>
+                )
               )}
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <button 
@@ -1068,7 +1093,7 @@ export default function App() {
               boutQueue={boutQueue} 
               namingMode={ringNamingMode} 
               activeAnnouncement={activeAnnouncement}
-              onAnnouncementClose={() => setActiveAnnouncement(null)}
+              onAnnouncementClose={handleAnnouncementClose}
             />
           )}
 
@@ -1078,7 +1103,7 @@ export default function App() {
               boutQueue={boutQueue} 
               namingMode={ringNamingMode} 
               activeAnnouncement={activeAnnouncement}
-              onAnnouncementClose={() => setActiveAnnouncement(null)}
+              onAnnouncementClose={handleAnnouncementClose}
             />
           )}
 
@@ -1091,7 +1116,12 @@ export default function App() {
                   {isSyncing && (
                     <span className="ml-4 flex items-center gap-2 text-green-600 text-[10px] font-black animate-pulse">
                       <div className="w-1.5 h-1.5 bg-green-600 rounded-full" />
-                      SYNCING TO SHEETS...
+                      SYNCING TO SYSTEM
+                    </span>
+                  )}
+                  {!googleSheetUrl && (
+                    <span className="ml-4 text-red-500 text-[10px] font-black animate-pulse">
+                      SYNC DISABLED (NO URL)
                     </span>
                   )}
                 </h3>
@@ -1462,7 +1492,9 @@ export default function App() {
         />
       )}
 
-      <AnnouncementPopup announcement={activeAnnouncement} onClose={() => setActiveAnnouncement(null)} />
+      {!['standby', 'general'].includes(activeTab) && (
+        <AnnouncementPopup announcement={activeAnnouncement} onClose={handleAnnouncementClose} />
+      )}
 
       {/* Announcement Input Modal */}
       <AnimatePresence>
@@ -2121,7 +2153,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     const normalizeBout = (ring: number, bout: string | number) => {
@@ -2144,12 +2176,12 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
     // Update formData with normalized bout number before submitting
     const finalData = { ...formData, bout: targetBout };
     
-    // Save to localStorage
+    // Save to localStorage for memory
     localStorage.setItem('tkd_last_category', finalData.category);
     localStorage.setItem('tkd_last_blue_club', finalData.blue_club);
     localStorage.setItem('tkd_last_red_club', finalData.red_club);
     
-    onSubmit(formData.ring, finalData);
+    await onSubmit(formData.ring, finalData);
     onClose();
   };
 
@@ -2812,9 +2844,9 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
 
       <div className="flex-1 p-4 space-y-4">
         {displayedRings.map((ring) => {
-          const ringQueue = boutQueue.filter(q => q.data.ring === ring.ringNumber).slice(0, 4);
+          const ringQueue = boutQueue.filter(q => q.data.ring === ring.ringNumber).slice(0, 3);
           const current = ring.currentBout;
-          const standby = ringQueue.slice(1, 4);
+          const standby = ringQueue;
           const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
 
           return (
@@ -2865,11 +2897,13 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                       <div className="col-span-3 flex items-center justify-center text-xl font-black text-white bg-[#161f33] border-r border-white/10">
                         {b?.data.bout || "---"}
                       </div>
-                      <div className="col-span-5 bg-blue-600/80 flex items-center px-3 border-r border-white/10">
-                        <span className="text-[18px] font-black text-white uppercase truncate">{b?.data.blue_name || "---"}</span>
+                      <div className="col-span-5 bg-blue-600/80 flex flex-col justify-center px-3 border-r border-white/10">
+                        <span className="text-[8px] font-bold text-blue-200 uppercase leading-none">{b?.data.blue_club || "---"}</span>
+                        <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{b?.data.blue_name || "---"}</span>
                       </div>
-                      <div className="col-span-4 bg-red-600/80 flex items-center px-3">
-                        <span className="text-[18px] font-black text-white uppercase truncate">{b?.data.red_name || "---"}</span>
+                      <div className="col-span-4 bg-red-600/80 flex flex-col justify-center px-3">
+                        <span className="text-[8px] font-bold text-red-200 uppercase leading-none">{b?.data.red_club || "---"}</span>
+                        <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{b?.data.red_name || "---"}</span>
                       </div>
                     </div>
                   );
@@ -3078,9 +3112,12 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                     return (
                       <div key={idx} className="flex items-center bg-slate-900 rounded-full border border-slate-800 overflow-hidden min-h-[2.5rem] py-1 shadow-lg group hover:border-slate-600 transition-colors">
                         {/* Blue Side */}
-                        <div className="flex-1 self-stretch bg-blue-600/90 flex items-center px-3 min-w-0 relative">
+                        <div className="flex-1 self-stretch bg-blue-600/90 flex flex-col justify-center px-3 min-w-0 relative">
                           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
-                          <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
+                          <p className="text-[8px] font-bold text-blue-200 uppercase leading-none mb-0.5 relative z-10">
+                            {bout ? bout.data.blue_club : "---"}
+                          </p>
+                          <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-1">
                             {bout ? (bout.data.privacy_mode ? "---" : bout.data.blue_name) : "---"}
                           </p>
                         </div>
@@ -3093,9 +3130,12 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                         </div>
 
                         {/* Red Side */}
-                        <div className="flex-1 self-stretch bg-red-600/90 flex items-center justify-end px-3 min-w-0 text-right relative">
+                        <div className="flex-1 self-stretch bg-red-600/90 flex flex-col justify-center px-3 min-w-0 text-right relative">
                           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/10 to-transparent pointer-events-none" />
-                          <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
+                          <p className="text-[8px] font-bold text-red-200 uppercase leading-none mb-0.5 relative z-10">
+                            {bout ? bout.data.red_club : "---"}
+                          </p>
+                          <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-1">
                             {bout ? (bout.data.privacy_mode ? "---" : bout.data.red_name) : "---"}
                           </p>
                         </div>
@@ -3245,7 +3285,7 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack }: { rings: 
             </div>
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Scan for Live Updates</p>
           </div>
-          <p className="text-xs text-slate-500 font-medium">© 2024 MY-TKD Tournament Management System</p>
+          <p className="text-xs text-slate-500 font-medium">© 2026 MY-TKD Tournament Management System</p>
         </footer>
       )}
 
@@ -3454,14 +3494,8 @@ function LoginScreen({ onLogin, events }: { onLogin: (u: string, p: string, even
         </form>
 
         <div className="mt-8 pt-8 border-t border-slate-100 text-center">
-          <div className="text-xs text-slate-500 mb-4 space-y-1">
-            <p className="font-bold text-slate-700">Demo Accounts</p>
-            <p>Admin: <span className="font-mono bg-slate-100 px-1 rounded">admin</span> (Password: lee093)</p>
-            <p>Ring User: <span className="font-mono bg-slate-100 px-1 rounded">ring1</span> ... <span className="font-mono bg-slate-100 px-1 rounded">ring12</span> (Password: 123)</p>
-            <p>Viewer: <span className="font-mono bg-slate-100 px-1 rounded">viewer</span> (Password: 123)</p>
-          </div>
           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-            © 2024 MY-TKD Tournament Management System
+            © 2026 MY-TKD Tournament Management System
           </p>
         </div>
       </motion.div>
@@ -3569,7 +3603,7 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
-            placeholder="e.g. National Open 2024"
+            placeholder="e.g. National Open 2026"
             required
           />
         </div>
