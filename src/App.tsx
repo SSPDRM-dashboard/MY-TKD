@@ -29,14 +29,29 @@ import {
   Monitor,
   Maximize,
   Minimize,
+  RefreshCw,
   X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MatchData, RingStatus, EventData } from './types';
-import { syncToGoogleSheets, updateWinnerInGoogleSheets } from './services/googleSheets';
+import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateTransferInGoogleSheets, testSync } from './services/googleSheets';
 import { cn } from './lib/utils';
-import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, getDocFromServer } from 'firebase/firestore';
 import { db } from './firebase';
+
+function sanitizeForFirestore(obj: any): any {
+  if (obj === undefined) return null;
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(sanitizeForFirestore);
+  
+  const sanitized: any = {};
+  for (const key in obj) {
+    if (obj[key] !== undefined) {
+      sanitized[key] = sanitizeForFirestore(obj[key]);
+    }
+  }
+  return sanitized;
+}
 
 function useSyncedState<T>(key: string, initialValue: T) {
   const [state, setState] = useState<T>(() => {
@@ -54,7 +69,7 @@ function useSyncedState<T>(key: string, initialValue: T) {
 
   useEffect(() => {
     // Initial sync from Firestore
-    getDoc(doc(db, 'sync', key)).then(document => {
+    getDocFromServer(doc(db, 'sync', key)).then(document => {
       if (document.exists()) {
         setState(document.data().value);
         localStorage.setItem(key, JSON.stringify(document.data().value));
@@ -63,12 +78,26 @@ function useSyncedState<T>(key: string, initialValue: T) {
         const saved = localStorage.getItem(key);
         if (saved !== null) {
           try {
-            setDoc(doc(db, 'sync', key), { value: JSON.parse(saved) });
+            const parsed = JSON.parse(saved);
+            setDoc(doc(db, 'sync', key), { value: sanitizeForFirestore(parsed) });
           } catch (e) {
-            setDoc(doc(db, 'sync', key), { value: saved });
+            setDoc(doc(db, 'sync', key), { value: sanitizeForFirestore(saved) });
           }
         } else {
-          setDoc(doc(db, 'sync', key), { value: initialValue });
+          setDoc(doc(db, 'sync', key), { value: sanitizeForFirestore(initialValue) });
+        }
+      }
+    }).catch(error => {
+      if (error instanceof Error && error.message.includes('the client is offline')) {
+        console.error("Firestore Configuration Error: The client is offline. Please check your Firebase project settings.");
+      }
+      // Fallback to local storage if Firestore is unavailable
+      const saved = localStorage.getItem(key);
+      if (saved !== null) {
+        try {
+          setState(JSON.parse(saved));
+        } catch (e) {
+          setState(saved as unknown as T);
         }
       }
     });
@@ -78,6 +107,8 @@ function useSyncedState<T>(key: string, initialValue: T) {
         setState(document.data().value);
         localStorage.setItem(key, JSON.stringify(document.data().value));
       }
+    }, (error) => {
+      console.error(`Firestore Sync Error (${key}):`, error);
     });
     return unsub;
   }, [key]);
@@ -86,7 +117,7 @@ function useSyncedState<T>(key: string, initialValue: T) {
     setState(prev => {
       const newValue = typeof updater === 'function' ? (updater as any)(prev) : updater;
       localStorage.setItem(key, JSON.stringify(newValue));
-      setDoc(doc(db, 'sync', key), { value: newValue });
+      setDoc(doc(db, 'sync', key), { value: sanitizeForFirestore(newValue) });
       return newValue;
     });
   }, [key]);
@@ -290,11 +321,28 @@ export default function App() {
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  const getFilteredQueue = (ringNum?: number) => {
+    return boutQueue.filter(item => {
+      const matchesEvent = !item.data.eventId || item.data.eventId === currentEventId;
+      const matchesRing = ringNum === undefined || item.data.ring === ringNum;
+      const matchesUserRing = user?.role === 'admin' || item.data.ring === user?.assignedRing;
+      return matchesEvent && matchesRing && matchesUserRing;
+    });
+  };
+
+  const [lastSyncError, setLastSyncError] = useState<string | null>(null);
+  const [syncLog, setSyncLog] = useState<{timestamp: Date, action: string, status: 'success' | 'error', message: string}[]>([]);
+
+  const addToSyncLog = (action: string, status: 'success' | 'error', message: string) => {
+    setSyncLog(prev => [{ timestamp: new Date(), action, status, message }, ...prev].slice(0, 50));
+  };
+
   // Sync googleSheetUrl with current event
   useEffect(() => {
     if (currentEventId && events.length > 0) {
       const event = events.find(e => e.id === currentEventId);
       if (event && event.sheetUrl && event.sheetUrl !== googleSheetUrl) {
+        console.log("Auto-syncing Google Sheet URL from event:", event.name);
         setGoogleSheetUrl(event.sheetUrl);
       }
     }
@@ -302,7 +350,18 @@ export default function App() {
 
   const handleNewBoutSubmit = async (ringNumber: number, newData: MatchData) => {
     console.log("Creating new bout:", newData);
-    console.log("Current Google Sheet URL:", googleSheetUrl);
+    
+    // Determine the correct URL to use
+    let activeUrl = googleSheetUrl;
+    if (!activeUrl && currentEventId && events.length > 0) {
+      const event = events.find(e => e.id === currentEventId);
+      if (event && event.sheetUrl) {
+        activeUrl = event.sheetUrl;
+        setGoogleSheetUrl(activeUrl);
+      }
+    }
+
+    console.log("Using Google Sheet URL:", activeUrl);
 
     // Update categories and clubs lists
     if (newData.category && !categories.includes(newData.category)) {
@@ -316,22 +375,55 @@ export default function App() {
     }
 
     // Add to queue
-    const queueItem = { id: Math.random().toString(36).substr(2, 9), data: newData };
+    const queueItem = { id: Math.random().toString(36).substr(2, 9), data: { ...newData, eventId: currentEventId || null } };
     setBoutQueue(prev => [...prev, queueItem]);
 
     // Sync to Google Sheets
-    if (googleSheetUrl) {
+    if (activeUrl) {
       setIsSyncing(true);
+      setLastSyncError(null);
       try {
         console.log("Syncing to Google Sheets...");
-        const success = await syncToGoogleSheets(googleSheetUrl, newData);
-        console.log("Sync result:", success);
+        await syncToGoogleSheets(activeUrl, newData);
+        console.log("Sync successful (request sent)");
+        addToSyncLog('New Bout', 'success', `Bout ${newData.bout} sent to Ring ${newData.ring}`);
       } catch (e) {
-        console.error("Bout sync failed:", e);
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("Bout sync failed:", msg);
+        setLastSyncError(`Sync failed: ${msg}`);
+        addToSyncLog('New Bout', 'error', msg);
+      } finally {
+        setIsSyncing(false);
       }
-      setIsSyncing(false);
     } else {
-      console.warn("Sync skipped: googleSheetUrl is empty");
+      console.warn("Sync skipped: No Google Sheet URL available");
+      setLastSyncError("Sync skipped: No URL configured for this event");
+    }
+  };
+
+  const handleForceSync = async (data: MatchData) => {
+    let activeUrl = googleSheetUrl;
+    if (!activeUrl && currentEventId && events.length > 0) {
+      const event = events.find(e => e.id === currentEventId);
+      if (event && event.sheetUrl) {
+        activeUrl = event.sheetUrl;
+        setGoogleSheetUrl(activeUrl);
+      }
+    }
+
+    if (activeUrl) {
+      setIsSyncing(true);
+      try {
+        await syncToGoogleSheets(activeUrl, data);
+        addToSyncLog('Force Sync', 'success', `Bout ${data.bout} manually synced`);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        addToSyncLog('Force Sync', 'error', msg);
+      } finally {
+        setIsSyncing(false);
+      }
+    } else {
+      addToSyncLog('Force Sync', 'error', 'No Google Sheet URL configured');
     }
   };
 
@@ -364,7 +456,8 @@ export default function App() {
         blue_club: "-",
         red_name: "-",
         red_club: "-",
-        privacy_mode: false
+        privacy_mode: false,
+        eventId: currentEventId || null
       };
       
       // Sync in background
@@ -410,25 +503,41 @@ export default function App() {
   const getBoutNumber = (bout: string | number) => parseInt(bout.toString()) || 0;
 
   const handleWinnerSelect = async (ringNumber: number, boutNumber: string | number, winner: string) => {
+    let activeUrl = googleSheetUrl;
+    if (!activeUrl && currentEventId && events.length > 0) {
+      const event = events.find(e => e.id === currentEventId);
+      if (event && event.sheetUrl) {
+        activeUrl = event.sheetUrl;
+        setGoogleSheetUrl(activeUrl);
+      }
+    }
+
     const ring = rings.find(r => r.ringNumber === ringNumber);
     const currentBout = ring?.currentBout;
     const winnerName = winner === 'Blue' ? currentBout?.blue_name : currentBout?.red_name;
 
-    if (googleSheetUrl) {
+    if (activeUrl) {
       setIsSyncing(true);
+      setLastSyncError(null);
       updateWinnerInGoogleSheets(
-        googleSheetUrl, 
+        activeUrl, 
         ringNumber, 
         boutNumber, 
         winnerName || winner,
         winner,
         currentBout?.blue_name,
         currentBout?.red_name
-      ).finally(() => setIsSyncing(false));
+      ).then(() => {
+        addToSyncLog('Winner', 'success', `Winner for Bout ${boutNumber} sent`);
+      }).catch(e => {
+        const msg = e instanceof Error ? e.message : String(e);
+        setLastSyncError(`Winner sync failed: ${msg}`);
+        addToSyncLog('Winner', 'error', msg);
+      }).finally(() => setIsSyncing(false));
     }
     
-    const ringQueue = boutQueue.filter(q => q.data.ring === ringNumber);
-    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber);
+    const ringQueue = boutQueue.filter(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
+    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
     
     // Check if we need to prompt for final bouts
     // If we have a next bout, and after pulling it, the queue for this ring will be < 3
@@ -486,20 +595,34 @@ export default function App() {
 
   const handleTransferSelect = async (ringNumber: number, boutNumber: string | number, reason: string) => {
     const ring = rings.find(r => r.ringNumber === ringNumber);
-    if (googleSheetUrl) {
+    let activeUrl = googleSheetUrl;
+    if (!activeUrl && currentEventId && events.length > 0) {
+      const event = events.find(e => e.id === currentEventId);
+      if (event && event.sheetUrl) {
+        activeUrl = event.sheetUrl;
+        setGoogleSheetUrl(activeUrl);
+      }
+    }
+
+    if (activeUrl) {
       setIsSyncing(true);
-      import('./services/googleSheets').then(({ updateTransferInGoogleSheets }) => {
-        updateTransferInGoogleSheets(
-          googleSheetUrl,
-          ringNumber,
-          boutNumber,
-          reason
-        ).finally(() => setIsSyncing(false));
-      });
+      setLastSyncError(null);
+      updateTransferInGoogleSheets(
+        activeUrl,
+        ringNumber,
+        boutNumber,
+        reason
+      ).then(() => {
+        addToSyncLog('Transfer', 'success', `Transfer for Bout ${boutNumber} sent`);
+      }).catch(e => {
+        const msg = e instanceof Error ? e.message : String(e);
+        setLastSyncError(`Transfer sync failed: ${msg}`);
+        addToSyncLog('Transfer', 'error', msg);
+      }).finally(() => setIsSyncing(false));
     }
     
-    const ringQueue = boutQueue.filter(q => q.data.ring === ringNumber);
-    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber);
+    const ringQueue = boutQueue.filter(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
+    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
     
     if (nextBoutIndex !== -1 && !ring?.isFinalBouts && ringQueue.length < 4) {
       setFinalBoutCheck({ ringNumber, remainingCount: ringQueue.length - 1 });
@@ -890,10 +1013,17 @@ export default function App() {
               ) : (
                 <>
                   {user?.role === 'admin' ? 'Google Sheets:' : 'System Status:'} <br/>
-                  <span className="text-slate-400">Not Configured</span>
+                  <span className="text-red-400 font-bold">Not Configured</span>
                 </>
               )}
             </p>
+            {lastSyncError && (
+              <div className="mt-2 p-2 bg-red-50 border border-red-100 rounded-lg">
+                <p className="text-[9px] font-bold text-red-600 leading-tight">
+                  {lastSyncError}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </aside>
@@ -1027,13 +1157,15 @@ export default function App() {
                             namingMode={ringNamingMode}
                             categories={categories}
                             clubs={clubs}
-                            queueCount={boutQueue.filter(q => q.data.ring === ring.ringNumber).length}
+                            queueCount={getFilteredQueue(ring.ringNumber).length}
                             onUpdate={(data) => handleBoutUpdate(ring.ringNumber, data)}
                             onUpdateTotalBouts={(total) => handleUpdateTotalBouts(ring.ringNumber, total)}
                             onStart={() => startRing(ring.ringNumber)}
                             onDelete={user?.role === 'admin' ? () => deleteRing(ring.ringNumber) : undefined}
                             onWinnerSelect={(winner) => handleWinnerSelect(ring.ringNumber, ring.currentBout?.bout || 0, winner)}
                             onTransferSelect={(reason) => handleTransferSelect(ring.ringNumber, ring.currentBout?.bout || 0, reason)}
+                            currentEventId={currentEventId}
+                            onForceSync={handleForceSync}
                           />
                         ))
                       )}
@@ -1050,15 +1182,15 @@ export default function App() {
                           Upcoming Bouts
                         </h3>
                         <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full">
-                          {user?.role === 'admin' ? boutQueue.length : boutQueue.filter(item => item.data.ring === user?.assignedRing).length}
+                          {getFilteredQueue().length}
                         </span>
                       </div>
                       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col max-h-[400px]">
                         <div className="p-4 overflow-y-auto space-y-3">
-                          {(user?.role === 'admin' ? boutQueue : boutQueue.filter(item => item.data.ring === user?.assignedRing)).length === 0 ? (
+                          {getFilteredQueue().length === 0 ? (
                             <p className="text-sm text-slate-500 text-center py-8">No upcoming bouts.</p>
                           ) : (
-                            (user?.role === 'admin' ? boutQueue : boutQueue.filter(item => item.data.ring === user?.assignedRing)).map(item => (
+                            getFilteredQueue().map(item => (
                               <div key={item.id} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
                                 <div>
                                   <div className="flex items-center gap-2 mb-2">
@@ -1094,6 +1226,7 @@ export default function App() {
               namingMode={ringNamingMode} 
               activeAnnouncement={activeAnnouncement}
               onAnnouncementClose={handleAnnouncementClose}
+              currentEventId={currentEventId}
             />
           )}
 
@@ -1104,6 +1237,7 @@ export default function App() {
               namingMode={ringNamingMode} 
               activeAnnouncement={activeAnnouncement}
               onAnnouncementClose={handleAnnouncementClose}
+              currentEventId={currentEventId}
             />
           )}
 
@@ -1144,13 +1278,15 @@ export default function App() {
                       namingMode={ringNamingMode}
                       categories={categories}
                       clubs={clubs}
-                      queueCount={boutQueue.filter(q => q.data.ring === ring.ringNumber).length}
+                      queueCount={getFilteredQueue(ring.ringNumber).length}
                       onUpdate={(data) => handleBoutUpdate(ring.ringNumber, data)}
                       onUpdateTotalBouts={(total) => handleUpdateTotalBouts(ring.ringNumber, total)}
                       onStart={() => startRing(ring.ringNumber)}
                       onDelete={() => deleteRing(ring.ringNumber)}
                       onWinnerSelect={(winner) => handleWinnerSelect(ring.ringNumber, ring.currentBout?.bout || 0, winner)}
                       onTransferSelect={(reason) => handleTransferSelect(ring.ringNumber, ring.currentBout?.bout || 0, reason)}
+                      currentEventId={currentEventId}
+                      onForceSync={handleForceSync}
                     />
                   ))
                 ) : (
@@ -1163,12 +1299,14 @@ export default function App() {
                           namingMode={ringNamingMode}
                           categories={categories}
                           clubs={clubs}
-                          queueCount={boutQueue.filter(q => q.data.ring === ring.ringNumber).length}
+                          queueCount={getFilteredQueue(ring.ringNumber).length}
                           onUpdate={(data) => handleBoutUpdate(ring.ringNumber, data)}
                           onUpdateTotalBouts={(total) => handleUpdateTotalBouts(ring.ringNumber, total)}
                           onStart={() => startRing(ring.ringNumber)}
                           onWinnerSelect={(winner) => handleWinnerSelect(ring.ringNumber, ring.currentBout?.bout || 0, winner)}
                           onTransferSelect={(reason) => handleTransferSelect(ring.ringNumber, ring.currentBout?.bout || 0, reason)}
+                          currentEventId={currentEventId}
+                          onForceSync={handleForceSync}
                         />
                       ))}
                     </div>
@@ -1176,19 +1314,68 @@ export default function App() {
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
                           <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                            <RefreshCw size={20} className="text-blue-600" />
+                            Sync Log
+                          </h3>
+                          <button 
+                            onClick={() => setSyncLog([])}
+                            className="text-[10px] font-black text-slate-400 uppercase hover:text-red-600 transition-colors"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                          <div className="max-h-[250px] overflow-y-auto custom-scrollbar">
+                            {syncLog.length === 0 ? (
+                              <div className="p-6 text-center text-slate-400 italic text-[10px]">
+                                No sync activity yet
+                              </div>
+                            ) : (
+                              <div className="divide-y divide-slate-100">
+                                {syncLog.map((log, i) => (
+                                  <div key={i} className="p-3 flex items-start gap-3 hover:bg-slate-50 transition-colors">
+                                    <div className={cn(
+                                      "mt-1 w-1.5 h-1.5 rounded-full shrink-0",
+                                      log.status === 'success' ? "bg-green-500" : "bg-red-500"
+                                    )} />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-[9px] font-black text-slate-900 uppercase tracking-widest">{log.action}</span>
+                                        <span className="text-[8px] font-medium text-slate-400">
+                                          {log.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                        </span>
+                                      </div>
+                                      <p className={cn(
+                                        "text-[10px] font-medium truncate",
+                                        log.status === 'success' ? "text-slate-600" : "text-red-600"
+                                      )}>
+                                        {log.message}
+                                      </p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
                             <Calendar size={20} className="text-red-600" />
                             Upcoming Bouts
                           </h3>
                           <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full">
-                            {boutQueue.filter(item => item.data.ring === user?.assignedRing).length}
+                            {getFilteredQueue().length}
                           </span>
                         </div>
                         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col max-h-[600px]">
                           <div className="p-4 overflow-y-auto space-y-3">
-                            {boutQueue.filter(item => item.data.ring === user?.assignedRing).length === 0 ? (
+                            {getFilteredQueue().length === 0 ? (
                               <p className="text-sm text-slate-500 text-center py-8">No upcoming bouts.</p>
                             ) : (
-                              boutQueue.filter(item => item.data.ring === user?.assignedRing).map(item => (
+                              getFilteredQueue().map(item => (
                                 <div key={item.id} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
                                   <div>
                                     <div className="flex items-center gap-2 mb-2">
@@ -1449,6 +1636,7 @@ export default function App() {
           queue={boutQueue}
           user={user}
           initialRing={newBoutInitialRing}
+          currentEventId={currentEventId}
         />
       )}
 
@@ -2066,9 +2254,10 @@ interface NewBoutModalProps {
   queue: { id: string; data: MatchData }[];
   user: UserAccount | null;
   initialRing?: number;
+  currentEventId: string | null;
 }
 
-function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user, initialRing }: NewBoutModalProps) {
+function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user, initialRing, currentEventId }: NewBoutModalProps) {
   const defaultRing = initialRing || (user?.role === 'admin' ? (rings[0]?.ringNumber || 1) : (user?.assignedRing || 1));
   
   const getNextBoutNumber = (ringNum: number) => {
@@ -2076,7 +2265,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
     let foundAny = false;
 
     queue.forEach(q => {
-      if (q.data.ring === ringNum) {
+      if (q.data.ring === ringNum && (!q.data.eventId || q.data.eventId === currentEventId)) {
         let boutNum = parseInt(q.data.bout.toString().replace(/\D/g, '')) || 0;
         if (boutNum < 1000) {
           boutNum = ringNum * 1000 + boutNum;
@@ -2089,7 +2278,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
     });
 
     const ringStatus = rings.find(r => r.ringNumber === ringNum);
-    if (ringStatus?.currentBout) {
+    if (ringStatus?.currentBout && (!ringStatus.currentBout.eventId || ringStatus.currentBout.eventId === currentEventId)) {
       let boutNum = parseInt(ringStatus.currentBout.bout.toString().replace(/\D/g, '')) || 0;
       if (boutNum < 1000) {
         boutNum = ringNum * 1000 + boutNum;
@@ -2116,18 +2305,14 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
   };
 
   const [formData, setFormData] = useState<MatchData>(() => {
-    const savedCategory = localStorage.getItem('tkd_last_category') || '';
-    const savedBlueClub = localStorage.getItem('tkd_last_blue_club') || '';
-    const savedRedClub = localStorage.getItem('tkd_last_red_club') || '';
-    
     return {
       ring: defaultRing,
       bout: getNextBoutNumber(defaultRing),
-      category: savedCategory,
+      category: '',
       blue_name: '',
-      blue_club: savedBlueClub,
+      blue_club: '',
       red_name: '',
-      red_club: savedRedClub,
+      red_club: '',
       privacy_mode: false
     };
   });
@@ -2142,9 +2327,6 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
   };
 
   const handleClearMemory = () => {
-    localStorage.removeItem('tkd_last_category');
-    localStorage.removeItem('tkd_last_blue_club');
-    localStorage.removeItem('tkd_last_red_club');
     setFormData(prev => ({
       ...prev,
       category: '',
@@ -2164,22 +2346,31 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
 
     const targetBout = normalizeBout(formData.ring, formData.bout);
 
-    // Check if bout number already exists in queue or current bout
-    const boutExists = queue.some(q => q.data.ring === formData.ring && normalizeBout(q.data.ring, q.data.bout) === targetBout) ||
-                       rings.some(r => r.ringNumber === formData.ring && r.currentBout && normalizeBout(r.ringNumber, r.currentBout.bout) === targetBout);
+    // Check if bout number already exists in queue or current bout for THIS event
+    const inQueue = queue.find(q => 
+      q.data.ring === formData.ring && 
+      normalizeBout(q.data.ring, q.data.bout) === targetBout &&
+      (currentEventId ? q.data.eventId === currentEventId : !q.data.eventId)
+    );
+    
+    const inCurrent = rings.find(r => 
+      r.ringNumber === formData.ring && 
+      r.currentBout && 
+      normalizeBout(r.ringNumber, r.currentBout.bout) === targetBout &&
+      (currentEventId ? r.currentBout.eventId === currentEventId : !r.currentBout.eventId)
+    );
                        
-    if (boutExists) {
-      setErrorMsg(`Bout ${targetBout} already exists in Ring ${formData.ring}.`);
+    if (inQueue) {
+      setErrorMsg(`Bout ${targetBout} is already in the Waiting Queue for Ring ${formData.ring}.`);
+      return;
+    }
+    if (inCurrent) {
+      setErrorMsg(`Bout ${targetBout} is currently the Active Match in Ring ${formData.ring}.`);
       return;
     }
     
     // Update formData with normalized bout number before submitting
-    const finalData = { ...formData, bout: targetBout };
-    
-    // Save to localStorage for memory
-    localStorage.setItem('tkd_last_category', finalData.category);
-    localStorage.setItem('tkd_last_blue_club', finalData.blue_club);
-    localStorage.setItem('tkd_last_red_club', finalData.red_club);
+    const finalData = { ...formData, bout: targetBout, eventId: currentEventId || null };
     
     await onSubmit(formData.ring, finalData);
     onClose();
@@ -2424,11 +2615,14 @@ function AddRingModal({ onClose, onAdd, existingRings, namingMode }: AddRingModa
   );
 }
 
-function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, onTransferSelect }: RingCardProps) {
+function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, onTransferSelect, currentEventId, onForceSync }: RingCardProps & { currentEventId?: string | null, onForceSync?: (data: MatchData) => void }) {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isFinalBoutSelection, setIsFinalBoutSelection] = useState(false);
   const [transferReason, setTransferReason] = useState('');
-  const current = ring.currentBout;
+  const [isSyncingLocal, setIsSyncingLocal] = useState(false);
+  
+  // Only show current bout if it belongs to the current event
+  const current = ring.currentBout && (!currentEventId || ring.currentBout.eventId === currentEventId) ? ring.currentBout : null;
   
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
   
@@ -2452,20 +2646,38 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
           </div>
           <div>
             <span className="font-bold text-sm uppercase tracking-wider block leading-none">Ring {ringName}</span>
-            {ring.totalBouts && (
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                {current?.bout || 0} / {ring.totalBouts} Bouts
-                {onUpdateTotalBouts && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); onUpdateTotalBouts(ring.totalBouts! + 1); }}
-                    className="p-0.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 transition-colors"
-                    title="Add 1 bout to total"
-                  >
-                    <Plus size={10} />
-                  </button>
-                )}
-              </span>
-            )}
+            <div className="flex items-center gap-2 mt-1">
+              {ring.totalBouts && (
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                  {current?.bout || 0} / {ring.totalBouts} Bouts
+                  {onUpdateTotalBouts && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); onUpdateTotalBouts(ring.totalBouts! + 1); }}
+                      className="p-0.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 transition-colors"
+                      title="Add 1 bout to total"
+                    >
+                      <Plus size={10} />
+                    </button>
+                  )}
+                </span>
+              )}
+              {current && onForceSync && (
+                <button 
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    setIsSyncingLocal(true);
+                    await onForceSync(current);
+                    setIsSyncingLocal(false);
+                  }}
+                  disabled={isSyncingLocal}
+                  className="text-[9px] font-black text-blue-400 hover:text-blue-300 uppercase tracking-widest flex items-center gap-1 disabled:opacity-50"
+                  title="Force sync this bout to Google Sheets"
+                >
+                  <RefreshCw size={10} className={isSyncingLocal ? "animate-spin" : ""} />
+                  {isSyncingLocal ? "Syncing..." : "Sync"}
+                </button>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -2765,7 +2977,7 @@ interface PublicRingCardProps {
   queueCount?: number;
 }
 
-function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void }) {
+function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
@@ -2844,7 +3056,10 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
 
       <div className="flex-1 p-4 space-y-4">
         {displayedRings.map((ring) => {
-          const ringQueue = boutQueue.filter(q => q.data.ring === ring.ringNumber).slice(0, 3);
+          const ringQueue = boutQueue.filter(q => 
+            q.data.ring === ring.ringNumber && 
+            (!q.data.eventId || q.data.eventId === currentEventId)
+          ).slice(0, 3);
           const current = ring.currentBout;
           const standby = ringQueue;
           const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
@@ -2918,7 +3133,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
   );
 }
 
-function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void }) {
+function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
@@ -3027,7 +3242,10 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
         isFullscreen ? "flex flex-col justify-around pt-24 pb-4 gap-y-8" : "space-y-24 py-12"
       )}>
         {displayedRings.map((ring) => {
-          const ringQueue = boutQueue.filter(q => q.data.ring === ring.ringNumber).slice(0, 3);
+          const ringQueue = boutQueue.filter(q => 
+            q.data.ring === ring.ringNumber && 
+            (!q.data.eventId || q.data.eventId === currentEventId)
+          ).slice(0, 3);
           const current = ring.currentBout;
           const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
           
@@ -3508,6 +3726,22 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
   const [ringQuantity, setRingQuantity] = useState(1);
   const [sheetUrl, setSheetUrl] = useState('');
   const [showScript, setShowScript] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
+
+  const handleTestSync = async () => {
+    if (!sheetUrl) return;
+    setIsTesting(true);
+    setTestResult(null);
+    try {
+      const result = await testSync(sheetUrl);
+      setTestResult(result);
+    } catch (e) {
+      setTestResult({ success: false, message: 'Test failed' });
+    } finally {
+      setIsTesting(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -3546,26 +3780,28 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
           <p>3. Deploy as a Web App and paste the URL below when creating an event.</p>
           <pre className="bg-white p-2 text-[10px] rounded border border-blue-200 overflow-x-auto">
 {`function doPost(e) {
-  const data = JSON.parse(e.postData.contents);
-  if (data.action === 'createEvent') {
-    const folder = DriveApp.getFolderById('11R11mXcCrQb6tVtzatGonVM0HylgVnd6');
-    const ss = SpreadsheetApp.create(data.eventName);
-    const file = DriveApp.getFileById(ss.getId());
-    folder.addFile(file);
-    DriveApp.getRootFolder().removeFile(file);
-    const sheet = ss.getSheets()[0];
-    sheet.setName("Sheet 1");
-    sheet.appendRow(["Timestamp", "Ring Number", "Bout ID", "Category", "Player Blue Name", "Club Name", "Player Red Name", "Club Name", "Winner"]);
-    return ContentService.createTextOutput(JSON.stringify({ url: ss.getUrl() })).setMimeType(ContentService.MimeType.JSON);
+  let data;
+  try {
+    // Try parsing as JSON first
+    data = JSON.parse(e.postData.contents);
+  } catch (err) {
+    // Fallback if sent as form data
+    data = e.parameter;
   }
   
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Sheet 1") || SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  if (data.action === 'ping') {
+    return ContentService.createTextOutput("Pong").setMimeType(ContentService.MimeType.TEXT);
+  }
+  
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Sheet 1") || ss.getSheets()[0];
   
   if (data.action === 'updateWinner') {
     if (sheet) {
       const dataRange = sheet.getDataRange();
       const values = dataRange.getValues();
       for (let i = 1; i < values.length; i++) {
+        // Match Ring (Col B) and Bout (Col C)
         if (values[i][1] == data.ring && values[i][2] == data.bout) {
           sheet.getRange(i + 1, 9).setValue(data.winner); // Column I is Winner
           break;
@@ -3573,6 +3809,20 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
       }
     }
     return ContentService.createTextOutput("Winner Updated");
+  }
+
+  if (data.action === 'updateTransfer') {
+    if (sheet) {
+      const dataRange = sheet.getDataRange();
+      const values = dataRange.getValues();
+      for (let i = 1; i < values.length; i++) {
+        if (values[i][1] == data.ring && values[i][2] == data.bout) {
+          sheet.getRange(i + 1, 9).setValue("TRANSFERRED: " + data.reason);
+          break;
+        }
+      }
+    }
+    return ContentService.createTextOutput("Transfer Updated");
   }
   
   // Handle new bout
@@ -3625,9 +3875,35 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
             type="text" 
             value={sheetUrl}
             onChange={(e) => setSheetUrl(e.target.value)}
-            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+            className={cn(
+              "w-full px-3 py-2 bg-slate-50 border rounded-xl text-sm font-bold",
+              sheetUrl && !sheetUrl.includes('/exec') ? "border-amber-300 bg-amber-50" : "border-slate-200"
+            )}
             placeholder="Leave blank for default"
           />
+          {sheetUrl && !sheetUrl.includes('/exec') && (
+            <p className="text-[9px] text-amber-600 font-bold mt-1 ml-1 animate-pulse">
+              ⚠️ Warning: URL should end with /exec
+            </p>
+          )}
+          {sheetUrl && (
+            <button 
+              type="button"
+              onClick={handleTestSync}
+              disabled={isTesting}
+              className="mt-2 text-[9px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-800 disabled:opacity-50"
+            >
+              {isTesting ? 'Testing...' : 'Test Connection'}
+            </button>
+          )}
+          {testResult && (
+            <p className={cn(
+              "text-[9px] font-bold mt-1 ml-1",
+              testResult.success ? "text-green-600" : "text-red-600"
+            )}>
+              {testResult.message}
+            </p>
+          )}
         </div>
         <button 
           type="submit"

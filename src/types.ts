@@ -15,6 +15,7 @@ export interface MatchData {
   red_club: string;
   category: string;
   privacy_mode: boolean;
+  eventId?: string | null;
 }
 
 export interface RingStatus {
@@ -25,4 +26,5 @@ export interface RingStatus {
   onDeck: MatchData | null;
   inTheHole: MatchData | null;
   isFinalBouts?: boolean;
+  eventId?: string | null;
 }
