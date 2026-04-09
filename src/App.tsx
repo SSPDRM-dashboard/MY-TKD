@@ -35,8 +35,64 @@ import { motion, AnimatePresence } from 'motion/react';
 import { MatchData, RingStatus, EventData } from './types';
 import { syncToGoogleSheets, updateWinnerInGoogleSheets } from './services/googleSheets';
 import { cn } from './lib/utils';
-import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
+
+function useSyncedState<T>(key: string, initialValue: T) {
+  const [state, setState] = useState<T>(() => {
+    const saved = localStorage.getItem(key);
+    if (saved !== null) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        // Fallback for legacy raw string values
+        return saved as unknown as T;
+      }
+    }
+    return initialValue;
+  });
+
+  useEffect(() => {
+    // Initial sync from Firestore
+    getDoc(doc(db, 'sync', key)).then(document => {
+      if (document.exists()) {
+        setState(document.data().value);
+        localStorage.setItem(key, JSON.stringify(document.data().value));
+      } else {
+        // If it doesn't exist in Firestore but we have local state, upload it
+        const saved = localStorage.getItem(key);
+        if (saved !== null) {
+          try {
+            setDoc(doc(db, 'sync', key), { value: JSON.parse(saved) });
+          } catch (e) {
+            setDoc(doc(db, 'sync', key), { value: saved });
+          }
+        } else {
+          setDoc(doc(db, 'sync', key), { value: initialValue });
+        }
+      }
+    });
+
+    const unsub = onSnapshot(doc(db, 'sync', key), (document) => {
+      if (document.exists()) {
+        setState(document.data().value);
+        localStorage.setItem(key, JSON.stringify(document.data().value));
+      }
+    });
+    return unsub;
+  }, [key]);
+
+  const setSyncedState = React.useCallback((updater: T | ((prev: T) => T)) => {
+    setState(prev => {
+      const newValue = typeof updater === 'function' ? (updater as any)(prev) : updater;
+      localStorage.setItem(key, JSON.stringify(newValue));
+      setDoc(doc(db, 'sync', key), { value: newValue });
+      return newValue;
+    });
+  }, [key]);
+
+  return [state, setSyncedState] as const;
+}
 
 // Mock Initial Data
 const INITIAL_RINGS: RingStatus[] = Array.from({ length: 12 }, (_, i) => ({
@@ -104,53 +160,31 @@ function AnnouncementPopup({ announcement, onClose, size = 'normal' }: { announc
 }
 
 export default function App() {
-  const [events, setEvents] = useState<EventData[]>(() => {
-    const saved = localStorage.getItem('tkd_events');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [currentEventId, setCurrentEventId] = useState<string | null>(() => {
-    return localStorage.getItem('tkd_current_event');
-  });
+  const [events, setEvents] = useSyncedState<EventData[]>('tkd_events', []);
+  const [currentEventId, setCurrentEventId] = useSyncedState<string | null>('tkd_current_event', null);
 
   const [user, setUser] = useState<UserAccount | null>(() => {
     const saved = localStorage.getItem('tkd_user');
     return saved ? JSON.parse(saved) : null;
   });
-  const [accounts, setAccounts] = useState<UserAccount[]>(() => {
-    const saved = localStorage.getItem('tkd_accounts');
-    let parsed: UserAccount[] = [];
-    if (saved) {
-      parsed = JSON.parse(saved);
-    } else {
-      parsed = [
-        { username: 'admin', password: 'lee093', role: 'admin' }
-      ];
-      for (let i = 1; i <= 12; i++) {
-        parsed.push({
-          username: `ring${i}`,
-          password: '123',
-          role: 'user',
-          assignedRing: i
-        });
-      }
+  const [accounts, setAccounts] = useSyncedState<UserAccount[]>('tkd_accounts', (() => {
+    let parsed: UserAccount[] = [
+      { username: 'admin', password: 'lee093', role: 'admin' }
+    ];
+    for (let i = 1; i <= 12; i++) {
+      parsed.push({
+        username: `ring${i}`,
+        password: '123',
+        role: 'user',
+        assignedRing: i
+      });
     }
-    
-    if (!parsed.find(a => a.username === 'viewer')) {
-      parsed.push({ username: 'viewer', password: '123', role: 'viewer' });
-      localStorage.setItem('tkd_accounts', JSON.stringify(parsed));
-    }
-    
+    parsed.push({ username: 'viewer', password: '123', role: 'viewer' });
     return parsed;
-  });
+  })());
 
-  const [rings, setRings] = useState<RingStatus[]>(() => {
-    const saved = localStorage.getItem('tkd_rings');
-    return saved ? JSON.parse(saved) : INITIAL_RINGS;
-  });
-  const [boutQueue, setBoutQueue] = useState<{id: string, data: MatchData}[]>(() => {
-    const saved = localStorage.getItem('tkd_bout_queue');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [rings, setRings] = useSyncedState<RingStatus[]>('tkd_rings', INITIAL_RINGS);
+  const [boutQueue, setBoutQueue] = useSyncedState<{id: string, data: MatchData}[]>('tkd_bout_queue', []);
   const [athletes, setAthletes] = useState([
     { name: "Ahmad bin Ibrahim", ic: "080512-14-5567", club: "KST", category: "Junior Male -45kg", status: "Verified" as const },
     { name: "Lim Wei Kang", ic: "091122-08-1234", club: "TKT", category: "Junior Male -45kg", status: "Pending" as const },
@@ -222,34 +256,12 @@ export default function App() {
   const [missingBoutPrompt, setMissingBoutPrompt] = useState<{ ringNumber: number; expectedBout: number; totalBouts: number } | null>(null);
   const [finalBoutCheck, setFinalBoutCheck] = useState<{ ringNumber: number; remainingCount: number } | null>(null);
   const [ringNamingMode, setRingNamingMode] = useState<'number' | 'alphabet'>('number');
-  const [categories, setCategories] = useState<string[]>(() => {
-    const saved = localStorage.getItem('tkd_categories');
-    return saved ? JSON.parse(saved) : ["Junior Male -45kg", "Junior Female -42kg", "Senior Male -54kg"];
-  });
-  const [clubs, setClubs] = useState<string[]>(() => {
-    const saved = localStorage.getItem('tkd_clubs');
-    return saved ? JSON.parse(saved) : ["KST", "TKT", "PST", "MTA"];
-  });
-  const [googleSheetUrl, setGoogleSheetUrl] = useState<string>(() => {
-    return localStorage.getItem('tkd_sheet_url') || '';
-  });
+  const [categories, setCategories] = useSyncedState<string[]>('tkd_categories', ["Junior Male -45kg", "Junior Female -42kg", "Senior Male -54kg"]);
+  const [clubs, setClubs] = useSyncedState<string[]>('tkd_clubs', ["KST", "TKT", "PST", "MTA"]);
+  const [googleSheetUrl, setGoogleSheetUrl] = useSyncedState<string>('tkd_sheet_url', '');
   const [isSheetSaved, setIsSheetSaved] = useState(false);
 
-  // Persistence & Cross-tab Sync
-  // Manual updates are used for better real-time sync
-
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'tkd_rings' && e.newValue) {
-        setRings(JSON.parse(e.newValue));
-      }
-      if (e.key === 'tkd_bout_queue' && e.newValue) {
-        setBoutQueue(JSON.parse(e.newValue));
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+  // Persistence & Cross-tab Sync handled by useSyncedState
 
   const getRingName = (num: number) => {
     if (ringNamingMode === 'number') return num.toString();
@@ -1628,6 +1640,18 @@ function MissingBoutModal({ prompt, onClose, onSubmitReason, onSubmitManual, cat
     };
   });
 
+  const handleClearMemory = () => {
+    localStorage.removeItem('tkd_last_category');
+    localStorage.removeItem('tkd_last_blue_club');
+    localStorage.removeItem('tkd_last_red_club');
+    setManualData(prev => ({
+      ...prev,
+      category: '',
+      blue_club: '',
+      red_club: ''
+    }));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (mode === 'reason') {
@@ -1774,10 +1798,20 @@ function MissingBoutModal({ prompt, onClose, onSubmitReason, onSubmitManual, cat
           </form>
 
           <div className="flex gap-3 pt-2">
+            {mode === 'manual' && (
+              <button
+                type="button"
+                onClick={handleClearMemory}
+                className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-black text-xs uppercase tracking-widest transition-colors"
+                title="Clear remembered category and clubs"
+              >
+                Clear Memory
+              </button>
+            )}
             <button
               type="submit"
               form="missing-bout-form"
-              className="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-red-200 transition-all"
+              className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-red-200 transition-all"
             >
               {mode === 'reason' ? 'Record & Continue' : 'Start Bout'}
             </button>
@@ -2075,6 +2109,18 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
     }));
   };
 
+  const handleClearMemory = () => {
+    localStorage.removeItem('tkd_last_category');
+    localStorage.removeItem('tkd_last_blue_club');
+    localStorage.removeItem('tkd_last_red_club');
+    setFormData(prev => ({
+      ...prev,
+      category: '',
+      blue_club: '',
+      red_club: ''
+    }));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -2237,6 +2283,14 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
           </datalist>
 
           <div className="pt-4 flex gap-3">
+            <button 
+              type="button"
+              onClick={handleClearMemory}
+              className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-black text-xs uppercase tracking-widest transition-colors"
+              title="Clear remembered category and clubs"
+            >
+              Clear Memory
+            </button>
             <button 
               type="button"
               onClick={onClose}
