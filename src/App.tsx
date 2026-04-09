@@ -316,6 +316,12 @@ export default function App() {
     return String.fromCharCode(64 + num); // 1 -> A, 2 -> B, etc.
   };
 
+  const getCurrentEventName = () => {
+    if (!currentEventId) return '-';
+    const event = events.find(e => e.id === currentEventId);
+    return event ? event.name : '-';
+  };
+
   const formatTime = (date: Date | string) => {
     const d = typeof date === 'string' ? new Date(date) : date;
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -384,7 +390,7 @@ export default function App() {
       setLastSyncError(null);
       try {
         console.log("Syncing to Google Sheets...");
-        await syncToGoogleSheets(activeUrl, newData);
+        await syncToGoogleSheets(activeUrl, newData, getCurrentEventName());
         console.log("Sync successful (request sent)");
         addToSyncLog('New Bout', 'success', `Bout ${newData.bout} sent to Ring ${newData.ring}`);
       } catch (e) {
@@ -414,7 +420,7 @@ export default function App() {
     if (activeUrl) {
       setIsSyncing(true);
       try {
-        await syncToGoogleSheets(activeUrl, data);
+        await syncToGoogleSheets(activeUrl, data, getCurrentEventName());
         addToSyncLog('Force Sync', 'success', `Bout ${data.bout} manually synced`);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -442,6 +448,14 @@ export default function App() {
     handleBoutUpdate(item.data.ring, item.data);
   };
 
+  const deleteBoutFromQueue = (queueId: string) => {
+    setBoutQueue(prev => {
+      const updated = prev.filter(q => q.id !== queueId);
+      localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   const handleMissingBoutReason = async (ringNumber: number, boutNumber: number, reason: string) => {
     // Close prompt immediately for responsiveness
     setMissingBoutPrompt(null);
@@ -462,8 +476,8 @@ export default function App() {
       
       // Sync in background
       Promise.all([
-        syncToGoogleSheets(googleSheetUrl, dummyMatch, reason),
-        updateWinnerInGoogleSheets(googleSheetUrl, ringNumber, boutNumber, reason, 'N/A')
+        syncToGoogleSheets(googleSheetUrl, dummyMatch, getCurrentEventName(), reason),
+        updateWinnerInGoogleSheets(googleSheetUrl, ringNumber, boutNumber, reason, getCurrentEventName(), 'N/A')
       ]).finally(() => setIsSyncing(false));
     }
 
@@ -494,7 +508,7 @@ export default function App() {
     
     if (googleSheetUrl) {
       setIsSyncing(true);
-      syncToGoogleSheets(googleSheetUrl, data)
+      syncToGoogleSheets(googleSheetUrl, data, getCurrentEventName())
         .finally(() => setIsSyncing(false));
     }
     handleBoutUpdate(ringNumber, data);
@@ -524,6 +538,7 @@ export default function App() {
         ringNumber, 
         boutNumber, 
         winnerName || winner,
+        getCurrentEventName(),
         winner,
         currentBout?.blue_name,
         currentBout?.red_name
@@ -611,7 +626,8 @@ export default function App() {
         activeUrl,
         ringNumber,
         boutNumber,
-        reason
+        reason,
+        getCurrentEventName()
       ).then(() => {
         addToSyncLog('Transfer', 'success', `Transfer for Bout ${boutNumber} sent`);
       }).catch(e => {
@@ -1200,13 +1216,22 @@ export default function App() {
                                   <p className="text-sm font-bold text-slate-800">{item.data.blue_name} vs {item.data.red_name}</p>
                                   <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{item.data.category}</p>
                                 </div>
-                                <button 
-                                  onClick={() => pullBout(item.id)}
-                                  className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors"
-                                  title="Pull to Active Ring"
-                                >
-                                  <ChevronLeft size={18} />
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  <button 
+                                    onClick={() => deleteBoutFromQueue(item.id)}
+                                    className="p-2.5 bg-slate-100 text-slate-400 rounded-xl hover:bg-red-50 hover:text-red-600 transition-all"
+                                    title="Remove from Queue"
+                                  >
+                                    <X size={18} />
+                                  </button>
+                                  <button 
+                                    onClick={() => pullBout(item.id)}
+                                    className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors"
+                                    title="Pull to Active Ring"
+                                  >
+                                    <ChevronLeft size={18} />
+                                  </button>
+                                </div>
                               </div>
                             ))
                           )}
@@ -1314,55 +1339,6 @@ export default function App() {
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
                           <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
-                            <RefreshCw size={20} className="text-blue-600" />
-                            Sync Log
-                          </h3>
-                          <button 
-                            onClick={() => setSyncLog([])}
-                            className="text-[10px] font-black text-slate-400 uppercase hover:text-red-600 transition-colors"
-                          >
-                            Clear
-                          </button>
-                        </div>
-                        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                          <div className="max-h-[250px] overflow-y-auto custom-scrollbar">
-                            {syncLog.length === 0 ? (
-                              <div className="p-6 text-center text-slate-400 italic text-[10px]">
-                                No sync activity yet
-                              </div>
-                            ) : (
-                              <div className="divide-y divide-slate-100">
-                                {syncLog.map((log, i) => (
-                                  <div key={i} className="p-3 flex items-start gap-3 hover:bg-slate-50 transition-colors">
-                                    <div className={cn(
-                                      "mt-1 w-1.5 h-1.5 rounded-full shrink-0",
-                                      log.status === 'success' ? "bg-green-500" : "bg-red-500"
-                                    )} />
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <span className="text-[9px] font-black text-slate-900 uppercase tracking-widest">{log.action}</span>
-                                        <span className="text-[8px] font-medium text-slate-400">
-                                          {log.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                                        </span>
-                                      </div>
-                                      <p className={cn(
-                                        "text-[10px] font-medium truncate",
-                                        log.status === 'success' ? "text-slate-600" : "text-red-600"
-                                      )}>
-                                        {log.message}
-                                      </p>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
                             <Calendar size={20} className="text-red-600" />
                             Upcoming Bouts
                           </h3>
@@ -1385,13 +1361,22 @@ export default function App() {
                                     <p className="text-sm font-bold text-slate-800">{item.data.blue_name} vs {item.data.red_name}</p>
                                     <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{item.data.category}</p>
                                   </div>
-                                  <button 
-                                    onClick={() => pullBout(item.id)}
-                                    className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors"
-                                    title="Pull to Active Ring"
-                                  >
-                                    <ChevronLeft size={18} />
-                                  </button>
+                                  <div className="flex items-center gap-2">
+                                    <button 
+                                      onClick={() => deleteBoutFromQueue(item.id)}
+                                      className="p-2.5 bg-slate-100 text-slate-400 rounded-xl hover:bg-red-50 hover:text-red-600 transition-all"
+                                      title="Remove from Queue"
+                                    >
+                                      <X size={18} />
+                                    </button>
+                                    <button 
+                                      onClick={() => pullBout(item.id)}
+                                      className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors"
+                                      title="Pull to Active Ring"
+                                    >
+                                      <ChevronLeft size={18} />
+                                    </button>
+                                  </div>
                                 </div>
                               ))
                             )}
@@ -1637,6 +1622,7 @@ export default function App() {
           user={user}
           initialRing={newBoutInitialRing}
           currentEventId={currentEventId}
+          isSyncing={isSyncing}
         />
       )}
 
@@ -1917,7 +1903,7 @@ function MissingBoutModal({ prompt, onClose, onSubmitReason, onSubmitManual, cat
             </button>
           </div>
 
-          <form id="missing-bout-form" onSubmit={handleSubmit} className="space-y-4">
+          <form id="missing-bout-form" onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
             {mode === 'reason' ? (
               <div className="space-y-4">
                 <p className="text-sm text-slate-600">
@@ -1929,6 +1915,7 @@ function MissingBoutModal({ prompt, onClose, onSubmitReason, onSubmitManual, cat
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+                    autoComplete="off"
                   >
                     <option value="Walkover">Walkover</option>
                     <option value="Player No-Show">Player No-Show</option>
@@ -1947,6 +1934,7 @@ function MissingBoutModal({ prompt, onClose, onSubmitReason, onSubmitManual, cat
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
                       required
                       placeholder="Enter reason..."
+                      autoComplete="off"
                     />
                   </div>
                 )}
@@ -1960,6 +1948,7 @@ function MissingBoutModal({ prompt, onClose, onSubmitReason, onSubmitManual, cat
                     onChange={(e) => setManualData({...manualData, category: e.target.value})}
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
                     required
+                    autoComplete="off"
                   >
                     <option value="" disabled>Select Category</option>
                     {categories.map(cat => (
@@ -1977,12 +1966,14 @@ function MissingBoutModal({ prompt, onClose, onSubmitReason, onSubmitManual, cat
                       className="w-full px-3 py-2 bg-white border border-blue-200 rounded-xl text-sm font-bold"
                       placeholder="Name"
                       required
+                      autoComplete="off"
                     />
                     <select
                       value={manualData.blue_club}
                       onChange={(e) => setManualData({...manualData, blue_club: e.target.value})}
                       className="w-full px-3 py-2 bg-white border border-blue-200 rounded-xl text-sm font-bold"
                       required
+                      autoComplete="off"
                     >
                       <option value="" disabled>Select Club</option>
                       {clubs.map(club => (
@@ -1999,12 +1990,14 @@ function MissingBoutModal({ prompt, onClose, onSubmitReason, onSubmitManual, cat
                       className="w-full px-3 py-2 bg-white border border-red-200 rounded-xl text-sm font-bold"
                       placeholder="Name"
                       required
+                      autoComplete="off"
                     />
                     <select
                       value={manualData.red_club}
                       onChange={(e) => setManualData({...manualData, red_club: e.target.value})}
                       className="w-full px-3 py-2 bg-white border border-red-200 rounded-xl text-sm font-bold"
                       required
+                      autoComplete="off"
                     >
                       <option value="" disabled>Select Club</option>
                       {clubs.map(club => (
@@ -2255,9 +2248,10 @@ interface NewBoutModalProps {
   user: UserAccount | null;
   initialRing?: number;
   currentEventId: string | null;
+  isSyncing: boolean;
 }
 
-function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user, initialRing, currentEventId }: NewBoutModalProps) {
+function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user, initialRing, currentEventId, isSyncing }: NewBoutModalProps) {
   const defaultRing = initialRing || (user?.role === 'admin' ? (rings[0]?.ringNumber || 1) : (user?.assignedRing || 1));
   
   const getNextBoutNumber = (ringNum: number) => {
@@ -2372,7 +2366,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
     // Update formData with normalized bout number before submitting
     const finalData = { ...formData, bout: targetBout, eventId: currentEventId || null };
     
-    await onSubmit(formData.ring, finalData);
+    onSubmit(formData.ring, finalData);
     onClose();
   };
 
@@ -2402,7 +2396,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="p-6 space-y-6" autoComplete="off">
           {errorMsg && (
             <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm font-bold border border-red-100">
               {errorMsg}
@@ -2416,6 +2410,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                 onChange={(e) => handleRingChange(parseInt(e.target.value))}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
                 required
+                autoComplete="off"
               >
                 {availableRings.map(r => (
                   <option key={r.ringNumber} value={r.ringNumber}>Ring {r.ringNumber}</option>
@@ -2430,6 +2425,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                 onChange={(e) => setFormData({...formData, bout: e.target.value})}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
                 required
+                autoComplete="off"
               />
             </div>
           </div>
@@ -2444,6 +2440,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
               placeholder="Select or type category (e.g. -45kg)"
               required
+              autoComplete="off"
             />
             <datalist id="new-bout-cats">
               {categories.map(cat => <option key={cat} value={cat} />)}
@@ -2464,6 +2461,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                 className="w-full px-3 py-2 bg-white border border-blue-200 rounded-xl text-sm font-bold"
                 placeholder="Player Name"
                 required
+                autoComplete="off"
               />
               <input 
                 type="text" 
@@ -2473,6 +2471,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                 className="w-full px-3 py-2 bg-white border border-blue-200 rounded-xl text-sm font-bold"
                 placeholder="Club Name"
                 required
+                autoComplete="off"
               />
             </div>
 
@@ -2489,6 +2488,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                 className="w-full px-3 py-2 bg-white border border-red-200 rounded-xl text-sm font-bold"
                 placeholder="Player Name"
                 required
+                autoComplete="off"
               />
               <input 
                 type="text" 
@@ -2498,6 +2498,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                 className="w-full px-3 py-2 bg-white border border-red-200 rounded-xl text-sm font-bold"
                 placeholder="Club Name"
                 required
+                autoComplete="off"
               />
             </div>
           </div>
@@ -2507,25 +2508,17 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
 
           <div className="pt-4 flex gap-3">
             <button 
-              type="button"
-              onClick={handleClearMemory}
-              className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-black text-xs uppercase tracking-widest transition-colors"
-              title="Clear remembered category and clubs"
-            >
-              Clear Memory
-            </button>
-            <button 
-              type="button"
-              onClick={onClose}
-              className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-black text-xs uppercase tracking-widest transition-colors"
-            >
-              Cancel
-            </button>
-            <button 
               type="submit"
-              className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-red-200 transition-all"
+              className="flex-1 py-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-red-200 transition-all flex items-center justify-center gap-2"
             >
-              Create Bout & Sync
+              {isSyncing ? (
+                <>
+                  <RefreshCw size={16} className="animate-spin" />
+                  Syncing to Cloud...
+                </>
+              ) : (
+                "Create Bout & Sync"
+              )}
             </button>
           </div>
         </form>

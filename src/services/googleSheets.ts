@@ -23,7 +23,7 @@ const formatBout = (ring: number, bout: string | number) => {
   return (ring * 1000 + numBout).toString() + suffix;
 };
 
-export async function syncToGoogleSheets(url: string, data: MatchData, reason: string = '') {
+export async function syncToGoogleSheets(url: string, data: MatchData, eventName: string = '', reason: string = '') {
   const targetUrl = url?.trim();
   if (!targetUrl) {
     console.warn('Sync aborted: No URL provided');
@@ -39,6 +39,7 @@ export async function syncToGoogleSheets(url: string, data: MatchData, reason: s
     const payload = {
       action: 'newBout',
       timestamp: getMalaysiaTimestamp(),
+      event_name: eventName || '-',
       ring: data.ring,
       bout: formatBout(data.ring, data.bout),
       category: data.category || '-',
@@ -72,7 +73,7 @@ export async function syncToGoogleSheets(url: string, data: MatchData, reason: s
   }
 }
 
-export async function updateTransferInGoogleSheets(url: string, ring: number, bout: string | number, reason: string) {
+export async function updateTransferInGoogleSheets(url: string, ring: number, bout: string | number, reason: string, eventName: string = '') {
   const targetUrl = url?.trim();
   if (!targetUrl) return false;
 
@@ -82,7 +83,8 @@ export async function updateTransferInGoogleSheets(url: string, ring: number, bo
       ring: ring,
       bout: formatBout(ring, bout),
       reason: reason,
-      timestamp: getMalaysiaTimestamp()
+      timestamp: getMalaysiaTimestamp(),
+      event_name: eventName || '-'
     };
 
     console.log('>>> GOOGLE SHEETS SYNC START (Transfer) <<<');
@@ -104,7 +106,7 @@ export async function updateTransferInGoogleSheets(url: string, ring: number, bo
   }
 }
 
-export async function updateWinnerInGoogleSheets(url: string, ring: number, bout: string | number, winner: string, winnerSide?: string, blueName?: string, redName?: string) {
+export async function updateWinnerInGoogleSheets(url: string, ring: number, bout: string | number, winner: string, eventName: string = '', winnerSide?: string, blueName?: string, redName?: string) {
   const targetUrl = url?.trim();
   if (!targetUrl) return false;
 
@@ -118,7 +120,8 @@ export async function updateWinnerInGoogleSheets(url: string, ring: number, bout
       winner_side: winnerSide || '-',
       blue_name: blueName || '-',
       red_name: redName || '-',
-      timestamp: getMalaysiaTimestamp()
+      timestamp: getMalaysiaTimestamp(),
+      event_name: eventName || '-'
     };
 
     console.log('>>> GOOGLE SHEETS SYNC START (Winner) <<<');
