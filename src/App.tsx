@@ -3739,7 +3739,7 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    const finalSheetUrl = sheetUrl.trim() || 'https://script.google.com/macros/s/AKfycbwO3CAi7OVpZQwD-r6-WF6M-iOGjPnVFayaglH2-arQcs_LGqDYKaTl3HRKdMEUGYio/exec';
+    const finalSheetUrl = sheetUrl.trim() || 'https://script.google.com/macros/s/AKfycbxj_LHC3MLU7IHjMSwklvIuXZxbsk1jhNTdU23piVTdx8kC6DhVD5EAHe7z72wYb774/exec';
 
     onAdd({
       id: Math.random().toString(36).substr(2, 9),
