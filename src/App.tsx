@@ -30,7 +30,9 @@ import {
   Maximize,
   Minimize,
   RefreshCw,
-  X
+  X,
+  Database,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MatchData, RingStatus, EventData } from './types';
@@ -38,6 +40,7 @@ import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateTransferInGoogleS
 import { cn } from './lib/utils';
 import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, getDocFromServer } from 'firebase/firestore';
 import { db } from './firebase';
+import Papa from 'papaparse';
 
 function sanitizeForFirestore(obj: any): any {
   if (obj === undefined) return null;
@@ -951,12 +954,20 @@ export default function App() {
             </>
           )}
           {user?.role === 'user' && (
-            <NavItem 
-              icon={<LayoutDashboard size={20} />} 
-              label="My Ring" 
-              active={activeTab === 'mats'} 
-              onClick={() => setActiveTab('mats')} 
-            />
+            <>
+              <NavItem 
+                icon={<LayoutDashboard size={20} />} 
+                label="My Ring" 
+                active={activeTab === 'mats'} 
+                onClick={() => setActiveTab('mats')} 
+              />
+              <NavItem 
+                icon={<Database size={20} />} 
+                label="Data Sync" 
+                active={activeTab === 'data-sync'} 
+                onClick={() => setActiveTab('data-sync')} 
+              />
+            </>
           )}
           {user?.role === 'viewer' && (
             <>
@@ -975,12 +986,20 @@ export default function App() {
             </>
           )}
           {user?.role === 'admin' && (
-            <NavItem 
-              icon={<Settings size={20} />} 
-              label="Settings" 
-              active={activeTab === 'settings'} 
-              onClick={() => setActiveTab('settings')} 
-            />
+            <>
+              <NavItem 
+                icon={<Database size={20} />} 
+                label="Data Sync" 
+                active={activeTab === 'data-sync'} 
+                onClick={() => setActiveTab('data-sync')} 
+              />
+              <NavItem 
+                icon={<Settings size={20} />} 
+                label="Settings" 
+                active={activeTab === 'settings'} 
+                onClick={() => setActiveTab('settings')} 
+              />
+            </>
           )}
           <div className="pt-4 mt-4 border-t border-slate-100 space-y-2">
             <div className="px-4 py-2 bg-slate-50 rounded-xl flex items-center gap-3">
@@ -1453,7 +1472,13 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'settings' && (
+          {activeTab === 'data-sync' && (
+            <div className="max-w-4xl mx-auto">
+              <DataUpdater setCategories={setCategories} setClubs={setClubs} />
+            </div>
+          )}
+
+          {activeTab === 'settings' && user?.role === 'admin' && (
             <div className="max-w-4xl mx-auto space-y-8">
               {user?.role === 'admin' ? (
                 <>
@@ -1539,6 +1564,8 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+
+                  <DataUpdater setCategories={setCategories} setClubs={setClubs} />
 
                   <EventManagement 
                     events={events}
@@ -3710,6 +3737,172 @@ function LoginScreen({ onLogin, events }: { onLogin: (u: string, p: string, even
           </p>
         </div>
       </motion.div>
+    </div>
+  );
+}
+
+function DataUpdater({ 
+  setCategories, 
+  setClubs 
+}: { 
+  setCategories: (cats: string[]) => void, 
+  setClubs: (clubs: string[]) => void 
+}) {
+  const [isUpdatingCategory, setIsUpdatingCategory] = useState(false);
+  const [isUpdatingClub, setIsUpdatingClub] = useState(false);
+  const [selectedRing, setSelectedRing] = useState<number>(1);
+  const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
+
+  const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/10WgCWYqQpuu6I48jZ9cyZvMb0bbMYIuk0oAArnMKp04/export?format=csv&gid=0";
+
+  const fetchCSV = async () => {
+    const response = await fetch(SHEET_CSV_URL);
+    if (!response.ok) {
+      throw new Error("Failed to fetch data. Please ensure the Google Sheet is published to the web (File > Share > Publish to web) or is accessible to 'Anyone with the link'.");
+    }
+    const csvText = await response.text();
+    return new Promise<Papa.ParseResult<string[]>>((resolve, reject) => {
+      Papa.parse(csvText, {
+        complete: resolve,
+        error: reject,
+        skipEmptyLines: true
+      });
+    });
+  };
+
+  const handleUpdateCategory = async () => {
+    setIsUpdatingCategory(true);
+    setMessage(null);
+    try {
+      const result = await fetchCSV();
+      const rows = result.data;
+      if (rows.length < 2) throw new Error("Sheet is empty or missing data.");
+      
+      // Ring 1 is col 0 (A), Ring 2 is col 1 (B), etc.
+      const colIndex = selectedRing - 1;
+      const newCategories: string[] = [];
+      
+      // Start from row 1 (A2)
+      for (let i = 1; i < rows.length; i++) {
+        const cat = rows[i][colIndex];
+        if (cat && cat.trim() !== '') {
+          newCategories.push(cat.trim());
+        }
+      }
+      
+      if (newCategories.length === 0) {
+        throw new Error(`No categories found for Ring ${selectedRing} in column ${String.fromCharCode(65 + colIndex)}.`);
+      }
+      
+      setCategories(newCategories);
+      setMessage({ text: `Successfully updated ${newCategories.length} categories for Ring ${selectedRing}.`, type: 'success' });
+    } catch (e) {
+      setMessage({ text: e instanceof Error ? e.message : "An error occurred.", type: 'error' });
+    } finally {
+      setIsUpdatingCategory(false);
+    }
+  };
+
+  const handleUpdateClub = async () => {
+    setIsUpdatingClub(true);
+    setMessage(null);
+    try {
+      const result = await fetchCSV();
+      const rows = result.data;
+      if (rows.length < 2) throw new Error("Sheet is empty or missing data.");
+      
+      // Clubs are in column Z (index 25)
+      const colIndex = 25;
+      const newClubs: string[] = [];
+      
+      // Start from row 1 (Z2)
+      for (let i = 1; i < rows.length; i++) {
+        const club = rows[i][colIndex];
+        if (club && club.trim() !== '') {
+          newClubs.push(club.trim());
+        }
+      }
+      
+      if (newClubs.length === 0) {
+        throw new Error("No clubs found in column Z.");
+      }
+      
+      setClubs(newClubs);
+      setMessage({ text: `Successfully updated ${newClubs.length} clubs.`, type: 'success' });
+    } catch (e) {
+      setMessage({ text: e instanceof Error ? e.message : "An error occurred.", type: 'error' });
+    } finally {
+      setIsUpdatingClub(false);
+    }
+  };
+
+  return (
+    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+      <h3 className="text-xl font-bold flex items-center gap-2">
+        <Database size={24} className="text-slate-400" />
+        Data Synchronization
+      </h3>
+      
+      {message && (
+        <div className={cn("p-4 rounded-xl text-sm font-bold border", message.type === 'success' ? "bg-green-50 text-green-700 border-green-100" : "bg-red-50 text-red-600 border-red-100")}>
+          {message.text}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="p-6 bg-slate-50 rounded-xl border border-slate-100 space-y-4 flex flex-col">
+          <div>
+            <h4 className="font-bold text-slate-800">Update Category</h4>
+            <p className="text-[10px] text-slate-500 mt-1">Fetch categories from Google Sheet for a specific ring.</p>
+          </div>
+          
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Select Ring</label>
+            <select 
+              value={selectedRing}
+              onChange={(e) => setSelectedRing(parseInt(e.target.value))}
+              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold"
+            >
+              {Array.from({ length: 12 }, (_, i) => i + 1).map(num => (
+                <option key={num} value={num}>Ring {num}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mt-auto pt-4">
+            <button 
+              onClick={handleUpdateCategory}
+              disabled={isUpdatingCategory}
+              className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {isUpdatingCategory ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
+              Update Category
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 bg-slate-50 rounded-xl border border-slate-100 space-y-4 flex flex-col">
+          <div>
+            <h4 className="font-bold text-slate-800">Update Club</h4>
+            <p className="text-[10px] text-slate-500 mt-1">Fetch club names from column Z in the Google Sheet.</p>
+          </div>
+          
+          <div className="mt-auto pt-4">
+            <button 
+              onClick={handleUpdateClub}
+              disabled={isUpdatingClub}
+              className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {isUpdatingClub ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
+              Update Club
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <div className="p-4 bg-blue-50 text-blue-800 rounded-xl text-xs font-medium border border-blue-100">
+        <strong>Note:</strong> For this to work, the Google Sheet must be accessible. Please ensure you have set the sharing settings to <strong>"Anyone with the link"</strong> can view.
+      </div>
     </div>
   );
 }
