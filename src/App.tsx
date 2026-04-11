@@ -898,7 +898,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row text-slate-900 font-sans">
       {/* Mobile Header */}
-      <header className="md:hidden bg-white border-b border-slate-200 p-4 flex items-center justify-between sticky top-0 z-[60]">
+      <header className="md:hidden bg-white border-b border-slate-200 p-4 flex items-center justify-between sticky top-0 z-[60] print:hidden">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-red-200">
             <Trophy size={18} />
@@ -916,7 +916,7 @@ export default function App() {
       </header>
 
       {/* Sidebar (Desktop) */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col hidden md:flex h-screen sticky top-0">
+      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col hidden md:flex h-screen sticky top-0 print:hidden">
         <div className="p-6 flex items-center gap-3 border-b border-slate-100">
           <div className="w-10 h-10 bg-red-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-red-200">
             <Trophy size={24} />
@@ -1085,7 +1085,7 @@ export default function App() {
         {/* Scrollable Area */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 pb-24 md:pb-8">
           {/* Page Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 md:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 md:mb-8 print:hidden">
             <div className="flex items-center gap-4">
               <h2 className="text-xl md:text-2xl font-black text-slate-900 capitalize tracking-tight">{activeTab}</h2>
             </div>

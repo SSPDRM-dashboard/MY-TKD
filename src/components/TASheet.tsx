@@ -190,10 +190,20 @@ export function TASheet() {
               <tr>
                 <td className="border border-black p-2 w-1/3 font-bold">Date :</td>
                 <td className="border border-black p-2 w-1/3 font-bold">Day No:</td>
-                <td className="border border-black p-2 w-1/3 font-bold" colSpan={2}>Court No: {currentMatch?.ringNo || ''}</td>
+                <td className="border border-black p-2 w-1/3 font-bold" colSpan={2}>
+                  <div className="flex items-center">
+                    <span>Court No:</span>
+                    <span className="flex-1 text-center text-lg">{currentMatch?.ringNo || ''}</span>
+                  </div>
+                </td>
               </tr>
               <tr>
-                <td className="border border-black p-2 font-bold">Match No: {currentMatch?.matchNo || ''}</td>
+                <td className="border border-black p-2 font-bold">
+                  <div className="flex items-center">
+                    <span>Match No:</span>
+                    <span className="flex-1 text-center text-lg">{currentMatch?.matchNo || ''}</span>
+                  </div>
+                </td>
                 <td className="border border-black p-2 font-bold">Weight Category : {currentMatch?.category || ''}</td>
                 <td className="border border-black p-2 font-bold">Hit Level :</td>
                 <td className="border border-black p-2 font-bold">Hogu Saiz :</td>
