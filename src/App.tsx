@@ -308,7 +308,6 @@ export default function App() {
     }
     return 'dashboard';
   });
-  const [activeAccountTab, setActiveAccountTab] = useState<'profile' | 'initial-bout'>('profile');
   const [isImportingBouts, setIsImportingBouts] = useState(false);
   const [isPublicView, setIsPublicView] = useState(false);
   const [showNewBoutModal, setShowNewBoutModal] = useState(false);
@@ -583,12 +582,6 @@ export default function App() {
 
   const handleMissingBoutManual = async (ringNumber: number, data: MatchData) => {
     setMissingBoutPrompt(null);
-    
-    if (googleSheetUrl) {
-      setIsSyncing(true);
-      syncToGoogleSheets(googleSheetUrl, data, getCurrentEventName())
-        .finally(() => setIsSyncing(false));
-    }
     handleBoutUpdate(ringNumber, data);
   };
 
@@ -650,15 +643,7 @@ export default function App() {
       });
       
       // Set as current bout
-      setRings(prev => {
-        const updated = prev.map(r => r.ringNumber === ringNumber ? { 
-          ...r, 
-          currentBout: nextBout.data,
-          nextBoutNumber: getBoutNumber(nextBout.data.bout) + 1
-        } : r);
-        localStorage.setItem('tkd_rings', JSON.stringify(updated));
-        return updated;
-      });
+      handleBoutUpdate(ringNumber, nextBout.data);
     } else if (ring && ring.totalBouts && ring.currentBout && getBoutNumber(ring.currentBout.bout) < ring.totalBouts) {
       // Queue is empty, but we haven't reached total bouts
       setMissingBoutPrompt({ ringNumber, expectedBout: getBoutNumber(ring.currentBout.bout) + 1, totalBouts: ring.totalBouts });
@@ -764,19 +749,29 @@ export default function App() {
   };
 
   const handleBoutUpdate = async (ringNumber: number, newData: MatchData) => {
+    // Capitalize all letters for ring controller
+    const capitalizedData: MatchData = {
+      ...newData,
+      blue_name: newData.blue_name?.toUpperCase() || '',
+      blue_club: newData.blue_club?.toUpperCase() || '',
+      red_name: newData.red_name?.toUpperCase() || '',
+      red_club: newData.red_club?.toUpperCase() || '',
+      category: newData.category?.toUpperCase() || '',
+    };
+
     // Update categories and clubs lists
-    if (newData.category && !categories.includes(newData.category)) {
-      const newCats = [...categories, newData.category];
+    if (capitalizedData.category && !categories.includes(capitalizedData.category)) {
+      const newCats = [...categories, capitalizedData.category];
       setCategories(newCats);
       localStorage.setItem('tkd_categories', JSON.stringify(newCats));
     }
-    if (newData.blue_club && !clubs.includes(newData.blue_club)) {
-      const newClubs = [...clubs, newData.blue_club];
+    if (capitalizedData.blue_club && !clubs.includes(capitalizedData.blue_club)) {
+      const newClubs = [...clubs, capitalizedData.blue_club];
       setClubs(newClubs);
       localStorage.setItem('tkd_clubs', JSON.stringify(newClubs));
     }
-    if (newData.red_club && !clubs.includes(newData.red_club)) {
-      const newClubs = [...clubs, newData.red_club];
+    if (capitalizedData.red_club && !clubs.includes(capitalizedData.red_club)) {
+      const newClubs = [...clubs, capitalizedData.red_club];
       setClubs(newClubs);
       localStorage.setItem('tkd_clubs', JSON.stringify(newClubs));
     }
@@ -785,12 +780,33 @@ export default function App() {
     setRings(prev => {
       const updated = prev.map(r => r.ringNumber === ringNumber ? { 
         ...r, 
-        currentBout: newData,
-        nextBoutNumber: getBoutNumber(newData.bout) + 1
+        currentBout: capitalizedData,
+        nextBoutNumber: getBoutNumber(capitalizedData.bout) + 1
       } : r);
       localStorage.setItem('tkd_rings', JSON.stringify(updated));
       return updated;
     });
+
+    // Auto sync to Google Sheets
+    let activeUrl = googleSheetUrl;
+    if (!activeUrl && currentEventId && events.length > 0) {
+      const event = events.find(e => e.id === currentEventId);
+      if (event && event.sheetUrl) {
+        activeUrl = event.sheetUrl;
+        setGoogleSheetUrl(activeUrl);
+      }
+    }
+
+    if (activeUrl) {
+      setIsSyncing(true);
+      try {
+        await syncToGoogleSheets(activeUrl, capitalizedData, getCurrentEventName());
+      } catch (e) {
+        console.error('Sync error:', e);
+      } finally {
+        setIsSyncing(false);
+      }
+    }
   };
 
   const startRing = (ringNumber: number) => {
@@ -1185,28 +1201,40 @@ export default function App() {
                   </select>
                 )
               )}
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <button 
-                  onClick={() => setShowAnnouncementInput(true)}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-red-600 text-white rounded-xl text-[10px] md:text-sm font-black uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-200"
-                >
-                  <Bell size={16} />
-                  <span>Broadcast</span>
-                </button>
-                <button 
-                  onClick={() => setShowEditResultModal(true)}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-blue-600 text-white rounded-xl text-[10px] md:text-sm font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
-                >
-                  <Edit2 size={16} />
-                  <span>Edit</span>
-                </button>
-                <button 
-                  onClick={() => setShowNewBoutModal(true)}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-slate-900 text-white rounded-xl text-[10px] md:text-sm font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
-                >
-                  <Plus size={16} />
-                  <span>New</span>
-                </button>
+              <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button 
+                    onClick={() => setShowAnnouncementInput(true)}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-red-600 text-white rounded-xl text-[10px] md:text-sm font-black uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-200"
+                  >
+                    <Bell size={16} />
+                    <span>Broadcast</span>
+                  </button>
+                  <button 
+                    onClick={() => setShowEditResultModal(true)}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-blue-600 text-white rounded-xl text-[10px] md:text-sm font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
+                  >
+                    <Edit2 size={16} />
+                    <span>Edit</span>
+                  </button>
+                  <button 
+                    onClick={() => setShowNewBoutModal(true)}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-slate-900 text-white rounded-xl text-[10px] md:text-sm font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+                  >
+                    <Plus size={16} />
+                    <span>New</span>
+                  </button>
+                </div>
+                {activeTab === 'mats' && (
+                  <button 
+                    onClick={handleImportInitialBouts}
+                    disabled={isImportingBouts}
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 md:px-6 py-1.5 md:py-2 bg-green-600 text-white rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-200 disabled:opacity-50"
+                  >
+                    {isImportingBouts ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
+                    <span>Initial Bout</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1569,223 +1597,116 @@ export default function App() {
 
           {activeTab === 'settings' && user?.role === 'admin' && (
             <div className="max-w-4xl mx-auto space-y-8">
-              {user?.role === 'admin' ? (
-                <>
-                  <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-                    <h3 className="text-xl font-bold flex items-center gap-2">
-                      <Settings size={24} className="text-slate-400" />
-                      System Configuration
-                    </h3>
-                    
-                    <div className="space-y-4">
-                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Google Sheets Web App URL</label>
-                        <div className="flex gap-2">
-                          <input 
-                            type="text" 
-                            value={googleSheetUrl}
-                            onChange={(e) => setGoogleSheetUrl(e.target.value)}
-                            placeholder="https://script.google.com/macros/s/.../exec"
-                            className="flex-1 px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-red-500 outline-none transition-all"
-                          />
-                          <button 
-                            onClick={() => {
-                              localStorage.setItem('tkd_sheet_url', googleSheetUrl);
-                              setIsSheetSaved(true);
-                              setTimeout(() => setIsSheetSaved(false), 2000);
-                            }}
-                            className={cn(
-                              "px-4 py-2 rounded-lg font-bold text-sm transition-all",
-                              isSheetSaved ? "bg-green-600 text-white" : "bg-slate-900 text-white"
-                            )}
-                          >
-                            {isSheetSaved ? "Saved!" : "Save URL"}
-                          </button>
-                        </div>
-                        <p className="text-[10px] text-slate-500 mt-2">
-                          Deploy a Google Apps Script as a Web App to receive match data.
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-bold text-slate-700">Ring Naming Mode</p>
-                            <p className="text-[10px] text-slate-500">Numbers vs Alphabets</p>
-                          </div>
-                          <div className="flex bg-slate-200 p-1 rounded-lg">
-                            <button 
-                              onClick={() => setRingNamingMode('number')}
-                              className={cn(
-                                "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
-                                ringNamingMode === 'number' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-                              )}
-                            >
-                              1, 2, 3
-                            </button>
-                            <button 
-                              onClick={() => setRingNamingMode('alphabet')}
-                              className={cn(
-                                "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
-                                ringNamingMode === 'alphabet' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-                              )}
-                            >
-                              A, B, C
-                            </button>
-                          </div>
-                        </div>
-                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-bold text-slate-700">PDPA Privacy Mode</p>
-                            <p className="text-[10px] text-slate-500">Global override for minors</p>
-                          </div>
-                          <div className="w-12 h-6 bg-red-600 rounded-full relative cursor-pointer">
-                            <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full" />
-                          </div>
-                        </div>
-                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-bold text-slate-700">Multilingual Engine</p>
-                            <p className="text-[10px] text-slate-500">English & Bahasa Melayu</p>
-                          </div>
-                          <CheckCircle2 className="text-green-500" size={20} />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <DataUpdater setCategories={setCategories} setClubs={setClubs} />
-
-                  <EventManagement 
-                    events={events}
-                    onAdd={handleAddEvent}
-                    onDelete={handleDeleteEvent}
-                  />
-
-                  <UserManagement 
-                    accounts={accounts} 
-                    onAdd={handleAddAccount} 
-                    onDelete={handleDeleteAccount} 
-                    onEditPassword={handleEditPassword}
-                  />
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <IntegrationCard 
-                      title="Billplz" 
-                      description="Malaysian Payment Gateway" 
-                      icon={<CreditCard className="text-blue-600" />}
-                    />
-                    <IntegrationCard 
-                      title="WhatsApp API" 
-                      description="Coach Notifications" 
-                      icon={<Bell className="text-green-600" />}
-                    />
-                  </div>
-                </>
-              ) : (
-                <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                    <h3 className="text-xl font-bold flex items-center gap-2">
-                      <UserIcon size={24} className="text-slate-400" />
-                      My Account
-                    </h3>
-                    <div className="flex bg-slate-100 p-1 rounded-xl">
+              <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                <h3 className="text-xl font-bold flex items-center gap-2">
+                  <Settings size={24} className="text-slate-400" />
+                  System Configuration
+                </h3>
+                
+                <div className="space-y-4">
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Google Sheets Web App URL</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={googleSheetUrl}
+                        onChange={(e) => setGoogleSheetUrl(e.target.value)}
+                        placeholder="https://script.google.com/macros/s/.../exec"
+                        className="flex-1 px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-red-500 outline-none transition-all"
+                      />
                       <button 
-                        onClick={() => setActiveAccountTab('profile')}
+                        onClick={() => {
+                          localStorage.setItem('tkd_sheet_url', googleSheetUrl);
+                          setIsSheetSaved(true);
+                          setTimeout(() => setIsSheetSaved(false), 2000);
+                        }}
                         className={cn(
-                          "px-4 py-2 text-xs font-bold rounded-lg transition-all",
-                          activeAccountTab === 'profile' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                          "px-4 py-2 rounded-lg font-bold text-sm transition-all",
+                          isSheetSaved ? "bg-green-600 text-white" : "bg-slate-900 text-white"
                         )}
                       >
-                        Profile
-                      </button>
-                      <button 
-                        onClick={() => setActiveAccountTab('initial-bout')}
-                        className={cn(
-                          "px-4 py-2 text-xs font-bold rounded-lg transition-all",
-                          activeAccountTab === 'initial-bout' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                        )}
-                      >
-                        Initial Bout
+                        {isSheetSaved ? "Saved!" : "Save URL"}
                       </button>
                     </div>
+                    <p className="text-[10px] text-slate-500 mt-2">
+                      Deploy a Google Apps Script as a Web App to receive match data.
+                    </p>
                   </div>
 
-                  {activeAccountTab === 'profile' ? (
-                    <>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Username</p>
-                          <p className="text-lg font-black text-slate-800">{user?.username}</p>
-                        </div>
-                        <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Assigned Access</p>
-                          <p className="text-lg font-black text-slate-800">Ring {getRingName(user?.assignedRing || 1)}</p>
-                        </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-slate-700">Ring Naming Mode</p>
+                        <p className="text-[10px] text-slate-500">Numbers vs Alphabets</p>
                       </div>
-                      <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl flex items-start gap-3">
-                        <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={18} />
-                        <p className="text-xs font-medium text-amber-800 leading-relaxed">
-                          You have restricted access. Only administrators can modify system-wide configurations, manage users, or access the full athlete database.
-                        </p>
-                      </div>
-                      <div className="pt-6 border-t border-slate-100">
+                      <div className="flex bg-slate-200 p-1 rounded-lg">
                         <button 
-                          onClick={() => {
-                            if (window.confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
-                              handleDeleteAccount(user?.username || '');
-                            }
-                          }}
-                          className="flex items-center gap-2 px-6 py-3 bg-red-50 text-red-600 rounded-xl text-sm font-bold hover:bg-red-600 hover:text-white transition-all"
-                        >
-                          <Trash2 size={18} />
-                          Delete My Account
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="space-y-6">
-                      <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 text-center space-y-4">
-                        <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto">
-                          <Database size={32} />
-                        </div>
-                        <div>
-                          <h4 className="text-lg font-bold text-slate-800">Import Initial Bouts</h4>
-                          <p className="text-sm text-slate-500 max-w-md mx-auto">
-                            Fetch match data from the centralized Google Sheet for Ring {getRingName(user?.assignedRing || 1)}. This will populate your upcoming bouts queue.
-                          </p>
-                        </div>
-                        <button 
-                          onClick={handleImportInitialBouts}
-                          disabled={isImportingBouts}
+                          onClick={() => setRingNamingMode('number')}
                           className={cn(
-                            "px-8 py-4 rounded-xl font-bold text-white transition-all flex items-center gap-2 mx-auto",
-                            isImportingBouts ? "bg-slate-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-100"
+                            "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                            ringNamingMode === 'number' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
                           )}
                         >
-                          {isImportingBouts ? (
-                            <>
-                              <RefreshCw className="animate-spin" size={20} />
-                              Importing...
-                            </>
-                          ) : (
-                            <>
-                              <Download size={20} />
-                              Import Bouts for Ring {getRingName(user?.assignedRing || 1)}
-                            </>
+                          1, 2, 3
+                        </button>
+                        <button 
+                          onClick={() => setRingNamingMode('alphabet')}
+                          className={cn(
+                            "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                            ringNamingMode === 'alphabet' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
                           )}
+                        >
+                          A, B, C
                         </button>
                       </div>
-                      <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl flex items-start gap-3">
-                        <AlertCircle className="text-blue-600 shrink-0 mt-0.5" size={18} />
-                        <p className="text-xs font-medium text-blue-800 leading-relaxed">
-                          This function will only fetch bouts assigned to your specific ring. Ensure the Google Sheet is up to date before importing.
-                        </p>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-slate-700">PDPA Privacy Mode</p>
+                        <p className="text-[10px] text-slate-500">Global override for minors</p>
+                      </div>
+                      <div className="w-12 h-6 bg-red-600 rounded-full relative cursor-pointer">
+                        <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full" />
                       </div>
                     </div>
-                  )}
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-slate-700">Multilingual Engine</p>
+                        <p className="text-[10px] text-slate-500">English & Bahasa Melayu</p>
+                      </div>
+                      <CheckCircle2 className="text-green-500" size={20} />
+                    </div>
+                  </div>
                 </div>
-              )}
+              </div>
+
+              <DataUpdater setCategories={setCategories} setClubs={setClubs} />
+
+              <EventManagement 
+                events={events}
+                onAdd={handleAddEvent}
+                onDelete={handleDeleteEvent}
+              />
+
+              <UserManagement 
+                accounts={accounts} 
+                onAdd={handleAddAccount} 
+                onDelete={handleDeleteAccount} 
+                onEditPassword={handleEditPassword}
+              />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <IntegrationCard 
+                  title="Billplz" 
+                  description="Malaysian Payment Gateway" 
+                  icon={<CreditCard className="text-blue-600" />}
+                />
+                <IntegrationCard 
+                  title="WhatsApp API" 
+                  description="Coach Notifications" 
+                  icon={<Bell className="text-green-600" />}
+                />
+              </div>
             </div>
           )}
         </div>
