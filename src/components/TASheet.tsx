@@ -185,7 +185,7 @@ export function TASheet() {
           </div>
 
           {/* Match Info */}
-          <table className="w-full border-collapse border border-black mb-4 text-sm">
+          <table className="w-full border-collapse border border-black mb-2 text-sm">
             <tbody>
               <tr>
                 <td className="border border-black p-2 w-1/3 font-bold">Date :</td>
@@ -212,7 +212,7 @@ export function TASheet() {
           </table>
 
           {/* Players */}
-          <div className="flex gap-4 mb-4">
+          <div className="flex gap-4 mb-2">
             <table className="w-1/2 border-collapse border border-black text-sm">
               <thead>
                 <tr>
@@ -250,7 +250,7 @@ export function TASheet() {
           </div>
 
           {/* Round Scores */}
-          <table className="w-full border-collapse border border-black mb-4 text-sm text-center">
+          <table className="w-full border-collapse border border-black mb-2 text-sm text-center">
             <thead>
               <tr>
                 <th className="border border-black p-2 font-bold w-1/6">Gam-Jeom</th>
@@ -276,7 +276,7 @@ export function TASheet() {
           </table>
 
           {/* Decision of Superiority */}
-          <table className="w-full border-collapse border border-black mb-4 text-xs text-center relative">
+          <table className="w-full border-collapse border border-black mb-2 text-xs text-center relative">
             <thead>
               <tr>
                 <th colSpan={9} className="border border-black p-1">Decision of Superiority</th>
@@ -342,7 +342,7 @@ export function TASheet() {
           </table>
 
           {/* Video Replay & Match Winner */}
-          <table className="w-full border-collapse border border-black mb-4 text-xs text-center">
+          <table className="w-full border-collapse border border-black mb-2 text-xs text-center">
             <thead>
               <tr>
                 <th className="border border-black p-1 bg-[#00a2e8] text-black font-bold text-left px-2">Reason</th>
@@ -390,20 +390,20 @@ export function TASheet() {
           </table>
 
           {/* Win Types */}
-          <table className="w-full border-collapse border border-black mb-4 text-sm text-center font-bold">
+          <table className="w-full border-collapse border border-black mb-2 text-sm text-center font-bold">
             <tbody>
               <tr>
-                <td className="border border-black p-3 w-1/5">PTF</td>
-                <td className="border border-black p-3 w-1/5">RSC</td>
-                <td className="border border-black p-3 w-1/5">WDR</td>
-                <td className="border border-black p-3 w-1/5">DSQ</td>
-                <td className="border border-black p-3 w-1/5">DQB</td>
+                <td className="border border-black p-2 w-1/5">PTF</td>
+                <td className="border border-black p-2 w-1/5">RSC</td>
+                <td className="border border-black p-2 w-1/5">WDR</td>
+                <td className="border border-black p-2 w-1/5">DSQ</td>
+                <td className="border border-black p-2 w-1/5">DQB</td>
               </tr>
             </tbody>
           </table>
 
           {/* Yellow Cards */}
-          <div className="flex gap-4 mb-4">
+          <div className="flex gap-4 mb-2">
             <table className="w-1/2 border-collapse border border-black text-sm">
               <thead>
                 <tr>
@@ -413,7 +413,7 @@ export function TASheet() {
                 </tr>
               </thead>
               <tbody>
-                <tr className="h-10">
+                <tr className="h-6">
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
@@ -429,7 +429,7 @@ export function TASheet() {
                 </tr>
               </thead>
               <tbody>
-                <tr className="h-10">
+                <tr className="h-6">
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
@@ -439,15 +439,15 @@ export function TASheet() {
           </div>
 
           {/* Officials */}
-          <table className="w-full border-collapse border border-black mb-8 text-sm">
+          <table className="w-full border-collapse border border-black mb-4 text-sm">
             <tbody>
-              <tr className="h-8">
+              <tr className="h-6">
                 <td className="border border-black p-1 font-bold px-2 w-1/4">Judge 2</td>
                 <td className="border border-black p-1 font-bold px-2 w-1/4">Judge 1</td>
                 <td className="border border-black p-1 font-bold px-2 w-1/4">Referee</td>
                 <td className="border border-black p-1 font-bold px-2 w-1/4">Review Jury</td>
               </tr>
-              <tr className="h-8">
+              <tr className="h-6">
                 <td className="border border-black p-1 font-bold px-2">NOC</td>
                 <td className="border border-black p-1 font-bold px-2">NOC</td>
                 <td className="border border-black p-1 font-bold px-2">NOC</td>
@@ -457,7 +457,7 @@ export function TASheet() {
           </table>
 
           {/* Signature */}
-          <div className="flex justify-end mt-12 mb-4">
+          <div className="flex justify-end mt-6 mb-2">
             <div className="w-64 border-t border-black pt-1 text-center font-bold text-sm">
               Signature :
             </div>
