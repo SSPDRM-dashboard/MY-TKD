@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MatchData, RingStatus, EventData } from './types';
+import { TASheet } from './components/TASheet';
 import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateTransferInGoogleSheets, testSync } from './services/googleSheets';
 import { cn } from './lib/utils';
 import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, getDocFromServer } from 'firebase/firestore';
@@ -139,7 +140,7 @@ const INITIAL_RINGS: RingStatus[] = Array.from({ length: 12 }, (_, i) => ({
 interface UserAccount {
   username: string;
   password: string;
-  role: 'admin' | 'user' | 'viewer';
+  role: 'admin' | 'user' | 'viewer' | 'ta';
   assignedRing?: number;
 }
 
@@ -214,6 +215,7 @@ export default function App() {
       });
     }
     parsed.push({ username: 'viewer', password: '123', role: 'viewer' });
+    parsed.push({ username: 'TA', password: '123', role: 'ta' });
     return parsed;
   })());
 
@@ -985,6 +987,14 @@ export default function App() {
               />
             </>
           )}
+          {user?.role === 'ta' && (
+            <NavItem 
+              icon={<LayoutDashboard size={20} />} 
+              label="TA Sheet" 
+              active={activeTab === 'ta-sheet'} 
+              onClick={() => setActiveTab('ta-sheet')} 
+            />
+          )}
           {user?.role === 'admin' && (
             <>
               <NavItem 
@@ -1469,6 +1479,12 @@ export default function App() {
                   </table>
                 </div>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'ta-sheet' && (
+            <div className="max-w-5xl mx-auto">
+              <TASheet />
             </div>
           )}
 
