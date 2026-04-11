@@ -174,9 +174,20 @@ export function TASheet() {
           {/* Header */}
           <div className="flex justify-between items-center mb-4">
             <div className="flex gap-4 items-center">
-              {/* Placeholders for logos */}
-              <div className="w-24 h-12 bg-slate-100 border border-slate-300 flex items-center justify-center text-[10px] font-bold text-slate-400">WT LOGO</div>
-              <div className="w-24 h-12 bg-slate-100 border border-slate-300 flex items-center justify-center text-[10px] font-bold text-slate-400">TM LOGO</div>
+              <img 
+                src="/logos.png" 
+                alt="WT and TM Logos" 
+                className="h-16 object-contain"
+                onError={(e) => {
+                  // Fallback if the user hasn't uploaded the image yet
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = 'none';
+                  target.parentElement!.innerHTML = `
+                    <div class="w-24 h-12 bg-slate-100 border border-slate-300 flex items-center justify-center text-[10px] font-bold text-slate-400">WT LOGO</div>
+                    <div class="w-24 h-12 bg-slate-100 border border-slate-300 flex items-center justify-center text-[10px] font-bold text-slate-400">TM LOGO</div>
+                  `;
+                }}
+              />
             </div>
             <h1 className="text-2xl font-bold tracking-widest">TA SHEET</h1>
             <div className="text-lg font-semibold">Best of 3</div>
