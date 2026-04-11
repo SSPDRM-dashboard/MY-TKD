@@ -266,9 +266,9 @@ export function TASheet() {
                 <tr key={round} className="h-6">
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
-                  <td className="border border-black text-[#00a2e8] font-bold w-[67px]">CHUNG</td>
-                  <td className="border border-black font-bold w-12">R{round}</td>
-                  <td className="border border-black text-[#ed1c24] font-bold w-[67px]">HONG</td>
+                  <td className="border border-black text-[#00a2e8] font-bold w-[80px]">CHUNG</td>
+                  <td className="border border-black font-bold w-[50px]">R{round}</td>
+                  <td className="border border-black text-[#ed1c24] font-bold w-[80px]">HONG</td>
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
                 </tr>
@@ -458,7 +458,7 @@ export function TASheet() {
           </table>
 
           {/* Signature */}
-          <div className="flex justify-end mt-6 mb-0">
+          <div className="flex justify-end mt-12 mb-0">
             <div className="w-64 border-t border-black pt-1 text-center font-bold text-sm">
               Signature :
             </div>
