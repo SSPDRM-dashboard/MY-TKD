@@ -189,9 +189,9 @@ export function TASheet() {
           <table className="w-full border-collapse border border-black mb-2 text-sm">
             <tbody>
               <tr>
-                <td className="border border-black p-1 w-1/3 font-bold">Date :</td>
-                <td className="border border-black p-1 w-1/3 font-bold">Day No:</td>
-                <td className="border border-black p-1 w-1/3 font-bold" colSpan={2}>
+                <td className="border border-black p-1 w-[21%] font-bold">Date :</td>
+                <td className="border border-black p-1 w-[45%] font-bold">Day No:</td>
+                <td className="border border-black p-1 w-[34%] font-bold" colSpan={2}>
                   <div className="flex items-center">
                     <span>Court No:</span>
                     <span className="flex-1 text-center text-lg">{currentMatch?.ringNo || ''}</span>
@@ -199,15 +199,15 @@ export function TASheet() {
                 </td>
               </tr>
               <tr>
-                <td className="border border-black p-1 font-bold">
+                <td className="border border-black p-1 w-[21%] font-bold">
                   <div className="flex items-center">
                     <span>Match No:</span>
                     <span className="flex-1 text-center text-lg">{currentMatch?.matchNo || ''}</span>
                   </div>
                 </td>
-                <td className="border border-black p-1 font-bold">Weight Category : {currentMatch?.category || ''}</td>
-                <td className="border border-black p-1 font-bold">Hit Level :</td>
-                <td className="border border-black p-1 font-bold">Hogu Saiz :</td>
+                <td className="border border-black p-1 w-[45%] font-bold">Weight Category : {currentMatch?.category || ''}</td>
+                <td className="border border-black p-1 w-[17%] font-bold">Hit Level :</td>
+                <td className="border border-black p-1 w-[17%] font-bold">Hogu Saiz :</td>
               </tr>
             </tbody>
           </table>
