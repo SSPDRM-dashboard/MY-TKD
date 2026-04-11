@@ -308,6 +308,8 @@ export default function App() {
     }
     return 'dashboard';
   });
+  const [activeAccountTab, setActiveAccountTab] = useState<'profile' | 'initial-bout'>('profile');
+  const [isImportingBouts, setIsImportingBouts] = useState(false);
   const [isPublicView, setIsPublicView] = useState(false);
   const [showNewBoutModal, setShowNewBoutModal] = useState(false);
   const [newBoutInitialRing, setNewBoutInitialRing] = useState<number | undefined>(undefined);
@@ -416,6 +418,70 @@ export default function App() {
     } else {
       console.warn("Sync skipped: No Google Sheet URL available");
       setLastSyncError("Sync skipped: No URL configured for this event");
+    }
+  };
+
+  const handleImportInitialBouts = async () => {
+    if (!user?.assignedRing) {
+      alert("No ring assigned to this account.");
+      return;
+    }
+
+    setIsImportingBouts(true);
+    try {
+      const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1QCGhccGDJboxBLswoJqe82X3dxa9ZZC0aDo4Y3CZF8o/export?format=csv";
+      const response = await fetch(SHEET_CSV_URL);
+      if (!response.ok) throw new Error("Failed to fetch sheet data.");
+      
+      const csvText = await response.text();
+      const results = Papa.parse<string[]>(csvText, {
+        skipEmptyLines: true
+      });
+
+      const rows = results.data;
+      if (rows.length < 2) {
+        alert("Sheet is empty or missing data.");
+        return;
+      }
+
+      // Skip header row
+      const dataRows = rows.slice(1);
+      const currentEventName = getCurrentEventName();
+
+      // Filter by event name AND assigned ring
+      const ringBouts = dataRows.filter(row => {
+        const rowEventName = row[0]?.trim();
+        const rowRingNo = parseInt(row[1]);
+        return rowEventName === currentEventName && rowRingNo === user.assignedRing;
+      });
+      
+      if (ringBouts.length === 0) {
+        alert(`No bouts found for Event "${currentEventName}" and Ring ${getRingName(user.assignedRing)} in the sheet.`);
+        return;
+      }
+
+      const newBouts = ringBouts.map(row => ({
+        id: Math.random().toString(36).substr(2, 9),
+        data: {
+          ring: parseInt(row[1]),
+          bout: row[2],
+          category: row[3],
+          blue_name: row[4],
+          blue_club: row[5],
+          red_name: row[6],
+          red_club: row[7],
+          privacy_mode: false,
+          eventId: currentEventId || null
+        } as MatchData
+      }));
+
+      setBoutQueue(prev => [...prev, ...newBouts]);
+      alert(`Successfully imported ${newBouts.length} bouts for Ring ${getRingName(user.assignedRing)}.`);
+    } catch (error) {
+      console.error("Error importing bouts:", error);
+      alert("Error importing bouts. Please check console for details.");
+    } finally {
+      setIsImportingBouts(false);
     }
   };
 
@@ -1618,39 +1684,106 @@ export default function App() {
                 </>
               ) : (
                 <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-                  <h3 className="text-xl font-bold flex items-center gap-2">
-                    <UserIcon size={24} className="text-slate-400" />
-                    My Account
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Username</p>
-                      <p className="text-lg font-black text-slate-800">{user?.username}</p>
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                    <h3 className="text-xl font-bold flex items-center gap-2">
+                      <UserIcon size={24} className="text-slate-400" />
+                      My Account
+                    </h3>
+                    <div className="flex bg-slate-100 p-1 rounded-xl">
+                      <button 
+                        onClick={() => setActiveAccountTab('profile')}
+                        className={cn(
+                          "px-4 py-2 text-xs font-bold rounded-lg transition-all",
+                          activeAccountTab === 'profile' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                        )}
+                      >
+                        Profile
+                      </button>
+                      <button 
+                        onClick={() => setActiveAccountTab('initial-bout')}
+                        className={cn(
+                          "px-4 py-2 text-xs font-bold rounded-lg transition-all",
+                          activeAccountTab === 'initial-bout' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                        )}
+                      >
+                        Initial Bout
+                      </button>
                     </div>
-                    <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Assigned Access</p>
-                      <p className="text-lg font-black text-slate-800">Ring {getRingName(user?.assignedRing || 1)}</p>
+                  </div>
+
+                  {activeAccountTab === 'profile' ? (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Username</p>
+                          <p className="text-lg font-black text-slate-800">{user?.username}</p>
+                        </div>
+                        <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Assigned Access</p>
+                          <p className="text-lg font-black text-slate-800">Ring {getRingName(user?.assignedRing || 1)}</p>
+                        </div>
+                      </div>
+                      <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl flex items-start gap-3">
+                        <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={18} />
+                        <p className="text-xs font-medium text-amber-800 leading-relaxed">
+                          You have restricted access. Only administrators can modify system-wide configurations, manage users, or access the full athlete database.
+                        </p>
+                      </div>
+                      <div className="pt-6 border-t border-slate-100">
+                        <button 
+                          onClick={() => {
+                            if (window.confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
+                              handleDeleteAccount(user?.username || '');
+                            }
+                          }}
+                          className="flex items-center gap-2 px-6 py-3 bg-red-50 text-red-600 rounded-xl text-sm font-bold hover:bg-red-600 hover:text-white transition-all"
+                        >
+                          <Trash2 size={18} />
+                          Delete My Account
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-6">
+                      <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 text-center space-y-4">
+                        <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto">
+                          <Database size={32} />
+                        </div>
+                        <div>
+                          <h4 className="text-lg font-bold text-slate-800">Import Initial Bouts</h4>
+                          <p className="text-sm text-slate-500 max-w-md mx-auto">
+                            Fetch match data from the centralized Google Sheet for Ring {getRingName(user?.assignedRing || 1)}. This will populate your upcoming bouts queue.
+                          </p>
+                        </div>
+                        <button 
+                          onClick={handleImportInitialBouts}
+                          disabled={isImportingBouts}
+                          className={cn(
+                            "px-8 py-4 rounded-xl font-bold text-white transition-all flex items-center gap-2 mx-auto",
+                            isImportingBouts ? "bg-slate-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-100"
+                          )}
+                        >
+                          {isImportingBouts ? (
+                            <>
+                              <RefreshCw className="animate-spin" size={20} />
+                              Importing...
+                            </>
+                          ) : (
+                            <>
+                              <Download size={20} />
+                              Import Bouts for Ring {getRingName(user?.assignedRing || 1)}
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl flex items-start gap-3">
+                        <AlertCircle className="text-blue-600 shrink-0 mt-0.5" size={18} />
+                        <p className="text-xs font-medium text-blue-800 leading-relaxed">
+                          This function will only fetch bouts assigned to your specific ring. Ensure the Google Sheet is up to date before importing.
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl flex items-start gap-3">
-                    <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={18} />
-                    <p className="text-xs font-medium text-amber-800 leading-relaxed">
-                      You have restricted access. Only administrators can modify system-wide configurations, manage users, or access the full athlete database.
-                    </p>
-                  </div>
-                  <div className="pt-6 border-t border-slate-100">
-                    <button 
-                      onClick={() => {
-                        if (window.confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
-                          handleDeleteAccount(user?.username || '');
-                        }
-                      }}
-                      className="flex items-center gap-2 px-6 py-3 bg-red-50 text-red-600 rounded-xl text-sm font-bold hover:bg-red-600 hover:text-white transition-all"
-                    >
-                      <Trash2 size={18} />
-                      Delete My Account
-                    </button>
-                  </div>
+                  )}
                 </div>
               )}
             </div>
