@@ -279,9 +279,9 @@ export function TASheet() {
           <table className="w-full border-collapse border border-black mb-4 text-xs text-center relative">
             <thead>
               <tr>
-                <th colSpan={10} className="border border-black p-1">Decision of Superiority</th>
-                <th rowSpan={2} className="border border-black p-1 font-bold text-sm w-12">Round</th>
-                <th colSpan={10} className="border border-black p-1">Decision of Superiority</th>
+                <th colSpan={9} className="border border-black p-1">Decision of Superiority</th>
+                <th rowSpan={3} className="border border-black p-1 font-bold text-sm w-12">Round</th>
+                <th colSpan={9} className="border border-black p-1">Decision of Superiority</th>
               </tr>
               <tr>
                 <th colSpan={3} className="border border-black p-1 text-[#00a2e8]">Superiority</th>
@@ -302,8 +302,6 @@ export function TASheet() {
                 <th className="border border-black p-1 text-[#00a2e8] w-6">1</th>
                 <th className="border border-black p-1 text-[#00a2e8] w-6">2</th>
                 <th className="border border-black p-1 text-[#00a2e8] w-6">3</th>
-                
-                <th className="border border-black p-1 font-bold"></th>
                 
                 <th className="border border-black p-1 text-[#ed1c24] w-6">3</th>
                 <th className="border border-black p-1 text-[#ed1c24] w-6">2</th>
