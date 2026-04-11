@@ -101,6 +101,12 @@ export function TASheet() {
 
   return (
     <div className="space-y-6">
+      <style type="text/css" media="print">
+        {`
+          @page { size: A4 portrait; margin: 10mm; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        `}
+      </style>
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 print:hidden flex flex-wrap gap-4 items-end">
         <div className="w-full flex justify-between items-center mb-2">
           <h2 className="text-lg font-bold flex items-center gap-2">
@@ -170,27 +176,12 @@ export function TASheet() {
       </div>
 
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 print:shadow-none print:border-none print:p-0 overflow-x-auto">
-        <div className="min-w-[800px] max-w-[1000px] mx-auto bg-white" style={{ fontFamily: 'Arial, sans-serif' }}>
+        <div className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full" style={{ fontFamily: 'Arial, sans-serif' }}>
           {/* Header */}
           <div className="flex justify-between items-center mb-4">
-            <div className="flex gap-4 items-center">
-              <img 
-                src="/logos.png" 
-                alt="WT and TM Logos" 
-                className="h-16 object-contain"
-                onError={(e) => {
-                  // Fallback if the user hasn't uploaded the image yet
-                  const target = e.target as HTMLImageElement;
-                  target.style.display = 'none';
-                  target.parentElement!.innerHTML = `
-                    <div class="w-24 h-12 bg-slate-100 border border-slate-300 flex items-center justify-center text-[10px] font-bold text-slate-400">WT LOGO</div>
-                    <div class="w-24 h-12 bg-slate-100 border border-slate-300 flex items-center justify-center text-[10px] font-bold text-slate-400">TM LOGO</div>
-                  `;
-                }}
-              />
-            </div>
+            <div className="w-48"></div> {/* Empty space to balance the header */}
             <h1 className="text-2xl font-bold tracking-widest">TA SHEET</h1>
-            <div className="text-lg font-semibold">Best of 3</div>
+            <div className="text-lg font-semibold w-48 text-right">Best of 3</div>
           </div>
 
           {/* Match Info */}
