@@ -232,6 +232,13 @@ export default function App() {
   const [announcementText, setAnnouncementText] = useState('');
   const [announcementTarget, setAnnouncementTarget] = useState<'all' | 'users'>('all');
 
+  // Ensure TA account exists for returning users
+  useEffect(() => {
+    if (accounts.length > 0 && !accounts.some(a => a.username === 'TA')) {
+      setAccounts(prev => [...prev, { username: 'TA', password: '123', role: 'ta' }]);
+    }
+  }, [accounts, setAccounts]);
+
   useEffect(() => {
     const q = query(collection(db, 'announcements'), orderBy('timestamp', 'desc'), limit(1));
     const unsubscribe = onSnapshot(q, (snapshot) => {
