@@ -105,6 +105,7 @@ export function TASheet() {
         {`
           @page { size: A4 portrait; margin: 8mm; }
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          * { box-shadow: none !important; -webkit-box-shadow: none !important; }
         `}
       </style>
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 print:hidden flex flex-wrap gap-4 items-end">
@@ -457,7 +458,7 @@ export function TASheet() {
           </table>
 
           {/* Signature */}
-          <div className="flex justify-end mt-16 mb-0">
+          <div className="flex justify-end mt-24 mb-0">
             <div className="w-64 border-t border-black pt-1 text-center font-bold text-sm">
               Signature :
             </div>
