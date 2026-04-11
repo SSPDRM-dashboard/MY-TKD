@@ -103,7 +103,7 @@ export function TASheet() {
     <div className="space-y-6">
       <style type="text/css" media="print">
         {`
-          @page { size: A4 portrait; margin: 10mm; }
+          @page { size: A4 portrait; margin: 8mm; }
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         `}
       </style>
@@ -178,7 +178,7 @@ export function TASheet() {
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 print:shadow-none print:border-none print:p-0 overflow-x-auto">
         <div className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full" style={{ fontFamily: 'Arial, sans-serif' }}>
           {/* Header */}
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex justify-between items-center mb-2">
             <div className="w-48"></div> {/* Empty space to balance the header */}
             <h1 className="text-2xl font-bold tracking-widest">TA SHEET</h1>
             <div className="text-lg font-semibold w-48 text-right">Best of 3</div>
@@ -188,9 +188,9 @@ export function TASheet() {
           <table className="w-full border-collapse border border-black mb-2 text-sm">
             <tbody>
               <tr>
-                <td className="border border-black p-2 w-1/3 font-bold">Date :</td>
-                <td className="border border-black p-2 w-1/3 font-bold">Day No:</td>
-                <td className="border border-black p-2 w-1/3 font-bold" colSpan={2}>
+                <td className="border border-black p-1 w-1/3 font-bold">Date :</td>
+                <td className="border border-black p-1 w-1/3 font-bold">Day No:</td>
+                <td className="border border-black p-1 w-1/3 font-bold" colSpan={2}>
                   <div className="flex items-center">
                     <span>Court No:</span>
                     <span className="flex-1 text-center text-lg">{currentMatch?.ringNo || ''}</span>
@@ -198,15 +198,15 @@ export function TASheet() {
                 </td>
               </tr>
               <tr>
-                <td className="border border-black p-2 font-bold">
+                <td className="border border-black p-1 font-bold">
                   <div className="flex items-center">
                     <span>Match No:</span>
                     <span className="flex-1 text-center text-lg">{currentMatch?.matchNo || ''}</span>
                   </div>
                 </td>
-                <td className="border border-black p-2 font-bold">Weight Category : {currentMatch?.category || ''}</td>
-                <td className="border border-black p-2 font-bold">Hit Level :</td>
-                <td className="border border-black p-2 font-bold">Hogu Saiz :</td>
+                <td className="border border-black p-1 font-bold">Weight Category : {currentMatch?.category || ''}</td>
+                <td className="border border-black p-1 font-bold">Hit Level :</td>
+                <td className="border border-black p-1 font-bold">Hogu Saiz :</td>
               </tr>
             </tbody>
           </table>
@@ -216,34 +216,34 @@ export function TASheet() {
             <table className="w-1/2 border-collapse border border-black text-sm">
               <thead>
                 <tr>
-                  <th colSpan={2} className="bg-[#00a2e8] text-black border border-black p-2 font-bold text-lg">CHUNG</th>
+                  <th colSpan={2} className="bg-[#00a2e8] text-black border border-black p-1 font-bold text-lg">CHUNG</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td className="border border-black p-2 font-bold w-20">NAME</td>
-                  <td className="border border-black p-2">{currentMatch?.blueName || ''}</td>
+                  <td className="border border-black p-1 font-bold w-20">NAME</td>
+                  <td className="border border-black p-1">{currentMatch?.blueName || ''}</td>
                 </tr>
                 <tr>
-                  <td className="border border-black p-2 font-bold">NOC</td>
-                  <td className="border border-black p-2">{currentMatch?.blueClub || ''}</td>
+                  <td className="border border-black p-1 font-bold">NOC</td>
+                  <td className="border border-black p-1">{currentMatch?.blueClub || ''}</td>
                 </tr>
               </tbody>
             </table>
             <table className="w-1/2 border-collapse border border-black text-sm">
               <thead>
                 <tr>
-                  <th colSpan={2} className="bg-[#ed1c24] text-black border border-black p-2 font-bold text-lg">HONG</th>
+                  <th colSpan={2} className="bg-[#ed1c24] text-black border border-black p-1 font-bold text-lg">HONG</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td className="border border-black p-2 font-bold w-20">NAME</td>
-                  <td className="border border-black p-2">{currentMatch?.redName || ''}</td>
+                  <td className="border border-black p-1 font-bold w-20">NAME</td>
+                  <td className="border border-black p-1">{currentMatch?.redName || ''}</td>
                 </tr>
                 <tr>
-                  <td className="border border-black p-2 font-bold">NOC</td>
-                  <td className="border border-black p-2">{currentMatch?.redClub || ''}</td>
+                  <td className="border border-black p-1 font-bold">NOC</td>
+                  <td className="border border-black p-1">{currentMatch?.redClub || ''}</td>
                 </tr>
               </tbody>
             </table>
@@ -253,16 +253,16 @@ export function TASheet() {
           <table className="w-full border-collapse border border-black mb-2 text-sm text-center">
             <thead>
               <tr>
-                <th className="border border-black p-2 font-bold w-1/6">Gam-Jeom</th>
-                <th className="border border-black p-2 font-bold w-1/4">Deuk-jeum</th>
-                <th className="border border-black p-2 font-bold w-1/6" colSpan={3}>Round Winner</th>
-                <th className="border border-black p-2 font-bold w-1/4">Deuk-jeum</th>
-                <th className="border border-black p-2 font-bold w-1/6">Gam-Jeom</th>
+                <th className="border border-black p-1 font-bold w-1/6">Gam-Jeom</th>
+                <th className="border border-black p-1 font-bold w-1/4">Deuk-jeum</th>
+                <th className="border border-black p-1 font-bold w-1/6" colSpan={3}>Round Winner</th>
+                <th className="border border-black p-1 font-bold w-1/4">Deuk-jeum</th>
+                <th className="border border-black p-1 font-bold w-1/6">Gam-Jeom</th>
               </tr>
             </thead>
             <tbody>
               {[1, 2, 3].map((round) => (
-                <tr key={round} className="h-8">
+                <tr key={round} className="h-6">
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
                   <td className="border border-black text-[#00a2e8] font-bold w-16">CHUNG</td>
@@ -314,7 +314,7 @@ export function TASheet() {
             </thead>
             <tbody>
               {[1, 2, 3].map((round) => (
-                <tr key={round} className="h-6">
+                <tr key={round} className="h-5">
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
@@ -413,7 +413,7 @@ export function TASheet() {
                 </tr>
               </thead>
               <tbody>
-                <tr className="h-6">
+                <tr className="h-5">
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
@@ -429,7 +429,7 @@ export function TASheet() {
                 </tr>
               </thead>
               <tbody>
-                <tr className="h-6">
+                <tr className="h-5">
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
@@ -441,13 +441,13 @@ export function TASheet() {
           {/* Officials */}
           <table className="w-full border-collapse border border-black mb-4 text-sm">
             <tbody>
-              <tr className="h-6">
+              <tr className="h-5">
                 <td className="border border-black p-1 font-bold px-2 w-1/4">Judge 2</td>
                 <td className="border border-black p-1 font-bold px-2 w-1/4">Judge 1</td>
                 <td className="border border-black p-1 font-bold px-2 w-1/4">Referee</td>
                 <td className="border border-black p-1 font-bold px-2 w-1/4">Review Jury</td>
               </tr>
-              <tr className="h-6">
+              <tr className="h-5">
                 <td className="border border-black p-1 font-bold px-2">NOC</td>
                 <td className="border border-black p-1 font-bold px-2">NOC</td>
                 <td className="border border-black p-1 font-bold px-2">NOC</td>
@@ -457,7 +457,7 @@ export function TASheet() {
           </table>
 
           {/* Signature */}
-          <div className="flex justify-end mt-6 mb-2">
+          <div className="flex justify-end mt-4 mb-0">
             <div className="w-64 border-t border-black pt-1 text-center font-bold text-sm">
               Signature :
             </div>
