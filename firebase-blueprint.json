@@ -83,6 +83,20 @@
         "author": { "type": "string" }
       },
       "required": ["message", "timestamp", "author"]
+    },
+    "BoutMapping": {
+      "title": "BoutMapping",
+      "description": "Logic for bracket advancement",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "eventId": { "type": "string" },
+        "categoryName": { "type": "string" },
+        "sourceBout": { "type": "string" },
+        "nextBout": { "type": "string" },
+        "slot": { "type": "string", "enum": ["Chung", "Hong"] }
+      },
+      "required": ["eventId", "categoryName", "sourceBout", "nextBout", "slot"]
     }
   },
   "firestore": {
@@ -113,6 +127,10 @@
     "/announcements/{announcementId}": {
       "schema": "Announcement",
       "description": "Collection of broadcast announcements."
+    },
+    "/event_logic/{mappingId}": {
+      "schema": "BoutMapping",
+      "description": "Bracket advancement logic"
     }
   }
 }

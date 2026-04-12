@@ -6,6 +6,16 @@ export interface EventData {
   createdAt: Date;
 }
 
+export interface BoutMapping {
+  id: string;
+  eventId: string;
+  eventName: string;
+  categoryName: string;
+  sourceBout: string;
+  nextBout: string;
+  slot: 'Chung' | 'Hong';
+}
+
 export interface MatchData {
   ring: number;
   bout: string | number;

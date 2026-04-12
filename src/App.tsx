@@ -35,11 +35,12 @@ import {
   Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MatchData, RingStatus, EventData } from './types';
+import { MatchData, RingStatus, EventData, BoutMapping } from './types';
 import { TASheet } from './components/TASheet';
+import { AdminMapping } from './components/AdminMapping';
 import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateTransferInGoogleSheets, testSync } from './services/googleSheets';
-import { cn } from './lib/utils';
-import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, getDocFromServer } from 'firebase/firestore';
+import { cn, normalizeBoutNumber } from './lib/utils';
+import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, getDocFromServer, where } from 'firebase/firestore';
 import { db } from './firebase';
 import Papa from 'papaparse';
 
@@ -221,6 +222,8 @@ export default function App() {
 
   const [rings, setRings] = useSyncedState<RingStatus[]>('tkd_rings', INITIAL_RINGS);
   const [boutQueue, setBoutQueue] = useSyncedState<{id: string, data: MatchData}[]>('tkd_bout_queue', []);
+  const [matchHistory, setMatchHistory] = useSyncedState<{id: string, bout: string, category: string, winner: string, eventId: string}[]>('tkd_match_history', []);
+  const [mappings, setMappings] = useState<BoutMapping[]>([]);
   const [athletes, setAthletes] = useState([
     { name: "Ahmad bin Ibrahim", ic: "080512-14-5567", club: "KST", category: "Junior Male -45kg", status: "Verified" as const },
     { name: "Lim Wei Kang", ic: "091122-08-1234", club: "TKT", category: "Junior Male -45kg", status: "Pending" as const },
@@ -231,6 +234,59 @@ export default function App() {
   const [showAnnouncementInput, setShowAnnouncementInput] = useState(false);
   const [announcementText, setAnnouncementText] = useState('');
   const [announcementTarget, setAnnouncementTarget] = useState<'all' | 'users'>('all');
+
+  useEffect(() => {
+    if (!currentEventId) return;
+    const q = query(collection(db, 'event_logic'), where('eventId', '==', currentEventId));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BoutMapping));
+      console.log('Mappings updated:', data.length);
+      setMappings(data);
+    });
+    return unsub;
+  }, [currentEventId]);
+
+  useEffect(() => {
+    if (!currentEventId) return;
+    const q = query(collection(db, 'matchHistory'), where('eventId', '==', currentEventId));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      console.log('Match history updated from Firestore:', data.length);
+      setMatchHistory(prev => {
+        const updated = [...prev];
+        data.forEach(item => {
+          const index = updated.findIndex(h => h.id === item.id);
+          if (index !== -1) {
+            updated[index] = item;
+          } else {
+            updated.push(item);
+          }
+        });
+        return updated;
+      });
+    });
+    return unsub;
+  }, [currentEventId, setMatchHistory]);
+
+  useEffect(() => {
+    const handleSyncHistory = (e: any) => {
+      const newHistory = e.detail;
+      setMatchHistory(prev => {
+        let updated = [...prev];
+        newHistory.forEach((item: any) => {
+          const index = updated.findIndex(h => h.id === item.id);
+          if (index !== -1) {
+            updated[index] = item;
+          } else {
+            updated.push(item);
+          }
+        });
+        return updated;
+      });
+    };
+    window.addEventListener('tkd_sync_history', handleSyncHistory);
+    return () => window.removeEventListener('tkd_sync_history', handleSyncHistory);
+  }, [setMatchHistory]);
 
   // Ensure TA account exists for returning users
   useEffect(() => {
@@ -295,7 +351,7 @@ export default function App() {
       console.error("Error sending announcement:", error);
     }
   };
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'mats' | 'athletes' | 'settings' | 'general' | 'standby'>(() => {
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'mats' | 'athletes' | 'settings' | 'general' | 'standby' | 'mapping'>(() => {
     const savedUser = localStorage.getItem('tkd_user');
     if (savedUser) {
       try {
@@ -459,23 +515,41 @@ export default function App() {
         return;
       }
 
-      const newBouts = ringBouts.map(row => ({
-        id: Math.random().toString(36).substr(2, 9),
-        data: {
-          ring: parseInt(row[1]),
-          bout: row[2],
-          category: row[3],
-          blue_name: row[4],
-          blue_club: row[5],
-          red_name: row[6],
-          red_club: row[7],
-          privacy_mode: false,
-          eventId: currentEventId || null
-        } as MatchData
-      }));
+      const newBouts = ringBouts.filter(row => {
+        const boutNo = normalizeBoutNumber(row[2]?.trim());
+        // Check if bout already exists in queue or rings
+        const existsInQueue = boutQueue.some(q => normalizeBoutNumber(q.data.bout) === boutNo);
+        const existsInRings = rings.some(r => 
+          (r.currentBout && normalizeBoutNumber(r.currentBout.bout) === boutNo) ||
+          (r.onDeck && normalizeBoutNumber(r.onDeck.bout) === boutNo) ||
+          (r.inTheHole && normalizeBoutNumber(r.inTheHole.bout) === boutNo)
+        );
+        return !existsInQueue && !existsInRings;
+      }).map(row => {
+        const normalizedBout = normalizeBoutNumber(row[2]?.trim());
+        return {
+          id: Math.random().toString(36).substr(2, 9),
+          data: {
+            ring: parseInt(row[1]),
+            bout: normalizedBout,
+            category: row[3],
+            blue_name: row[4],
+            blue_club: row[5],
+            red_name: row[6],
+            red_club: row[7],
+            privacy_mode: false,
+            eventId: currentEventId || null
+          } as MatchData
+        };
+      });
+
+      if (newBouts.length === 0) {
+        alert(`No new bouts to import for Ring ${getRingName(user.assignedRing)}. All bouts from sheet already exist in system.`);
+        return;
+      }
 
       setBoutQueue(prev => [...prev, ...newBouts]);
-      alert(`Successfully imported ${newBouts.length} bouts for Ring ${getRingName(user.assignedRing)}.`);
+      alert(`Successfully imported ${newBouts.length} new bouts for Ring ${getRingName(user.assignedRing)}.`);
     } catch (error) {
       console.error("Error importing bouts:", error);
       alert("Error importing bouts. Please check console for details.");
@@ -507,6 +581,80 @@ export default function App() {
       }
     } else {
       addToSyncLog('Force Sync', 'error', 'No Google Sheet URL configured');
+    }
+  };
+
+  const syncResultsFromSheet = async () => {
+    const RESULTS_SHEET_URL = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv";
+    if (!currentEventId) {
+      console.log('Sync skipped: No currentEventId');
+      return;
+    }
+    setIsSyncing(true);
+    console.log('Starting sync from sheet...', RESULTS_SHEET_URL);
+    try {
+      const response = await fetch(RESULTS_SHEET_URL);
+      const csvText = await response.text();
+      console.log('Fetched CSV text length:', csvText.length);
+      
+      return new Promise<void>((resolve, reject) => {
+        Papa.parse(csvText, {
+          complete: async (result) => {
+            try {
+              const rows = result.data as string[][];
+              console.log('Parsed rows count:', rows.length);
+              let syncCount = 0;
+              for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                if (row.length >= 10) {
+                  const rawMatchNo = row[2]?.trim();
+                  const matchNo = normalizeBoutNumber(rawMatchNo);
+                  const category = row[3]?.trim();
+                  const winner = row[9]?.trim(); // Column J
+
+                  if (matchNo && category && winner && winner !== '-' && winner !== '') {
+                    const historyId = `${currentEventId}_${matchNo}`;
+                    const historyItem = {
+                      bout: matchNo,
+                      category: category,
+                      winner: winner,
+                      eventId: currentEventId,
+                      syncedAt: new Date().toISOString()
+                    };
+                    
+                    console.log(`Syncing result: Bout ${matchNo}, Category ${category}, Winner ${winner}`);
+                    await setDoc(doc(db, 'matchHistory', historyId), historyItem);
+                    syncCount++;
+                  }
+                }
+              }
+              
+              console.log('Sync completed. Total synced:', syncCount);
+              if (syncCount > 0) {
+                addToSyncLog('Bracket Sync', 'success', `Synced ${syncCount} results from sheet`);
+                alert(`Successfully synced ${syncCount} winners from the Google Sheet.`);
+              } else {
+                addToSyncLog('Bracket Sync', 'success', 'No new results found in sheet');
+                alert("No new winners found in the Google Sheet. Make sure Column J has winner names.");
+              }
+              resolve();
+            } catch (err) {
+              console.error('Error in Papa.parse complete:', err);
+              reject(err);
+            }
+          },
+          error: (err) => {
+            console.error('Papa.parse error:', err);
+            reject(err);
+          },
+          skipEmptyLines: true
+        });
+      });
+    } catch (error) {
+      console.error("Error syncing results from sheet:", error);
+      addToSyncLog('Bracket Sync', 'error', error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -587,6 +735,155 @@ export default function App() {
 
   const getBoutNumber = (bout: string | number) => parseInt(bout.toString()) || 0;
 
+  useEffect(() => {
+    if (!currentEventId || mappings.length === 0 || matchHistory.length === 0) {
+      return;
+    }
+
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+
+    // Group mappings by target bout to handle both slots
+    const targetBouts = new Map<string, { category: string, bout: string, blue?: string, red?: string }>();
+
+    mappings.forEach(mapping => {
+      const match = matchHistory.find(h => 
+        normalizeBoutNumber(h.bout) === normalizeBoutNumber(mapping.sourceBout) && 
+        normalize(h.category) === normalize(mapping.categoryName) &&
+        h.eventId === currentEventId
+      );
+
+      if (match) {
+        const key = `${normalize(mapping.categoryName)}_${normalizeBoutNumber(mapping.nextBout)}`;
+        if (!targetBouts.has(key)) {
+          targetBouts.set(key, { category: mapping.categoryName, bout: normalizeBoutNumber(mapping.nextBout) });
+        }
+        const target = targetBouts.get(key)!;
+        if (mapping.slot === 'Chung') target.blue = match.winner;
+        if (mapping.slot === 'Hong') target.red = match.winner;
+      }
+    });
+
+    if (targetBouts.size === 0) return;
+
+    let changed = false;
+    let updatedQueue = [...boutQueue];
+    let updatedRings = [...rings];
+
+    targetBouts.forEach((info) => {
+      let found = false;
+      const targetBoutStr = normalizeBoutNumber(info.bout);
+
+      // Check rings
+      updatedRings = updatedRings.map(ring => {
+        let ringDocChanged = false;
+        const updateBout = (bout: MatchData | null) => {
+          if (bout && normalizeBoutNumber(bout.bout) === targetBoutStr) {
+            // If bout number matches, we consider it found even if category is slightly different
+            found = true;
+            const newData = { ...bout };
+            let boutChanged = false;
+            if (info.blue && newData.blue_name !== info.blue) {
+              newData.blue_name = info.blue;
+              boutChanged = true;
+            }
+            if (info.red && newData.red_name !== info.red) {
+              newData.red_name = info.red;
+              boutChanged = true;
+            }
+            if (boutChanged) {
+              ringDocChanged = true;
+              changed = true;
+            }
+            return newData;
+          }
+          return bout;
+        };
+
+        const newCurrent = updateBout(ring.currentBout);
+        const newOnDeck = updateBout(ring.onDeck);
+        const newInTheHole = updateBout(ring.inTheHole);
+
+        if (ringDocChanged) {
+          return { ...ring, currentBout: newCurrent, onDeck: newOnDeck, inTheHole: newInTheHole };
+        }
+        return ring;
+      });
+
+      // Check queue
+      updatedQueue = updatedQueue.map(item => {
+        if (normalizeBoutNumber(item.data.bout) === targetBoutStr) {
+          found = true;
+          const newData = { ...item.data };
+          let itemChanged = false;
+          if (info.blue && newData.blue_name !== info.blue) {
+            newData.blue_name = info.blue;
+            itemChanged = true;
+          }
+          if (info.red && newData.red_name !== info.red) {
+            newData.red_name = info.red;
+            itemChanged = true;
+          }
+          if (itemChanged) {
+            changed = true;
+            return { ...item, data: newData };
+          }
+        }
+        return item;
+      });
+
+      // If not found anywhere, generate it
+      if (!found) {
+        const boutNum = parseInt(targetBoutStr);
+        const ringNum = Math.floor(boutNum / 1000) || 1;
+        
+        const newBout: MatchData = {
+          ring: ringNum,
+          bout: targetBoutStr,
+          category: info.category,
+          blue_name: info.blue || '',
+          blue_club: '',
+          red_name: info.red || '',
+          red_club: '',
+          privacy_mode: false,
+          eventId: currentEventId
+        };
+
+        updatedQueue.push({
+          id: `gen_${currentEventId}_${targetBoutStr}_${info.category}`,
+          data: newBout
+        });
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      setBoutQueue(updatedQueue);
+      setRings(updatedRings);
+      localStorage.setItem('tkd_bout_queue', JSON.stringify(updatedQueue));
+      localStorage.setItem('tkd_rings', JSON.stringify(updatedRings));
+    }
+  }, [mappings, matchHistory, currentEventId, boutQueue, rings]);
+
+  // Auto-pull logic: If a ring is waiting for a bout and one becomes available in the queue, pull it.
+  useEffect(() => {
+    if (!currentEventId) return;
+
+    rings.forEach(ring => {
+      // If ring is active (has total bouts) and current bout is null
+      if (ring.totalBouts && !ring.currentBout && ring.nextBoutNumber <= ring.totalBouts) {
+        const nextBoutIndex = boutQueue.findIndex(q => 
+          q.data.ring === ring.ringNumber && 
+          (!q.data.eventId || q.data.eventId === currentEventId)
+        );
+        
+        if (nextBoutIndex !== -1) {
+          console.log(`Auto-pulling bout for Ring ${ring.ringNumber} from queue`);
+          pullBout(boutQueue[nextBoutIndex].id);
+        }
+      }
+    });
+  }, [boutQueue, rings, currentEventId]);
+
   const handleWinnerSelect = async (ringNumber: number, boutNumber: string | number, winner: string) => {
     let activeUrl = googleSheetUrl;
     if (!activeUrl && currentEventId && events.length > 0) {
@@ -620,6 +917,30 @@ export default function App() {
         setLastSyncError(`Winner sync failed: ${msg}`);
         addToSyncLog('Winner', 'error', msg);
       }).finally(() => setIsSyncing(false));
+    }
+
+    // Save to match history for advancement logic
+    if (currentEventId && currentBout) {
+      const historyItem = {
+        id: `${currentEventId}_${boutNumber}`,
+        bout: boutNumber.toString(),
+        category: currentBout.category,
+        winner: winnerName || winner,
+        eventId: currentEventId
+      };
+      
+      setMatchHistory(prev => {
+        const filtered = prev.filter(h => h.id !== historyItem.id);
+        const updated = [...filtered, historyItem];
+        return updated;
+      });
+
+      // Also save to Firestore
+      const historyId = `${currentEventId}_${boutNumber}`;
+      setDoc(doc(db, 'matchHistory', historyId), {
+        ...historyItem,
+        syncedAt: serverTimestamp()
+      }).catch(err => console.error("Error saving match history:", err));
     }
     
     const ringQueue = boutQueue.filter(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
@@ -1042,6 +1363,12 @@ export default function App() {
                 active={activeTab === 'athletes'} 
                 onClick={() => setActiveTab('athletes')} 
               />
+              <NavItem 
+                icon={<Shield size={20} />} 
+                label="Bracket Logic" 
+                active={activeTab === 'mapping'} 
+                onClick={() => setActiveTab('mapping')} 
+              />
             </>
           )}
           {user?.role === 'user' && (
@@ -1225,16 +1552,26 @@ export default function App() {
                     <span>New</span>
                   </button>
                 </div>
-                {activeTab === 'mats' && (
+                <div className="flex items-center gap-2 w-full sm:w-auto">
                   <button 
-                    onClick={handleImportInitialBouts}
-                    disabled={isImportingBouts}
-                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 md:px-6 py-1.5 md:py-2 bg-green-600 text-white rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-200 disabled:opacity-50"
+                    onClick={syncResultsFromSheet}
+                    disabled={isSyncing}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-1.5 md:py-2 bg-amber-600 text-white rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest hover:bg-amber-700 transition-all shadow-lg shadow-amber-200 disabled:opacity-50"
                   >
-                    {isImportingBouts ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-                    <span>Initial Bout</span>
+                    {isSyncing ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                    <span>Winner bout</span>
                   </button>
-                )}
+                  {activeTab === 'mats' && (
+                    <button 
+                      onClick={handleImportInitialBouts}
+                      disabled={isImportingBouts}
+                      className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 md:px-6 py-1.5 md:py-2 bg-green-600 text-white rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-200 disabled:opacity-50"
+                    >
+                      {isImportingBouts ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
+                      <span>Initial Bout</span>
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1593,6 +1930,15 @@ export default function App() {
             <div className="max-w-4xl mx-auto">
               <DataUpdater setCategories={setCategories} setClubs={setClubs} />
             </div>
+          )}
+
+          {activeTab === 'mapping' && user?.role === 'admin' && (
+            <AdminMapping 
+              currentEventId={currentEventId} 
+              currentEventName={getCurrentEventName()}
+              categories={categories} 
+              events={events}
+            />
           )}
 
           {activeTab === 'settings' && user?.role === 'admin' && (
