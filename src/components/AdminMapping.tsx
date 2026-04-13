@@ -11,9 +11,11 @@ interface AdminMappingProps {
   currentEventName: string;
   categories: string[];
   events: EventData[];
+  onSyncMatches?: () => void;
+  isSyncingMatches?: boolean;
 }
 
-export function AdminMapping({ currentEventId, currentEventName, categories, events }: AdminMappingProps) {
+export function AdminMapping({ currentEventId, currentEventName, categories, events, onSyncMatches, isSyncingMatches }: AdminMappingProps) {
   const [mappings, setMappings] = useState<BoutMapping[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string>(currentEventId || '');
   const [sourceBout, setSourceBout] = useState('');
@@ -24,9 +26,10 @@ export function AdminMapping({ currentEventId, currentEventName, categories, eve
   const [isSyncingResults, setIsSyncingResults] = useState(false);
   const [isSyncingCategories, setIsSyncingCategories] = useState(false);
   const [fetchedCategories, setFetchedCategories] = useState<string[]>([]);
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
 
   const RESULTS_SHEET_URL = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv";
-  const CATEGORIES_SHEET_URL = "https://docs.google.com/spreadsheets/d/1QCGhccGDJboxBLswoJqe82X3dxa9ZZC0aDo4Y3CZF8o/export?format=csv&gid=0";
+  const CATEGORIES_SHEET_URL = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv&gid=0";
 
   useEffect(() => {
     if (currentEventId) {
@@ -169,8 +172,52 @@ export function AdminMapping({ currentEventId, currentEventName, categories, eve
     }
   };
 
+  const handleDeleteAll = async () => {
+    try {
+      const promises = mappings.map(m => deleteDoc(doc(db, 'event_logic', m.id)));
+      await Promise.all(promises);
+      setShowDeleteAllModal(false);
+    } catch (error) {
+      console.error("Error deleting all mappings:", error);
+    }
+  };
+
+  const sortedMappings = [...mappings].sort((a, b) => {
+    const aNum = parseInt(a.sourceBout?.replace(/[^0-9]/g, '') || '0');
+    const bNum = parseInt(b.sourceBout?.replace(/[^0-9]/g, '') || '0');
+    return aNum - bNum;
+  });
+
   return (
     <div className="space-y-8">
+      {showDeleteAllModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl">
+            <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mb-6 mx-auto">
+              <Trash2 size={32} className="text-red-600" />
+            </div>
+            <h3 className="text-xl font-black text-center text-slate-900 mb-2">Delete All Mappings</h3>
+            <p className="text-slate-500 text-center mb-8">
+              Are you sure you want to delete ALL mappings for this event? This action cannot be undone.
+            </p>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setShowDeleteAllModal(false)}
+                className="flex-1 px-6 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleDeleteAll}
+                className="flex-1 px-6 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors"
+              >
+                Delete All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
         <h3 className="text-xl font-bold flex items-center gap-2">
           <Shield size={24} className="text-red-600" />
@@ -178,6 +225,16 @@ export function AdminMapping({ currentEventId, currentEventName, categories, eve
         </h3>
         
         <div className="flex justify-end gap-2">
+          {onSyncMatches && (
+            <button 
+              onClick={onSyncMatches}
+              disabled={isSyncingMatches}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl transition-colors text-xs uppercase tracking-widest disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={cn(isSyncingMatches && "animate-spin")} />
+              {isSyncingMatches ? 'Syncing...' : 'Sync Matches'}
+            </button>
+          )}
           <button 
             onClick={syncCategoriesFromSheet}
             disabled={isSyncingCategories}
@@ -246,6 +303,19 @@ export function AdminMapping({ currentEventId, currentEventName, categories, eve
           </div>
 
           <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Target Slot</label>
+            <select 
+              value={slot}
+              onChange={(e) => setSlot(e.target.value as 'Chung' | 'Hong')}
+              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-red-500"
+              required
+            >
+              <option value="Chung">Chung (Blue)</option>
+              <option value="Hong">Hong (Red)</option>
+            </select>
+          </div>
+
+          <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Next Bout #</label>
             <div className="relative">
               <ArrowRight className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -260,19 +330,6 @@ export function AdminMapping({ currentEventId, currentEventName, categories, eve
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Target Slot</label>
-            <select 
-              value={slot}
-              onChange={(e) => setSlot(e.target.value as 'Chung' | 'Hong')}
-              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-red-500"
-              required
-            >
-              <option value="Chung">Chung (Blue)</option>
-              <option value="Hong">Hong (Red)</option>
-            </select>
-          </div>
-
           <button 
             type="submit"
             disabled={isSaving}
@@ -285,8 +342,17 @@ export function AdminMapping({ currentEventId, currentEventName, categories, eve
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
           <h4 className="font-black text-slate-800 uppercase tracking-widest text-xs">Active Advancement Logic</h4>
+          {mappings.length > 0 && (
+            <button
+              onClick={() => setShowDeleteAllModal(true)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 font-bold rounded-lg transition-colors text-xs uppercase tracking-widest"
+            >
+              <Trash2 size={14} />
+              Delete All
+            </button>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -301,14 +367,14 @@ export function AdminMapping({ currentEventId, currentEventName, categories, eve
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {mappings.length === 0 ? (
+              {sortedMappings.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-slate-400 text-sm italic">
                     No mappings defined for the selected event yet.
                   </td>
                 </tr>
               ) : (
-                mappings.map((m) => (
+                sortedMappings.map((m) => (
                   <tr key={m.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
                       <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">{m.eventName || 'Unknown'}</span>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { Download, AlertCircle, RefreshCw } from 'lucide-react';
+import { MatchData, RingStatus } from '../types';
 import Papa from 'papaparse';
-import { RefreshCw, Download, AlertCircle } from 'lucide-react';
 
 interface SheetMatch {
   eventName: string;
@@ -13,16 +14,23 @@ interface SheetMatch {
   redClub: string;
 }
 
-export function TASheet() {
+interface TASheetProps {
+  boutQueue: { id: string, data: MatchData }[];
+  rings: RingStatus[];
+  currentEventName: string;
+}
+
+export function TASheet({ boutQueue, rings, currentEventName }: TASheetProps) {
   const [matches, setMatches] = useState<SheetMatch[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [fallbackMatches, setFallbackMatches] = useState<SheetMatch[]>([]);
   const [selectedRing, setSelectedRing] = useState<string>('');
   const [selectedMatchNo, setSelectedMatchNo] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1QCGhccGDJboxBLswoJqe82X3dxa9ZZC0aDo4Y3CZF8o/export?format=csv&gid=0";
+  const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv&gid=0";
 
-  const fetchData = async () => {
+  const fetchFallbackData = async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -36,7 +44,7 @@ export function TASheet() {
         complete: (result) => {
           const rows = result.data as string[][];
           if (rows.length < 2) {
-            setMatches([]);
+            setFallbackMatches([]);
             return;
           }
           
@@ -44,30 +52,20 @@ export function TASheet() {
           // Skip header row
           for (let i = 1; i < rows.length; i++) {
             const row = rows[i];
-            if (row.length >= 3 && row[1] && row[2]) { // Ensure Ring No and Match No exist
+            if (row.length >= 4 && row[2] && row[3]) { // Ensure Ring No and Match No exist
               parsedMatches.push({
-                eventName: row[0] || '',
-                ringNo: row[1] || '',
-                matchNo: row[2] || '',
-                category: row[3] || '',
-                blueName: row[4] || '',
-                blueClub: row[5] || '',
-                redName: row[6] || '',
-                redClub: row[7] || ''
+                eventName: row[1] || '',
+                ringNo: row[2] || '',
+                matchNo: row[3] || '',
+                category: row[4] || '',
+                blueName: row[5] || '',
+                blueClub: row[6] || '',
+                redName: row[7] || '',
+                redClub: row[8] || ''
               });
             }
           }
-          setMatches(parsedMatches);
-          
-          // Auto-select first available ring if none selected
-          if (parsedMatches.length > 0) {
-            const firstRing = parsedMatches[0].ringNo;
-            if (!selectedRing) {
-              setSelectedRing(firstRing);
-              const firstMatch = parsedMatches.find(m => m.ringNo === firstRing);
-              if (firstMatch) setSelectedMatchNo(firstMatch.matchNo);
-            }
-          }
+          setFallbackMatches(parsedMatches);
         },
         error: (err) => {
           setError(err.message);
@@ -82,8 +80,71 @@ export function TASheet() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    const allMatches: SheetMatch[] = [];
+
+    // Add matches from rings
+    rings.forEach(ring => {
+      const ringMatches = [ring.currentBout, ring.onDeck, ring.inTheHole].filter(Boolean) as MatchData[];
+      ringMatches.forEach(match => {
+        allMatches.push({
+          eventName: currentEventName || '',
+          ringNo: match.ring.toString(),
+          matchNo: match.bout.toString(),
+          category: match.category || '',
+          blueName: match.blue_name || '',
+          blueClub: match.blue_club || '',
+          redName: match.red_name || '',
+          redClub: match.red_club || ''
+        });
+      });
+    });
+
+    // Add matches from queue
+    boutQueue.forEach(item => {
+      const match = item.data;
+      allMatches.push({
+        eventName: currentEventName || '',
+        ringNo: match.ring.toString(),
+        matchNo: match.bout.toString(),
+        category: match.category || '',
+        blueName: match.blue_name || '',
+        blueClub: match.blue_club || '',
+        redName: match.red_name || '',
+        redClub: match.red_club || ''
+      });
+    });
+
+    // Merge fallback matches (only add if not already in allMatches)
+    fallbackMatches.forEach(fallbackMatch => {
+      const exists = allMatches.some(m => m.ringNo === fallbackMatch.ringNo && m.matchNo === fallbackMatch.matchNo);
+      if (!exists) {
+        allMatches.push(fallbackMatch);
+      }
+    });
+
+    // Sort matches by bout number
+    allMatches.sort((a, b) => {
+      const numA = parseInt(a.matchNo.replace(/[^0-9]/g, '')) || 0;
+      const numB = parseInt(b.matchNo.replace(/[^0-9]/g, '')) || 0;
+      return numA - numB;
+    });
+
+    setMatches(allMatches);
+
+    // Auto-select first available ring if none selected or if selected ring has no matches
+    if (allMatches.length > 0) {
+      const uniqueRings = Array.from(new Set(allMatches.map(m => m.ringNo)));
+      if (!selectedRing || !uniqueRings.includes(selectedRing)) {
+        const firstRing = uniqueRings[0];
+        setSelectedRing(firstRing);
+        const firstMatch = allMatches.find(m => m.ringNo === firstRing);
+        if (firstMatch) setSelectedMatchNo(firstMatch.matchNo);
+      }
+    } else {
+      setSelectedRing('');
+      setSelectedMatchNo('');
+    }
+  }, [boutQueue, rings, currentEventName, fallbackMatches]);
 
   const uniqueRings = Array.from(new Set(matches.map(m => m.ringNo))).sort((a, b) => {
     const numA = parseInt(a as string);
@@ -95,9 +156,18 @@ export function TASheet() {
   const ringMatches = matches.filter(m => m.ringNo === selectedRing);
   const currentMatch = ringMatches.find(m => m.matchNo === selectedMatchNo) || ringMatches[0];
 
-  const handlePrint = () => {
-    window.print();
+  const [printMode, setPrintMode] = useState<'single' | 'all'>('single');
+
+  const handlePrint = (mode: 'single' | 'all') => {
+    setPrintMode(mode);
+    setTimeout(() => {
+      window.print();
+      // Reset back to single after printing
+      setTimeout(() => setPrintMode('single'), 100);
+    }, 100);
   };
+
+  const matchesToRender = printMode === 'all' ? ringMatches : (currentMatch ? [currentMatch] : []);
 
   return (
     <div className="space-y-6">
@@ -106,21 +176,24 @@ export function TASheet() {
           @page { size: A4 portrait; margin: 8mm; }
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           * { box-shadow: none !important; -webkit-box-shadow: none !important; }
+          .page-break { page-break-after: always; }
+          .page-break:last-child { page-break-after: auto; }
         `}
       </style>
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 print:hidden flex flex-wrap gap-4 items-end">
         <div className="w-full flex justify-between items-center mb-2">
           <h2 className="text-lg font-bold flex items-center gap-2">
             <Download size={20} className="text-slate-400" />
-            Fetch Data from Google Sheet
+            TA Sheet Generator
           </h2>
           <button 
-            onClick={fetchData}
+            onClick={fetchFallbackData}
             disabled={isLoading}
             className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors flex items-center gap-2 text-sm disabled:opacity-50"
+            title="Fetch directly from Google Sheet if bouts are not in the system yet"
           >
             {isLoading ? <RefreshCw size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-            Refresh Data
+            Fetch from Google Sheet
           </button>
         </div>
 
@@ -165,90 +238,98 @@ export function TASheet() {
           </select>
         </div>
 
-        <div className="ml-auto">
+        <div className="ml-auto flex gap-2">
           <button 
-            onClick={handlePrint}
+            onClick={() => handlePrint('single')}
             disabled={!currentMatch}
             className="px-6 py-2 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors disabled:opacity-50"
           >
-            Print TA Sheet
+            Print Current Match
+          </button>
+          <button 
+            onClick={() => handlePrint('all')}
+            disabled={ringMatches.length === 0}
+            className="px-6 py-2 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors disabled:opacity-50"
+          >
+            Print All for Ring {selectedRing}
           </button>
         </div>
       </div>
 
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 print:shadow-none print:border-none print:p-0 overflow-x-auto">
-        <div className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full" style={{ fontFamily: 'Arial, sans-serif' }}>
-          {/* Header */}
-          <div className="flex justify-between items-center mb-2">
-            <div className="w-48"></div> {/* Empty space to balance the header */}
-            <h1 className="text-2xl font-bold tracking-widest">TA SHEET</h1>
-            <div className="text-lg font-semibold w-48 text-right">Best of 3</div>
-          </div>
+      <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 print:shadow-none print:border-none print:p-0 overflow-x-auto print:overflow-visible">
+        {matchesToRender.map((match, index) => (
+          <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full page-break mb-8 print:mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
+            {/* Header */}
+            <div className="flex justify-between items-center mb-2">
+              <div className="w-48"></div> {/* Empty space to balance the header */}
+              <h1 className="text-2xl font-bold tracking-widest">TA SHEET</h1>
+              <div className="text-lg font-semibold w-48 text-right">Best of 3</div>
+            </div>
 
-          {/* Match Info */}
-          <table className="w-full border-collapse border border-black mb-2 text-sm">
-            <tbody>
-              <tr>
-                <td className="border border-black p-1 w-[21%] font-bold">Date :</td>
-                <td className="border border-black p-1 w-[45%] font-bold">Day No:</td>
-                <td className="border border-black p-1 w-[34%] font-bold" colSpan={2}>
-                  <div className="flex items-center">
-                    <span>Court No:</span>
-                    <span className="flex-1 text-center text-lg">{currentMatch?.ringNo || ''}</span>
-                  </div>
-                </td>
-              </tr>
-              <tr>
-                <td className="border border-black p-1 w-[21%] font-bold">
-                  <div className="flex items-center">
-                    <span>Match No:</span>
-                    <span className="flex-1 text-center text-lg">{currentMatch?.matchNo || ''}</span>
-                  </div>
-                </td>
-                <td className="border border-black p-1 w-[45%] font-bold">Weight Category : {currentMatch?.category || ''}</td>
-                <td className="border border-black p-1 w-[17%] font-bold">Hit Level :</td>
-                <td className="border border-black p-1 w-[17%] font-bold">Hogu Saiz :</td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* Players */}
-          <div className="flex gap-4 mb-2">
-            <table className="w-1/2 border-collapse border border-black text-sm">
-              <thead>
-                <tr>
-                  <th colSpan={2} className="bg-[#00a2e8] text-black border border-black p-1 font-bold text-lg">CHUNG</th>
-                </tr>
-              </thead>
+            {/* Match Info */}
+            <table className="w-full border-collapse border border-black mb-2 text-sm">
               <tbody>
                 <tr>
-                  <td className="border border-black p-1 font-bold w-20">NAME</td>
-                  <td className="border border-black p-1">{currentMatch?.blueName || ''}</td>
+                  <td className="border border-black p-1 w-[21%] font-bold">Date :</td>
+                  <td className="border border-black p-1 w-[45%] font-bold">Day No:</td>
+                  <td className="border border-black p-1 w-[34%] font-bold" colSpan={2}>
+                    <div className="flex items-center">
+                      <span>Court No:</span>
+                      <span className="flex-1 text-center text-lg">{match.ringNo}</span>
+                    </div>
+                  </td>
                 </tr>
                 <tr>
-                  <td className="border border-black p-1 font-bold">NOC</td>
-                  <td className="border border-black p-1">{currentMatch?.blueClub || ''}</td>
+                  <td className="border border-black p-1 w-[21%] font-bold">
+                    <div className="flex items-center">
+                      <span>Match No:</span>
+                      <span className="flex-1 text-center text-lg">{match.matchNo}</span>
+                    </div>
+                  </td>
+                  <td className="border border-black p-1 w-[45%] font-bold">Weight Category : {match.category}</td>
+                  <td className="border border-black p-1 w-[17%] font-bold">Hit Level :</td>
+                  <td className="border border-black p-1 w-[17%] font-bold">Hogu Saiz :</td>
                 </tr>
               </tbody>
             </table>
-            <table className="w-1/2 border-collapse border border-black text-sm">
-              <thead>
-                <tr>
-                  <th colSpan={2} className="bg-[#ed1c24] text-black border border-black p-1 font-bold text-lg">HONG</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="border border-black p-1 font-bold w-20">NAME</td>
-                  <td className="border border-black p-1">{currentMatch?.redName || ''}</td>
-                </tr>
-                <tr>
-                  <td className="border border-black p-1 font-bold">NOC</td>
-                  <td className="border border-black p-1">{currentMatch?.redClub || ''}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+
+            {/* Players */}
+            <div className="flex gap-4 mb-2">
+              <table className="w-1/2 border-collapse border border-black text-sm">
+                <thead>
+                  <tr>
+                    <th colSpan={2} className="bg-[#00a2e8] text-black border border-black p-1 font-bold text-lg">CHUNG</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="border border-black p-1 font-bold w-20">NAME</td>
+                    <td className="border border-black p-1">{match.blueName}</td>
+                  </tr>
+                  <tr>
+                    <td className="border border-black p-1 font-bold">NOC</td>
+                    <td className="border border-black p-1">{match.blueClub}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <table className="w-1/2 border-collapse border border-black text-sm">
+                <thead>
+                  <tr>
+                    <th colSpan={2} className="bg-[#ed1c24] text-black border border-black p-1 font-bold text-lg">HONG</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="border border-black p-1 font-bold w-20">NAME</td>
+                    <td className="border border-black p-1">{match.redName}</td>
+                  </tr>
+                  <tr>
+                    <td className="border border-black p-1 font-bold">NOC</td>
+                    <td className="border border-black p-1">{match.redClub}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
           {/* Round Scores */}
           <table className="w-full border-collapse border border-black mb-2 text-sm text-center">
@@ -464,6 +545,7 @@ export function TASheet() {
             </div>
           </div>
         </div>
+        ))}
       </div>
     </div>
   );

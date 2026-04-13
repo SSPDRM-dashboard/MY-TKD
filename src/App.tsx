@@ -35,11 +35,12 @@ import {
   Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MatchData, RingStatus, EventData, BoutMapping } from './types';
+import { MatchData, RingStatus, EventData, BoutMapping, MatchHistoryItem } from './types';
 import { TASheet } from './components/TASheet';
 import { AdminMapping } from './components/AdminMapping';
+import { AIBracketSetup } from './components/AIBracketSetup';
 import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateTransferInGoogleSheets, testSync } from './services/googleSheets';
-import { cn, normalizeBoutNumber } from './lib/utils';
+import { cn, normalizeBoutNumber, getBoutNumber, formatBoutNumber } from './lib/utils';
 import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, getDocFromServer, where } from 'firebase/firestore';
 import { db } from './firebase';
 import Papa from 'papaparse';
@@ -222,7 +223,7 @@ export default function App() {
 
   const [rings, setRings] = useSyncedState<RingStatus[]>('tkd_rings', INITIAL_RINGS);
   const [boutQueue, setBoutQueue] = useSyncedState<{id: string, data: MatchData}[]>('tkd_bout_queue', []);
-  const [matchHistory, setMatchHistory] = useSyncedState<{id: string, bout: string, category: string, winner: string, eventId: string}[]>('tkd_match_history', []);
+  const [matchHistory, setMatchHistory] = useSyncedState<MatchHistoryItem[]>('tkd_match_history', []);
   const [mappings, setMappings] = useState<BoutMapping[]>([]);
   const [athletes, setAthletes] = useState([
     { name: "Ahmad bin Ibrahim", ic: "080512-14-5567", club: "KST", category: "Junior Male -45kg", status: "Verified" as const },
@@ -397,12 +398,19 @@ export default function App() {
   };
 
   const getFilteredQueue = (ringNum?: number) => {
-    return boutQueue.filter(item => {
-      const matchesEvent = !item.data.eventId || item.data.eventId === currentEventId;
-      const matchesRing = ringNum === undefined || item.data.ring === ringNum;
-      const matchesUserRing = user?.role === 'admin' || item.data.ring === user?.assignedRing;
-      return matchesEvent && matchesRing && matchesUserRing;
-    });
+    return boutQueue
+      .filter(item => {
+        const matchesEvent = !item.data.eventId || item.data.eventId === currentEventId;
+        const itemRing = Number(item.data.ring);
+        const matchesRing = ringNum === undefined || itemRing === Number(ringNum);
+        const matchesUserRing = user?.role === 'admin' || itemRing === Number(user?.assignedRing);
+        return matchesEvent && matchesRing && matchesUserRing;
+      })
+      .sort((a, b) => {
+        const boutA = parseInt(normalizeBoutNumber(a.data.bout)) || 0;
+        const boutB = parseInt(normalizeBoutNumber(b.data.bout)) || 0;
+        return boutA - boutB;
+      });
   };
 
   const [lastSyncError, setLastSyncError] = useState<string | null>(null);
@@ -426,54 +434,35 @@ export default function App() {
   const handleNewBoutSubmit = async (ringNumber: number, newData: MatchData) => {
     console.log("Creating new bout:", newData);
     
-    // Determine the correct URL to use
-    let activeUrl = googleSheetUrl;
-    if (!activeUrl && currentEventId && events.length > 0) {
-      const event = events.find(e => e.id === currentEventId);
-      if (event && event.sheetUrl) {
-        activeUrl = event.sheetUrl;
-        setGoogleSheetUrl(activeUrl);
-      }
-    }
-
-    console.log("Using Google Sheet URL:", activeUrl);
+    // Capitalize all letters
+    const capitalizedData: MatchData = {
+      ...newData,
+      blue_name: newData.blue_name?.toUpperCase() || '',
+      blue_club: newData.blue_club?.toUpperCase() || '',
+      red_name: newData.red_name?.toUpperCase() || '',
+      red_club: newData.red_club?.toUpperCase() || '',
+      category: newData.category?.toUpperCase() || '',
+      bout: newData.bout?.toString().toUpperCase() || '',
+    };
 
     // Update categories and clubs lists
-    if (newData.category && !categories.includes(newData.category)) {
-      setCategories(prev => [...prev, newData.category]);
+    if (capitalizedData.category && !categories.includes(capitalizedData.category)) {
+      setCategories(prev => [...prev, capitalizedData.category]);
     }
-    if (newData.blue_club && !clubs.includes(newData.blue_club)) {
-      setClubs(prev => [...prev, newData.blue_club]);
+    if (capitalizedData.blue_club && !clubs.includes(capitalizedData.blue_club)) {
+      setClubs(prev => [...prev, capitalizedData.blue_club]);
     }
-    if (newData.red_club && !clubs.includes(newData.red_club)) {
-      setClubs(prev => [...prev, newData.red_club]);
+    if (capitalizedData.red_club && !clubs.includes(capitalizedData.red_club)) {
+      setClubs(prev => [...prev, capitalizedData.red_club]);
     }
 
     // Add to queue
-    const queueItem = { id: Math.random().toString(36).substr(2, 9), data: { ...newData, eventId: currentEventId || null } };
+    const queueItem = { id: Math.random().toString(36).substr(2, 9), data: { ...capitalizedData, eventId: currentEventId || null } };
     setBoutQueue(prev => [...prev, queueItem]);
 
-    // Sync to Google Sheets
-    if (activeUrl) {
-      setIsSyncing(true);
-      setLastSyncError(null);
-      try {
-        console.log("Syncing to Google Sheets...");
-        await syncToGoogleSheets(activeUrl, newData, getCurrentEventName());
-        console.log("Sync successful (request sent)");
-        addToSyncLog('New Bout', 'success', `Bout ${newData.bout} sent to Ring ${newData.ring}`);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.error("Bout sync failed:", msg);
-        setLastSyncError(`Sync failed: ${msg}`);
-        addToSyncLog('New Bout', 'error', msg);
-      } finally {
-        setIsSyncing(false);
-      }
-    } else {
-      console.warn("Sync skipped: No Google Sheet URL available");
-      setLastSyncError("Sync skipped: No URL configured for this event");
-    }
+    // Note: We removed the direct sync to Google Sheets from here to prevent duplicate entries.
+    // The bout will be synced to Google Sheets when it is pulled to a ring via handleBoutUpdate.
+    console.log("Bout added to queue. It will sync to Google Sheets when pulled to a ring.");
   };
 
   const handleImportInitialBouts = async () => {
@@ -484,7 +473,7 @@ export default function App() {
 
     setIsImportingBouts(true);
     try {
-      const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1QCGhccGDJboxBLswoJqe82X3dxa9ZZC0aDo4Y3CZF8o/export?format=csv";
+      const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv";
       const response = await fetch(SHEET_CSV_URL);
       if (!response.ok) throw new Error("Failed to fetch sheet data.");
       
@@ -550,6 +539,79 @@ export default function App() {
 
       setBoutQueue(prev => [...prev, ...newBouts]);
       alert(`Successfully imported ${newBouts.length} new bouts for Ring ${getRingName(user.assignedRing)}.`);
+    } catch (error) {
+      console.error("Error importing bouts:", error);
+      alert("Error importing bouts. Please check console for details.");
+    } finally {
+      setIsImportingBouts(false);
+    }
+  };
+
+  const handleAdminImportBouts = async () => {
+    setIsImportingBouts(true);
+    try {
+      const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv";
+      const response = await fetch(SHEET_CSV_URL);
+      if (!response.ok) throw new Error("Failed to fetch sheet data.");
+      
+      const csvText = await response.text();
+      const results = Papa.parse<string[]>(csvText, {
+        skipEmptyLines: true
+      });
+
+      const rows = results.data;
+      if (rows.length < 2) {
+        alert("Sheet is empty or missing data.");
+        return;
+      }
+
+      const dataRows = rows.slice(1);
+      const currentEventName = getCurrentEventName();
+
+      const eventBouts = dataRows.filter(row => {
+        const rowEventName = row[0]?.trim();
+        return rowEventName === currentEventName;
+      });
+      
+      if (eventBouts.length === 0) {
+        alert(`No bouts found for Event "${currentEventName}" in the sheet.`);
+        return;
+      }
+
+      const newBouts = eventBouts.filter(row => {
+        const boutNo = normalizeBoutNumber(row[2]?.trim());
+        const existsInQueue = boutQueue.some(q => normalizeBoutNumber(q.data.bout) === boutNo);
+        const existsInRings = rings.some(r => 
+          (r.currentBout && normalizeBoutNumber(r.currentBout.bout) === boutNo) ||
+          (r.onDeck && normalizeBoutNumber(r.onDeck.bout) === boutNo) ||
+          (r.inTheHole && normalizeBoutNumber(r.inTheHole.bout) === boutNo)
+        );
+        return !existsInQueue && !existsInRings;
+      }).map(row => {
+        const normalizedBout = normalizeBoutNumber(row[2]?.trim());
+        return {
+          id: Math.random().toString(36).substr(2, 9),
+          data: {
+            ring: parseInt(row[1]) || 1,
+            bout: normalizedBout,
+            category: row[3],
+            blue_name: row[4],
+            blue_club: row[5],
+            red_name: row[6],
+            red_club: row[7],
+            privacy_mode: false,
+            eventId: currentEventId || null
+          } as MatchData
+        };
+      });
+
+      if (newBouts.length === 0) {
+        alert(`No new bouts to import for Event "${currentEventName}". All bouts from sheet already exist in system.`);
+        return;
+      }
+
+      setBoutQueue(prev => [...prev, ...newBouts]);
+      alert(`Successfully imported ${newBouts.length} new bouts for Event "${currentEventName}".`);
     } catch (error) {
       console.error("Error importing bouts:", error);
       alert("Error importing bouts. Please check console for details.");
@@ -733,8 +795,6 @@ export default function App() {
     handleBoutUpdate(ringNumber, data);
   };
 
-  const getBoutNumber = (bout: string | number) => parseInt(bout.toString()) || 0;
-
   useEffect(() => {
     if (!currentEventId || mappings.length === 0 || matchHistory.length === 0) {
       return;
@@ -831,10 +891,22 @@ export default function App() {
         return item;
       });
 
-      // If not found anywhere, generate it
-      if (!found) {
+      // If not found anywhere, generate it (only if both players are available as per user request)
+      if (!found && info.blue && info.red) {
         const boutNum = parseInt(targetBoutStr);
-        const ringNum = Math.floor(boutNum / 1000) || 1;
+        const prefix = targetBoutStr.charAt(0).toUpperCase();
+        let ringNum = 1;
+
+        if (!isNaN(boutNum) && boutNum >= 1000) {
+          ringNum = Math.floor(boutNum / 1000);
+        } else if (prefix === 'A') ringNum = 1;
+        else if (prefix === 'B') ringNum = 2;
+        else if (prefix === 'C') ringNum = 3;
+        else if (prefix === 'D') ringNum = 4;
+        else if (prefix === 'E') ringNum = 5;
+        else if (prefix === 'F') ringNum = 6;
+        else if (prefix === 'G') ringNum = 7;
+        else if (prefix === 'H') ringNum = 8;
         
         const newBout: MatchData = {
           ring: ringNum,
@@ -864,26 +936,8 @@ export default function App() {
     }
   }, [mappings, matchHistory, currentEventId, boutQueue, rings]);
 
-  // Auto-pull logic: If a ring is waiting for a bout and one becomes available in the queue, pull it.
-  useEffect(() => {
-    if (!currentEventId) return;
-
-    rings.forEach(ring => {
-      // If ring is active (has total bouts) and current bout is null
-      if (ring.totalBouts && !ring.currentBout && ring.nextBoutNumber <= ring.totalBouts) {
-        const nextBoutIndex = boutQueue.findIndex(q => 
-          q.data.ring === ring.ringNumber && 
-          (!q.data.eventId || q.data.eventId === currentEventId)
-        );
-        
-        if (nextBoutIndex !== -1) {
-          console.log(`Auto-pulling bout for Ring ${ring.ringNumber} from queue`);
-          pullBout(boutQueue[nextBoutIndex].id);
-        }
-      }
-    });
-  }, [boutQueue, rings, currentEventId]);
-
+  // Auto-pull logic removed as per user request (manual pull only)
+  
   const handleWinnerSelect = async (ringNumber: number, boutNumber: string | number, winner: string) => {
     let activeUrl = googleSheetUrl;
     if (!activeUrl && currentEventId && events.length > 0) {
@@ -921,11 +975,12 @@ export default function App() {
 
     // Save to match history for advancement logic
     if (currentEventId && currentBout) {
-      const historyItem = {
+      const historyItem: MatchHistoryItem = {
         id: `${currentEventId}_${boutNumber}`,
         bout: boutNumber.toString(),
         category: currentBout.category,
         winner: winnerName || winner,
+        winnerClub: winner === 'Blue' ? currentBout.blue_club : currentBout.red_club,
         eventId: currentEventId
       };
       
@@ -941,6 +996,9 @@ export default function App() {
         ...historyItem,
         syncedAt: serverTimestamp()
       }).catch(err => console.error("Error saving match history:", err));
+
+      // Check and generate next bout
+      checkAndGenerateNextBout(boutNumber, winnerName || winner, winner === 'Blue' ? currentBout.blue_club : currentBout.red_club);
     }
     
     const ringQueue = boutQueue.filter(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
@@ -952,43 +1010,30 @@ export default function App() {
       setFinalBoutCheck({ ringNumber, remainingCount: ringQueue.length - 1 });
     }
 
-    if (nextBoutIndex !== -1) {
-      const nextBout = boutQueue[nextBoutIndex];
-      
-      // Remove from queue
-      setBoutQueue(prev => {
-        const updated = [...prev];
-        updated.splice(nextBoutIndex, 1);
-        localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
-        return updated;
+    // Auto-advance ring: Move onDeck to current, inTheHole to onDeck
+    setRings(prev => {
+      const updated = prev.map(r => {
+        if (r.ringNumber === ringNumber) {
+          const nextBout = r.onDeck;
+          const nextNextBout = r.inTheHole;
+          
+          return {
+            ...r,
+            currentBout: nextBout,
+            onDeck: nextNextBout,
+            inTheHole: null,
+            nextBoutNumber: nextBout ? getBoutNumber(nextBout.bout) + 1 : r.nextBoutNumber
+          };
+        }
+        return r;
       });
-      
-      // Set as current bout
-      handleBoutUpdate(ringNumber, nextBout.data);
-    } else if (ring && ring.totalBouts && ring.currentBout && getBoutNumber(ring.currentBout.bout) < ring.totalBouts) {
-      // Queue is empty, but we haven't reached total bouts
-      setMissingBoutPrompt({ ringNumber, expectedBout: getBoutNumber(ring.currentBout.bout) + 1, totalBouts: ring.totalBouts });
-      // Clear the ring
-      setRings(prev => {
-        const updated = prev.map(r => r.ringNumber === ringNumber ? { 
-          ...r, 
-          currentBout: null,
-          nextBoutNumber: getBoutNumber(ring.currentBout!.bout) + 1
-        } : r);
-        localStorage.setItem('tkd_rings', JSON.stringify(updated));
-        return updated;
-      });
-    } else {
-      // Clear the ring if no next bout
-      setRings(prev => {
-        const updated = prev.map(r => r.ringNumber === ringNumber ? { 
-          ...r, 
-          currentBout: null,
-          nextBoutNumber: (ring?.currentBout ? getBoutNumber(ring.currentBout.bout) : 0) + 1
-        } : r);
-        localStorage.setItem('tkd_rings', JSON.stringify(updated));
-        return updated;
-      });
+      localStorage.setItem('tkd_rings', JSON.stringify(updated));
+      return updated;
+    });
+
+    // If queue is empty but we haven't reached total bouts, show the missing bout prompt
+    if (ring && ring.totalBouts && !ring.onDeck && !ring.inTheHole && ringQueue.length === 0 && getBoutNumber(ring.currentBout?.bout || 0) < ring.totalBouts) {
+      setMissingBoutPrompt({ ringNumber, expectedBout: getBoutNumber(ring.currentBout?.bout || 0) + 1, totalBouts: ring.totalBouts });
     }
   };
 
@@ -1028,24 +1073,8 @@ export default function App() {
       setFinalBoutCheck({ ringNumber, remainingCount: ringQueue.length - 1 });
     }
 
-    if (nextBoutIndex !== -1) {
-      const nextBout = boutQueue[nextBoutIndex];
-      setBoutQueue(prev => {
-        const updated = [...prev];
-        updated.splice(nextBoutIndex, 1);
-        localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
-        return updated;
-      });
-      setRings(prev => {
-        const updated = prev.map(r => r.ringNumber === ringNumber ? { 
-          ...r, 
-          currentBout: nextBout.data,
-          nextBoutNumber: getBoutNumber(nextBout.data.bout) + 1
-        } : r);
-        localStorage.setItem('tkd_rings', JSON.stringify(updated));
-        return updated;
-      });
-    } else if (ring && ring.totalBouts && ring.currentBout && getBoutNumber(ring.currentBout.bout) < ring.totalBouts) {
+    // Auto-pull disabled: Just clear the ring and wait for manual pull
+    if (ring && ring.totalBouts && ring.currentBout && getBoutNumber(ring.currentBout.bout) < ring.totalBouts) {
       setMissingBoutPrompt({ ringNumber, expectedBout: getBoutNumber(ring.currentBout.bout) + 1, totalBouts: ring.totalBouts });
       setRings(prev => {
         const updated = prev.map(r => r.ringNumber === ringNumber ? { 
@@ -1069,6 +1098,129 @@ export default function App() {
     }
   };
 
+  const getRingFromBout = (bout: string | number): number => {
+    const boutStr = bout.toString().toUpperCase();
+    const prefix = boutStr.charAt(0);
+    const boutNum = parseInt(boutStr.replace(/[^0-9]/g, ''));
+    
+    // Numeric range logic (1000s = Ring 1, 2000s = Ring 2, etc.)
+    if (!isNaN(boutNum) && boutNum >= 1000) {
+      return Math.floor(boutNum / 1000);
+    }
+    
+    // Letter prefix logic
+    if (prefix === 'A') return 1;
+    if (prefix === 'B') return 2;
+    if (prefix === 'C') return 3;
+    if (prefix === 'D') return 4;
+    if (prefix === 'E') return 5;
+    if (prefix === 'F') return 6;
+    if (prefix === 'G') return 7;
+    if (prefix === 'H') return 8;
+    
+    return 1; // Default
+  };
+
+  const checkAndGenerateNextBout = (completedBout: string | number, winnerName: string, winnerClub: string) => {
+    if (!currentEventId) return;
+
+    // 1. Find mappings where this bout is a source
+    const relevantMappings = mappings.filter(m => m.sourceBout.toString() === completedBout.toString());
+    
+    for (const mapping of relevantMappings) {
+      const nextBoutId = mapping.nextBout;
+      
+      // 2. Find the other mapping for the same nextBout
+      const otherMapping = mappings.find(m => m.nextBout === nextBoutId && m.id !== mapping.id);
+      
+      let blue_name = '';
+      let blue_club = '';
+      let red_name = '';
+      let red_club = '';
+      
+      let shouldGenerate = false;
+
+      if (mapping.slot === 'Chung') {
+        blue_name = winnerName;
+        blue_club = winnerClub;
+      } else {
+        red_name = winnerName;
+        red_club = winnerClub;
+      }
+
+      if (otherMapping) {
+        // Check if the other source bout has a winner
+        const otherWinner = matchHistory.find(h => h.bout.toString() === otherMapping.sourceBout.toString() && h.eventId === currentEventId);
+        if (otherWinner) {
+          if (otherMapping.slot === 'Chung') {
+            blue_name = otherWinner.winner;
+            blue_club = otherWinner.winnerClub || '';
+          } else {
+            red_name = otherWinner.winner;
+            red_club = otherWinner.winnerClub || '';
+          }
+          shouldGenerate = true;
+        }
+      } else {
+        // Only one source bout, so the other player is already available (e.g. bye)
+        shouldGenerate = true;
+      }
+
+      // Check if already in queue
+      const existingQueueIndex = boutQueue.findIndex(q => q.data.bout.toString() === nextBoutId.toString() && q.data.eventId === currentEventId);
+      
+      if (existingQueueIndex !== -1) {
+        // Update existing bout in queue
+        setBoutQueue(prev => {
+          const updated = [...prev];
+          const existing = updated[existingQueueIndex].data;
+          updated[existingQueueIndex].data = {
+            ...existing,
+            blue_name: blue_name ? blue_name.toUpperCase() : existing.blue_name,
+            blue_club: blue_club ? blue_club.toUpperCase() : existing.blue_club,
+            red_name: red_name ? red_name.toUpperCase() : existing.red_name,
+            red_club: red_club ? red_club.toUpperCase() : existing.red_club,
+          };
+          localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
+          return updated;
+        });
+      } else if (shouldGenerate) {
+        // Check if already in rings
+        const existsInRings = rings.some(r => (
+          (r.currentBout?.bout.toString() === nextBoutId.toString() && (!r.currentBout.eventId || r.currentBout.eventId === currentEventId)) || 
+          (r.onDeck?.bout.toString() === nextBoutId.toString() && (!r.onDeck.eventId || r.onDeck.eventId === currentEventId)) || 
+          (r.inTheHole?.bout.toString() === nextBoutId.toString() && (!r.inTheHole.eventId || r.inTheHole.eventId === currentEventId))
+        ));
+
+        if (!existsInRings) {
+          // Generate the bout
+          const ringNum = getRingFromBout(nextBoutId);
+          const newMatch: MatchData = {
+            ring: ringNum,
+            bout: nextBoutId,
+            blue_name: blue_name.toUpperCase(),
+            blue_club: blue_club.toUpperCase(),
+            red_name: red_name.toUpperCase(),
+            red_club: red_club.toUpperCase(),
+            category: '', // Category should be the same as source bouts
+            privacy_mode: false,
+            eventId: currentEventId
+          };
+          
+          // Try to find category from source bouts
+          const sourceMatch = matchHistory.find(h => h.bout.toString() === completedBout.toString());
+          if (sourceMatch) newMatch.category = sourceMatch.category.toUpperCase();
+
+          setBoutQueue(prev => {
+            const updated = [...prev, { id: `auto_${currentEventId}_${nextBoutId}_${Date.now()}`, data: newMatch }];
+            localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
+            return updated;
+          });
+        }
+      }
+    }
+  };
+
   const handleBoutUpdate = async (ringNumber: number, newData: MatchData) => {
     // Capitalize all letters for ring controller
     const capitalizedData: MatchData = {
@@ -1078,6 +1230,7 @@ export default function App() {
       red_name: newData.red_name?.toUpperCase() || '',
       red_club: newData.red_club?.toUpperCase() || '',
       category: newData.category?.toUpperCase() || '',
+      bout: newData.bout?.toString().toUpperCase() || '',
     };
 
     // Update categories and clubs lists
@@ -1369,15 +1522,22 @@ export default function App() {
                 active={activeTab === 'mapping'} 
                 onClick={() => setActiveTab('mapping')} 
               />
+              <NavItem 
+                icon={<RefreshCw size={20} />} 
+                label="AI Setup" 
+                active={activeTab === 'ai-setup'} 
+                onClick={() => setActiveTab('ai-setup')} 
+              />
             </>
           )}
           {user?.role === 'user' && (
             <>
               <NavItem 
                 icon={<LayoutDashboard size={20} />} 
-                label="My Ring" 
+                label={`Ring ${getRingName(user?.assignedRing || 1)}`} 
                 active={activeTab === 'mats'} 
                 onClick={() => setActiveTab('mats')} 
+                badge={rings.find(r => r.ringNumber === user?.assignedRing)?.totalBouts || 0}
               />
               <NavItem 
                 icon={<Database size={20} />} 
@@ -1553,24 +1713,6 @@ export default function App() {
                   </button>
                 </div>
                 <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <button 
-                    onClick={syncResultsFromSheet}
-                    disabled={isSyncing}
-                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-1.5 md:py-2 bg-amber-600 text-white rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest hover:bg-amber-700 transition-all shadow-lg shadow-amber-200 disabled:opacity-50"
-                  >
-                    {isSyncing ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                    <span>Winner bout</span>
-                  </button>
-                  {activeTab === 'mats' && (
-                    <button 
-                      onClick={handleImportInitialBouts}
-                      disabled={isImportingBouts}
-                      className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 md:px-6 py-1.5 md:py-2 bg-green-600 text-white rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-200 disabled:opacity-50"
-                    >
-                      {isImportingBouts ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-                      <span>Initial Bout</span>
-                    </button>
-                  )}
                 </div>
               </div>
             </div>
@@ -1683,20 +1825,20 @@ export default function App() {
                                   <p className="text-sm font-bold text-slate-800">{item.data.blue_name} vs {item.data.red_name}</p>
                                   <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{item.data.category}</p>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <button 
-                                    onClick={() => deleteBoutFromQueue(item.id)}
-                                    className="p-2.5 bg-slate-100 text-slate-400 rounded-xl hover:bg-red-50 hover:text-red-600 transition-all"
-                                    title="Remove from Queue"
-                                  >
-                                    <X size={18} />
-                                  </button>
+                                <div className="flex flex-col items-end gap-2">
                                   <button 
                                     onClick={() => pullBout(item.id)}
                                     className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors"
                                     title="Pull to Active Ring"
                                   >
                                     <ChevronLeft size={18} />
+                                  </button>
+                                  <button 
+                                    onClick={() => deleteBoutFromQueue(item.id)}
+                                    className="p-1.5 text-slate-300 hover:text-red-500 transition-all"
+                                    title="Remove from Queue"
+                                  >
+                                    <X size={14} />
                                   </button>
                                 </div>
                               </div>
@@ -1828,20 +1970,20 @@ export default function App() {
                                     <p className="text-sm font-bold text-slate-800">{item.data.blue_name} vs {item.data.red_name}</p>
                                     <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{item.data.category}</p>
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <button 
-                                      onClick={() => deleteBoutFromQueue(item.id)}
-                                      className="p-2.5 bg-slate-100 text-slate-400 rounded-xl hover:bg-red-50 hover:text-red-600 transition-all"
-                                      title="Remove from Queue"
-                                    >
-                                      <X size={18} />
-                                    </button>
+                                  <div className="flex flex-col items-end gap-2">
                                     <button 
                                       onClick={() => pullBout(item.id)}
                                       className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors"
                                       title="Pull to Active Ring"
                                     >
                                       <ChevronLeft size={18} />
+                                    </button>
+                                    <button 
+                                      onClick={() => deleteBoutFromQueue(item.id)}
+                                      className="p-1.5 text-slate-300 hover:text-red-500 transition-all"
+                                      title="Remove from Queue"
+                                    >
+                                      <X size={14} />
                                     </button>
                                   </div>
                                 </div>
@@ -1922,7 +2064,11 @@ export default function App() {
 
           {activeTab === 'ta-sheet' && (
             <div className="max-w-5xl mx-auto">
-              <TASheet />
+              <TASheet 
+                boutQueue={boutQueue} 
+                rings={rings} 
+                currentEventName={getCurrentEventName()} 
+              />
             </div>
           )}
 
@@ -1938,6 +2084,19 @@ export default function App() {
               currentEventName={getCurrentEventName()}
               categories={categories} 
               events={events}
+              onSyncMatches={handleAdminImportBouts}
+              isSyncingMatches={isImportingBouts}
+            />
+          )}
+
+          {activeTab === 'ai-setup' && user?.role === 'admin' && (
+            <AIBracketSetup 
+              currentEventId={currentEventId}
+              events={events}
+              onSuccess={() => setActiveTab('mapping')}
+              rings={rings}
+              setRings={setRings}
+              setBoutQueue={setBoutQueue}
             />
           )}
 
@@ -2234,6 +2393,13 @@ export default function App() {
               <span className="text-[10px] font-bold">DB</span>
             </button>
             <button 
+              onClick={() => setActiveTab('ai-setup')}
+              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'ai-setup' ? "text-red-600" : "text-slate-400")}
+            >
+              <RefreshCw size={20} />
+              <span className="text-[10px] font-bold">AI Setup</span>
+            </button>
+            <button 
               onClick={() => setActiveTab('settings')}
               className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'settings' ? "text-red-600" : "text-slate-400")}
             >
@@ -2246,10 +2412,15 @@ export default function App() {
           <>
             <button 
               onClick={() => setActiveTab('mats')}
-              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'mats' ? "text-red-600" : "text-slate-400")}
+              className={cn("flex flex-col items-center gap-1 transition-colors relative", activeTab === 'mats' ? "text-red-600" : "text-slate-400")}
             >
-              <LayoutDashboard size={24} />
-              <span className="text-[10px] font-bold">My Ring</span>
+              <div className="relative">
+                <LayoutDashboard size={24} />
+                <span className="absolute -top-2 -right-2 bg-red-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full">
+                  {rings.find(r => r.ringNumber === user?.assignedRing)?.totalBouts || 0}
+                </span>
+              </div>
+              <span className="text-[10px] font-bold">Ring {getRingName(user?.assignedRing || 1)}</span>
             </button>
             <button 
               onClick={() => setActiveTab('general')}
@@ -2485,19 +2656,29 @@ function MissingBoutModal({ prompt, onClose, onSubmitReason, onSubmitManual, cat
   );
 }
 
-function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, label: string, active?: boolean, onClick: () => void }) {
+function NavItem({ icon, label, active, onClick, badge }: { icon: React.ReactNode, label: string, active?: boolean, onClick: () => void, badge?: React.ReactNode }) {
   return (
     <button 
       onClick={onClick}
       className={cn(
-        "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all duration-200",
+        "w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all duration-200",
         active 
           ? "bg-red-50 text-red-600 shadow-sm" 
           : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
       )}
     >
-      {icon}
-      {label}
+      <div className="flex items-center gap-3">
+        {icon}
+        {label}
+      </div>
+      {badge !== undefined && (
+        <span className={cn(
+          "px-2 py-0.5 rounded-full text-[10px] font-black",
+          active ? "bg-red-100 text-red-600" : "bg-slate-200 text-slate-500"
+        )}>
+          {badge}
+        </span>
+      )}
     </button>
   );
 }
@@ -2867,17 +3048,59 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                 ))}
               </select>
             </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Bout Number</label>
-              <input 
-                type="text" 
-                value={formData.bout}
-                onChange={(e) => setFormData({...formData, bout: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
-                required
-                autoComplete="off"
-              />
-            </div>
+              <div className="flex items-end gap-2">
+                <div className="flex-1 space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Bout Number</label>
+                  <input 
+                    type="text" 
+                    value={formData.bout}
+                    onChange={(e) => setFormData({...formData, bout: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+                    required
+                    autoComplete="off"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const boutNumStr = formData.bout.toString();
+                    if (!boutNumStr) return;
+                    
+                    try {
+                      // Fetch bracket data from Firestore
+                      const bracketRef = doc(db, 'tournaments', currentEventId || 'default', 'bracket', 'data');
+                      const bracketSnap = await getDoc(bracketRef);
+                      
+                      if (bracketSnap.exists()) {
+                        const bracketData = bracketSnap.data().matches;
+                        if (bracketData && Array.isArray(bracketData)) {
+                          const match = bracketData.find(m => m.bout.toString() === boutNumStr);
+                          if (match) {
+                            setFormData(prev => ({
+                              ...prev,
+                              category: match.category || prev.category,
+                              blue_name: match.blue_name || prev.blue_name,
+                              blue_club: match.blue_club || prev.blue_club,
+                              red_name: match.red_name || prev.red_name,
+                              red_club: match.red_club || prev.red_club,
+                            }));
+                            setErrorMsg(null);
+                          } else {
+                            setErrorMsg(`Bout ${boutNumStr} not found in bracket data.`);
+                          }
+                        }
+                      }
+                    } catch (err) {
+                      console.error("Error auto-filling bout:", err);
+                      setErrorMsg("Failed to auto-fill bout data.");
+                    }
+                  }}
+                  className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors h-[46px] flex items-center justify-center"
+                  title="Auto-fill from bracket data"
+                >
+                  <Search size={16} />
+                </button>
+              </div>
           </div>
 
           <div className="space-y-2">
@@ -3069,16 +3292,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
   
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
   
-  const formatBoutNumber = (ring: number, bout: string | number) => {
-    const numBout = parseInt(bout.toString());
-    const suffix = bout.toString().replace(/[0-9]/g, '');
-    if (numBout >= ring * 1000) {
-      return numBout.toString() + suffix;
-    }
-    return (ring * 1000 + numBout).toString() + suffix;
-  };
-
-  const progress = ring.totalBouts && current ? Math.min(100, (parseInt(current.bout.toString()) / ring.totalBouts) * 100) : 0;
+  const progress = ring.totalBouts && current ? Math.min(100, (getBoutNumber(current.bout) / ring.totalBouts) * 100) : 0;
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:border-red-200 transition-colors">
@@ -3499,14 +3713,21 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
 
       <div className="flex-1 p-4 space-y-4">
         {displayedRings.map((ring) => {
-          const ringQueue = boutQueue.filter(q => 
-            q.data.ring === ring.ringNumber && 
-            (!q.data.eventId || q.data.eventId === currentEventId)
-          ).slice(0, 3);
+          const ringQueue = boutQueue
+            .filter(q => 
+              q.data.ring === ring.ringNumber && 
+              (!q.data.eventId || q.data.eventId === currentEventId)
+            )
+            .sort((a, b) => {
+              const boutA = parseInt(normalizeBoutNumber(a.data.bout)) || 0;
+              const boutB = parseInt(normalizeBoutNumber(b.data.bout)) || 0;
+              return boutA - boutB;
+            })
+            .slice(0, 3);
           const current = ring.currentBout;
           const standby = ringQueue;
           const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
-
+          
           return (
             <div key={ring.ringNumber} className="flex gap-1 h-48">
               {/* Left: Current Match */}
@@ -3524,7 +3745,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                 <div className="flex-1 grid grid-cols-12">
                   {/* Bout Num */}
                   <div className="col-span-2 flex items-center justify-center text-3xl font-black text-white border-r border-white/10 bg-[#161f33]">
-                    {current?.bout || "---"}
+                    {current ? formatBoutNumber(ring.ringNumber, current.bout) : "---"}
                   </div>
                   {/* Players */}
                   <div className="col-span-10 flex flex-col">
@@ -3553,7 +3774,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                   return (
                     <div key={idx} className="flex-1 grid grid-cols-12 bg-[#0d1526] border border-white/10 rounded overflow-hidden">
                       <div className="col-span-3 flex items-center justify-center text-xl font-black text-white bg-[#161f33] border-r border-white/10">
-                        {b?.data.bout || "---"}
+                        {b ? formatBoutNumber(ring.ringNumber, b.data.bout) : "---"}
                       </div>
                       <div className="col-span-5 bg-blue-600/80 flex flex-col justify-center px-3 border-r border-white/10">
                         <span className="text-[8px] font-bold text-blue-200 uppercase leading-none">{b?.data.blue_club || "---"}</span>
@@ -3685,20 +3906,20 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
         isFullscreen ? "flex flex-col justify-around pt-24 pb-4 gap-y-8" : "space-y-24 py-12"
       )}>
         {displayedRings.map((ring) => {
-          const ringQueue = boutQueue.filter(q => 
-            q.data.ring === ring.ringNumber && 
-            (!q.data.eventId || q.data.eventId === currentEventId)
-          ).slice(0, 3);
+          const ringQueue = boutQueue
+            .filter(q => 
+              q.data.ring === ring.ringNumber && 
+              (!q.data.eventId || q.data.eventId === currentEventId)
+            )
+            .sort((a, b) => {
+              const boutA = parseInt(normalizeBoutNumber(a.data.bout)) || 0;
+              const boutB = parseInt(normalizeBoutNumber(b.data.bout)) || 0;
+              return boutA - boutB;
+            })
+            .slice(0, 3);
           const current = ring.currentBout;
           const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
           
-          const formatBoutNumber = (ringNum: number, bout: string | number) => {
-            const numBout = parseInt(bout.toString());
-            const suffix = bout.toString().replace(/[0-9]/g, '');
-            if (numBout >= ringNum * 1000) return numBout.toString() + suffix;
-            return (ringNum * 1000 + numBout).toString() + suffix;
-          };
-
           return (
             <div key={ring.ringNumber} className="grid grid-cols-12 gap-8 items-center">
               {/* Ring Number */}
@@ -3979,14 +4200,6 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack }: { rings: 
 function PublicRingCard({ ring, namingMode, queueCount }: PublicRingCardProps) {
   const current = ring.currentBout;
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
-  const formatBoutNumber = (ring: number, bout: string | number) => {
-    const numBout = parseInt(bout.toString());
-    const suffix = bout.toString().replace(/[0-9]/g, '');
-    if (numBout >= ring * 1000) {
-      return numBout.toString() + suffix;
-    }
-    return (ring * 1000 + numBout).toString() + suffix;
-  };
   
   return (
     <div className="bg-slate-800 border border-slate-700 rounded-3xl overflow-hidden shadow-2xl">
@@ -4437,15 +4650,14 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
   // Handle new bout
   if (data.action === 'newBout' && sheet) {
     sheet.appendRow([
-      data.timestamp,
+      data.event_name,
       data.ring,
       data.bout,
       data.category,
       data.blue_name,
       data.blue_club,
       data.red_name,
-      data.red_club,
-      "" // Winner column empty initially
+      data.red_club
     ]);
   }
   return ContentService.createTextOutput("Success");

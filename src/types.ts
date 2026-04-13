@@ -38,3 +38,12 @@ export interface RingStatus {
   isFinalBouts?: boolean;
   eventId?: string | null;
 }
+
+export interface MatchHistoryItem {
+  id: string;
+  bout: string;
+  category: string;
+  winner: string;
+  winnerClub?: string;
+  eventId: string;
+}

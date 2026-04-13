@@ -32,3 +32,28 @@ export function normalizeBoutNumber(bout: string | number): string {
   
   return s;
 }
+
+export function getBoutNumber(bout: string | number): number {
+  return parseInt(normalizeBoutNumber(bout)) || 0;
+}
+
+export function formatBoutNumber(ringNum: number, bout: string | number): string {
+  const s = bout.toString().trim().toUpperCase();
+  if (!s) return '';
+
+  // 1. If it already has a letter prefix (e.g., A01), keep it
+  if (/^[A-Z]/.test(s)) return s;
+
+  const num = parseInt(s.replace(/[^0-9]/g, ''));
+  const suffix = s.replace(/[0-9]/g, '');
+
+  if (isNaN(num)) return s;
+
+  // 2. If it's already a "full" numeric ID (>= 1000), keep it
+  if (num >= 1000) return s;
+
+  // 3. For small numbers (e.g., "1"), default to the letter format (e.g., "A01")
+  // as it was the previous preferred format, but this only applies to raw inputs.
+  const letter = String.fromCharCode(64 + ringNum);
+  return `${letter}${num.toString().padStart(2, '0')}${suffix}`;
+}
