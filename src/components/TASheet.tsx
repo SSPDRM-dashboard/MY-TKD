@@ -635,7 +635,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             </thead>
             <tbody>
               {[1, 2, 3].map((round) => (
-                <tr key={round} className="h-8 print:h-9">
+                <tr key={round} className="h-8 print:h-8">
                   <td className="border border-black"></td>
                   <td className="border border-black w-[10%]"></td>
                   <td className="border border-black w-[10%]"></td>
@@ -691,7 +691,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             </thead>
             <tbody>
               {[1, 2, 3].map((round) => (
-                <tr key={round} className="h-6 print:h-7">
+                <tr key={round} className="h-6 print:h-6">
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
@@ -721,7 +721,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           {/* Win Types */}
           <table className="w-full border-collapse border border-black mb-2 print:mb-4 text-sm text-center font-bold">
             <tbody>
-              <tr className="h-8 print:h-10">
+              <tr className="h-8 print:h-8">
                 <td className="border border-black w-1/5">PTF</td>
                 <td className="border border-black w-1/5">RSC</td>
                 <td className="border border-black w-1/5">WDR</td>
@@ -751,7 +751,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
                 "Requested by CR",
                 "Rejected by CR"
               ].map((reason, idx) => (
-                <tr key={idx} className="h-5 print:h-6">
+                <tr key={idx} className="h-5 print:h-5">
                   <td className="border border-black p-1 text-left px-2">{reason}</td>
                   <td className="border border-black p-1 w-5">A/R</td>
                   <td className="border border-black p-1 w-5">A/R</td>
@@ -780,7 +780,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           </table>
 
           {/* Yellow Cards */}
-          <div className="flex gap-4 mb-2 print:mb-4">
+          <div className="flex gap-4 mb-0 print:mb-0">
             <table className="w-[48%] border-collapse border border-black text-sm font-bold">
               <thead>
                 <tr>
@@ -790,7 +790,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
                 </tr>
               </thead>
               <tbody>
-                <tr className="h-6 print:h-8">
+                <tr className="h-6 print:h-6">
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
@@ -806,7 +806,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
                 </tr>
               </thead>
               <tbody>
-                <tr className="h-6 print:h-8">
+                <tr className="h-6 print:h-6">
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
@@ -818,7 +818,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           {/* Officials */}
           <table className="w-full border-collapse border border-black mb-4 print:mb-0 text-sm text-center font-bold">
             <tbody>
-              <tr className="h-7 print:h-8">
+              <tr className="h-7 print:h-7">
                 <td className="border border-black p-1.5 w-[10%] bg-gray-200">Judge 2</td>
                 <td className="border border-black p-1.5 w-[15%]"></td>
                 <td className="border border-black p-1.5 w-[10%] bg-gray-200">Judge 1</td>
@@ -828,7 +828,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
                 <td className="border border-black p-1.5 w-[10%] bg-gray-200">Review Jury</td>
                 <td className="border border-black p-1.5 w-[15%]"></td>
               </tr>
-              <tr className="h-8 print:h-10">
+              <tr className="h-8 print:h-8">
                 <td className="border border-black p-1.5 bg-gray-200">NOC</td>
                 <td className="border border-black p-1.5"></td>
                 <td className="border border-black p-1.5 bg-gray-200">NOC</td>
