@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, AlertCircle, RefreshCw, Eraser, Check } from 'lucide-react';
+import { Download, AlertCircle, RefreshCw, Eraser, Check, History, X, Search, Printer } from 'lucide-react';
+import { motion } from 'motion/react';
 import { MatchData, RingStatus } from '../types';
 import Papa from 'papaparse';
 
@@ -153,6 +154,8 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
   const [sheetDate, setSheetDate] = useState('');
   const [sheetDayNo, setSheetDayNo] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showReprintModal, setShowReprintModal] = useState(false);
+  const [reprintSearchQuery, setReprintSearchQuery] = useState('');
   const [printedMatches, setPrintedMatches] = useState<Set<string>>(new Set());
 
   const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv&gid=0";
@@ -392,7 +395,6 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             max-width: none !important;
             margin: 0 !important;
             padding: 0 !important;
-            transform: scale(0.98);
             transform-origin: top center;
           }
           .page-break:last-child { page-break-after: auto; }
@@ -406,8 +408,17 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             <Download size={20} className="text-slate-400" />
             TA Sheet Generator
           </h2>
-          <button 
-            onClick={fetchFallbackData}
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setShowReprintModal(true)}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors flex items-center gap-2 text-sm"
+              title="Search and reprint signed TA sheets"
+            >
+              <History size={16} />
+              Reprint Signed
+            </button>
+            <button 
+              onClick={fetchFallbackData}
             disabled={isLoading}
             className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors flex items-center gap-2 text-sm disabled:opacity-50"
             title="Fetch directly from Google Sheet if bouts are not in the system yet"
@@ -416,6 +427,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             Fetch from Google Sheet
           </button>
         </div>
+      </div>
 
         {error && (
           <div className="w-full p-4 bg-red-50 text-red-600 rounded-xl text-sm font-bold flex items-center gap-2 border border-red-100">
@@ -515,7 +527,100 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             )}
           </div>
         </div>
-      </div>
+
+      {showReprintModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 print:hidden">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+          >
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <div>
+                <h3 className="text-xl font-black text-slate-800 tracking-tight">Reprint Signed Sheets</h3>
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Search through all signed matches</p>
+              </div>
+              <button 
+                onClick={() => setShowReprintModal(false)}
+                className="p-2 hover:bg-slate-200 rounded-full transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 border-b border-slate-100">
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                <input 
+                  type="text"
+                  placeholder="Search by Match No, Player Name, or Ring..."
+                  value={reprintSearchQuery}
+                  onChange={(e) => setReprintSearchQuery(e.target.value)}
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 transition-all font-bold"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {matches
+                .filter(m => {
+                  const status = getMatchStatus(m);
+                  if (!status.isSigned) return false;
+                  
+                  const searchLower = reprintSearchQuery.toLowerCase();
+                  return (
+                    m.matchNo.toLowerCase().includes(searchLower) ||
+                    m.blueName.toLowerCase().includes(searchLower) ||
+                    m.redName.toLowerCase().includes(searchLower) ||
+                    m.category.toLowerCase().includes(searchLower) ||
+                    `ring ${m.ringNo}`.toLowerCase().includes(searchLower)
+                  );
+                })
+                .map((match, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setSelectedRing(match.ringNo);
+                      setSelectedMatchNo(match.matchNo);
+                      setShowReprintModal(false);
+                    }}
+                    className="w-full p-4 bg-white border border-slate-100 rounded-2xl hover:border-red-200 hover:bg-red-50 transition-all text-left flex items-center justify-between group"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-slate-100 rounded-xl flex flex-col items-center justify-center group-hover:bg-red-100 transition-colors">
+                        <span className="text-[10px] font-black text-slate-400 uppercase leading-none">Ring</span>
+                        <span className="text-lg font-black text-slate-700 leading-none">{match.ringNo}</span>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-black text-slate-800">Match {match.matchNo}</span>
+                          <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-black rounded-md uppercase tracking-tighter">Signed</span>
+                        </div>
+                        <p className="text-xs font-bold text-slate-500 mt-0.5">{match.category}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] font-bold text-blue-600 truncate max-w-[100px]">{match.blueName}</span>
+                          <span className="text-[10px] font-bold text-slate-300">vs</span>
+                          <span className="text-[10px] font-bold text-red-600 truncate max-w-[100px]">{match.redName}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <Printer size={20} className="text-slate-300 group-hover:text-red-500 transition-colors" />
+                  </button>
+                ))}
+              
+              {matches.filter(m => getMatchStatus(m).isSigned).length === 0 && (
+                <div className="py-12 text-center">
+                  <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <History size={32} className="text-slate-300" />
+                  </div>
+                  <p className="text-slate-500 font-bold">No signed matches found yet.</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {currentMatch && onUpdateInspection && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 print:hidden flex gap-8">
@@ -538,11 +643,11 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
         </div>
       )}
 
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 print:shadow-none print:border-none print:p-0 overflow-x-auto print:overflow-visible">
+      <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 overflow-x-auto print:overflow-visible print:p-8">
         {matchesToRender.map((match, index) => (
-          <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full page-break mb-8 print:mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
+          <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full page-break mb-8 print:mb-8" style={{ fontFamily: 'Arial, sans-serif' }}>
             {/* Header */}
-            <div className="flex justify-between items-center mb-2 print:mb-4">
+            <div className="flex justify-between items-center mb-2 print:mb-2">
               <div className="w-48 flex items-center gap-4">
                 <img 
                   src="https://upload.wikimedia.org/wikipedia/en/thumb/4/4c/World_Taekwondo_logo.svg/220px-World_Taekwondo_logo.svg.png" 
@@ -558,14 +663,14 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
                 />
               </div>
               <div className="text-center">
-                <h1 className="text-2xl font-black tracking-widest print:text-3xl">TA SHEET</h1>
+                <h1 className="text-2xl font-black tracking-widest print:text-2xl">TA SHEET</h1>
                 <div className="text-xs font-bold mt-0.5">({match.eventName || 'Event Name'})</div>
               </div>
               <div className="text-base font-black w-48 text-right">Best of 3</div>
             </div>
 
             {/* Match Info */}
-            <table className="w-full border-collapse border border-black mb-2 print:mb-4 text-sm font-bold match-info-table">
+            <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-sm font-bold match-info-table">
               <tbody>
                 <tr>
                   <td className="border border-black p-1.5 w-[33%]">Date : <span className="ml-2 font-normal">{sheetDate}</span></td>
@@ -585,7 +690,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             </table>
 
             {/* Players */}
-            <div className="flex gap-4 mb-2 print:mb-4">
+            <div className="flex gap-4 mb-2 print:mb-2">
               <table className="w-1/2 border-collapse border border-black text-sm font-bold text-center">
                 <thead>
                   <tr>
@@ -623,7 +728,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             </div>
 
           {/* Round Scores */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-4 text-sm text-center font-bold">
+          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-sm text-center font-bold">
             <thead>
               <tr>
                 <th className="border border-black p-1.5 w-[15%]">Gam-Jeom</th>
@@ -651,7 +756,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           </table>
 
           {/* Decision of Superiority */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-4 text-[10px] text-center font-bold">
+          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-[10px] text-center font-bold">
             <thead>
               <tr>
                 <th colSpan={19} className="border border-black p-1.5 bg-gray-200 text-sm tracking-widest">DECISION OF ROUND SUPERIORITY</th>
@@ -719,7 +824,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           </table>
 
           {/* Win Types */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-4 text-sm text-center font-bold">
+          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-sm text-center font-bold">
             <tbody>
               <tr className="h-8 print:h-8">
                 <td className="border border-black w-1/5">PTF</td>
@@ -732,7 +837,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           </table>
 
           {/* Video Replay & Match Winner */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-4 text-xs text-center font-bold">
+          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-xs text-center font-bold">
             <thead>
               <tr>
                 <th className="border border-black p-1.5 bg-[#00a2e8] text-white text-left px-2 w-[20%]">Reason</th>
@@ -852,5 +957,6 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
         ))}
       </div>
     </div>
+  </div>
   );
 }
