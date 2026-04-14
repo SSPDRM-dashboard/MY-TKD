@@ -7,9 +7,10 @@ interface SignaturePadProps {
   color: 'blue' | 'red';
   onConfirm: () => void;
   isConfirmed: boolean;
+  boutId: string;
 }
 
-function SignaturePad({ color, onConfirm, isConfirmed }: SignaturePadProps) {
+function SignaturePad({ color, onConfirm, isConfirmed, boutId }: SignaturePadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
@@ -51,7 +52,6 @@ function SignaturePad({ color, onConfirm, isConfirmed }: SignaturePadProps) {
   };
 
   const clear = () => {
-    if (isConfirmed) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -59,6 +59,10 @@ function SignaturePad({ color, onConfirm, isConfirmed }: SignaturePadProps) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     setHasSignature(false);
   };
+
+  useEffect(() => {
+    clear();
+  }, [boutId]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -338,11 +342,30 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
     <div className="space-y-6">
       <style type="text/css" media="print">
         {`
-          @page { size: A4 portrait; margin: 8mm; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          @page { 
+            size: A4 portrait; 
+            margin: 5mm; 
+          }
+          body { 
+            -webkit-print-color-adjust: exact; 
+            print-color-adjust: exact;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+          }
           * { box-shadow: none !important; -webkit-box-shadow: none !important; }
-          .page-break { page-break-after: always; }
+          .page-break { 
+            page-break-after: always; 
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            transform: scale(0.98);
+            transform-origin: top center;
+          }
           .page-break:last-child { page-break-after: auto; }
+          table { width: 100% !important; table-layout: fixed; }
+          .no-print { display: none !important; }
         `}
       </style>
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 print:hidden flex flex-wrap gap-4 items-end">
@@ -459,6 +482,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           <div className="flex-1">
             <SignaturePad 
               color="blue" 
+              boutId={`${currentMatch.ringNo}-${currentMatch.matchNo}`}
               isConfirmed={!!actualMatchData?.blue_inspected}
               onConfirm={() => onUpdateInspection(currentMatch.ringNo, currentMatch.matchNo, 'blue', true)}
             />
@@ -466,6 +490,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           <div className="flex-1">
             <SignaturePad 
               color="red" 
+              boutId={`${currentMatch.ringNo}-${currentMatch.matchNo}`}
               isConfirmed={!!actualMatchData?.red_inspected}
               onConfirm={() => onUpdateInspection(currentMatch.ringNo, currentMatch.matchNo, 'red', true)}
             />

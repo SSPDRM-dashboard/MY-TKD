@@ -32,7 +32,8 @@ import {
   RefreshCw,
   X,
   Database,
-  Download
+  Download,
+  ArrowLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MatchData, RingStatus, EventData, BoutMapping, MatchHistoryItem } from './types';
@@ -204,7 +205,21 @@ export default function App() {
 
   const [user, setUser] = useState<UserAccount | null>(() => {
     const saved = localStorage.getItem('tkd_user');
-    return saved ? JSON.parse(saved) : null;
+    const loginTime = localStorage.getItem('tkd_login_time');
+    
+    if (saved && loginTime) {
+      const now = new Date().getTime();
+      const loginTs = parseInt(loginTime);
+      const eighteenHours = 18 * 60 * 60 * 1000;
+      
+      if (now - loginTs > eighteenHours) {
+        localStorage.removeItem('tkd_user');
+        localStorage.removeItem('tkd_login_time');
+        return null;
+      }
+      return JSON.parse(saved);
+    }
+    return null;
   });
   const [accounts, setAccounts] = useSyncedState<UserAccount[]>('tkd_accounts', (() => {
     let parsed: UserAccount[] = [
@@ -298,6 +313,27 @@ export default function App() {
     }
   }, [accounts, setAccounts]);
 
+  // Auto-logout check interval
+  useEffect(() => {
+    if (!user) return;
+
+    const checkTimeout = () => {
+      const loginTime = localStorage.getItem('tkd_login_time');
+      if (loginTime) {
+        const now = new Date().getTime();
+        const loginTs = parseInt(loginTime);
+        const eighteenHours = 18 * 60 * 60 * 1000;
+        
+        if (now - loginTs > eighteenHours) {
+          handleLogout();
+        }
+      }
+    };
+
+    const interval = setInterval(checkTimeout, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [user]);
+
   useEffect(() => {
     const q = query(collection(db, 'announcements'), orderBy('timestamp', 'desc'), limit(1));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -369,6 +405,7 @@ export default function App() {
   });
   const [isImportingBouts, setIsImportingBouts] = useState(false);
   const [isPublicView, setIsPublicView] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
   const [showNewBoutModal, setShowNewBoutModal] = useState(false);
   const [newBoutInitialRing, setNewBoutInitialRing] = useState<number | undefined>(undefined);
   const [showEditResultModal, setShowEditResultModal] = useState(false);
@@ -1398,6 +1435,7 @@ export default function App() {
     if (found) {
       setUser(found);
       localStorage.setItem('tkd_user', JSON.stringify(found));
+      localStorage.setItem('tkd_login_time', new Date().getTime().toString());
       if (eventId) {
         setCurrentEventId(eventId);
         localStorage.setItem('tkd_current_event', eventId);
@@ -1424,6 +1462,8 @@ export default function App() {
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('tkd_user');
+    localStorage.removeItem('tkd_login_time');
+    setShowLogin(false);
   };
 
   const handleAddEvent = (newEvent: EventData) => {
@@ -1475,8 +1515,20 @@ export default function App() {
     localStorage.setItem('tkd_accounts', JSON.stringify(updated));
   };
 
-  if (!user && !isPublicView) {
-    return <LoginScreen onLogin={handleLogin} events={events} />;
+  if (!user && showLogin) {
+    return <LoginScreen onLogin={handleLogin} events={events} onBack={() => setShowLogin(false)} />;
+  }
+
+  if (!user) {
+    return (
+      <PublicDashboardView 
+        rings={rings} 
+        boutQueue={boutQueue} 
+        namingMode={ringNamingMode} 
+        onBack={() => setShowLogin(true)} 
+        isSpectator={true}
+      />
+    );
   }
 
   if (isPublicView) {
@@ -4191,7 +4243,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
   );
 }
 
-function PublicDashboardView({ rings, boutQueue, namingMode, onBack }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', onBack: () => void }) {
+function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', onBack: () => void, isSpectator?: boolean }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
@@ -4261,9 +4313,12 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack }: { rings: 
           </button>
           <button 
             onClick={onBack}
-            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-bold transition-colors"
+            className={cn(
+              "px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-bold transition-colors",
+              isSpectator && "bg-slate-800/50 border border-slate-700 text-slate-400 hover:text-white"
+            )}
           >
-            Back to Admin
+            {isSpectator ? "Operator Login" : "Back to Admin"}
           </button>
         </div>
       </header>
@@ -4418,7 +4473,7 @@ function PublicFighterSide({ color, name, club, privacy }: { color: 'blue' | 're
   );
 }
 
-function LoginScreen({ onLogin, events }: { onLogin: (u: string, p: string, eventId?: string) => boolean, events: EventData[] }) {
+function LoginScreen({ onLogin, events, onBack }: { onLogin: (u: string, p: string, eventId?: string) => boolean, events: EventData[], onBack?: () => void }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [eventId, setEventId] = useState('');
@@ -4436,8 +4491,16 @@ function LoginScreen({ onLogin, events }: { onLogin: (u: string, p: string, even
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md bg-white p-8 rounded-3xl border border-slate-200 shadow-xl"
+        className="w-full max-w-md bg-white p-8 rounded-3xl border border-slate-200 shadow-xl relative"
       >
+        {onBack && (
+          <button 
+            onClick={onBack}
+            className="absolute top-6 left-6 p-2 text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
         <div className="flex flex-col items-center mb-8">
           <div className="w-16 h-16 bg-red-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-red-200 mb-4">
             <Trophy size={32} />
