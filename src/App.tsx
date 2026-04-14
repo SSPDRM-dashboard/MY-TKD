@@ -1459,6 +1459,18 @@ export default function App() {
     return false;
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Secret shortcut: Ctrl + Shift + L to show login
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'l') {
+        if (!user) setShowLogin(true);
+        else setIsPublicView(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [user]);
+
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('tkd_user');
@@ -4247,6 +4259,20 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
+  const [logoClicks, setLogoClicks] = React.useState(0);
+  const clickTimer = React.useRef<NodeJS.Timeout | null>(null);
+
+  const handleLogoClick = () => {
+    setLogoClicks(prev => prev + 1);
+    if (clickTimer.current) clearTimeout(clickTimer.current);
+    clickTimer.current = setTimeout(() => setLogoClicks(0), 1000);
+    
+    if (logoClicks >= 2) { // 3rd click
+      onBack();
+      setLogoClicks(0);
+    }
+  };
+
   const ringsPerPage = 9; // Show 9 rings per page in fullscreen
   const totalPages = Math.ceil(rings.length / ringsPerPage);
 
@@ -4294,7 +4320,10 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
         "p-6 bg-slate-800 border-b border-slate-700 flex items-center justify-between sticky top-0 z-50 transition-all",
         isFullscreen && "opacity-0 h-0 p-0 overflow-hidden"
       )}>
-        <div className="flex items-center gap-3">
+        <div 
+          className="flex items-center gap-3 cursor-pointer select-none"
+          onClick={handleLogoClick}
+        >
           <div className="w-10 h-10 bg-red-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-red-900/20">
             <Trophy size={24} />
           </div>
@@ -4356,9 +4385,9 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
             <p className="text-xs text-slate-500 font-medium">© 2026 MY-TKD Tournament Management System</p>
             <button 
               onClick={onBack}
-              className="text-[9px] text-slate-600 hover:text-slate-500 uppercase font-black tracking-widest transition-colors mt-2"
+              className="px-4 py-2 bg-slate-700/30 hover:bg-slate-700 text-[10px] text-slate-400 hover:text-white uppercase font-black tracking-widest transition-all mt-4 rounded-lg border border-slate-700/50"
             >
-              {isSpectator ? "System Access" : "Back to Admin"}
+              {isSpectator ? "Operator Access" : "Exit Public View"}
             </button>
           </div>
         </footer>
@@ -4381,7 +4410,7 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
       {isFullscreen && (
         <button 
           onClick={toggleFullScreen}
-          className="fixed top-8 right-8 p-4 bg-slate-800/50 hover:bg-slate-800 text-white rounded-2xl border border-slate-700 transition-all opacity-0 hover:opacity-100 z-50"
+          className="fixed top-8 right-8 p-4 bg-slate-800/80 hover:bg-slate-800 text-white rounded-2xl border border-slate-700 transition-all opacity-40 hover:opacity-100 z-50"
         >
           <Minimize size={24} />
         </button>

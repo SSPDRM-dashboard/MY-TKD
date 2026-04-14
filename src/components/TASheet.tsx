@@ -548,10 +548,19 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full page-break mb-8 print:mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
             {/* Header */}
             <div className="flex justify-between items-center mb-2 print:mb-4">
-              <div className="w-48 flex items-center gap-2">
-                {/* Placeholder for logos */}
-                <div className="h-10 w-10 bg-slate-100 rounded flex items-center justify-center text-[8px] text-slate-400 font-bold text-center">WT<br/>Logo</div>
-                <div className="h-10 w-10 bg-slate-100 rounded flex items-center justify-center text-[8px] text-slate-400 font-bold text-center">TM<br/>Logo</div>
+              <div className="w-48 flex items-center gap-4">
+                <img 
+                  src="https://upload.wikimedia.org/wikipedia/en/thumb/4/4c/World_Taekwondo_logo.svg/220px-World_Taekwondo_logo.svg.png" 
+                  alt="World Taekwondo" 
+                  className="h-12 w-auto object-contain"
+                  referrerPolicy="no-referrer"
+                />
+                <img 
+                  src="https://taekwondomalaysia.org.my/wp-content/uploads/2020/01/TM-Logo-New.png" 
+                  alt="Taekwondo Malaysia" 
+                  className="h-12 w-auto object-contain"
+                  referrerPolicy="no-referrer"
+                />
               </div>
               <div className="text-center">
                 <h1 className="text-2xl font-black tracking-widest print:text-3xl">TA SHEET</h1>
