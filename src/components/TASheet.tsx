@@ -157,6 +157,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
   const [showReprintModal, setShowReprintModal] = useState(false);
   const [reprintSearchQuery, setReprintSearchQuery] = useState('');
   const [printedMatches, setPrintedMatches] = useState<Set<string>>(new Set());
+  const [localSignedMatches, setLocalSignedMatches] = useState<Record<string, {blue: boolean, red: boolean}>>({});
 
   const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv&gid=0";
 
@@ -345,10 +346,17 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
   };
 
   const actualMatchData = getActualMatchData();
-  const isFullySigned = !!actualMatchData?.blue_inspected && !!actualMatchData?.red_inspected;
+  const matchKey = currentMatch ? `${currentMatch.ringNo}-${currentMatch.matchNo}` : '';
+  const isFullySigned = (!!actualMatchData?.blue_inspected && !!actualMatchData?.red_inspected) || 
+                       (localSignedMatches[matchKey]?.blue && localSignedMatches[matchKey]?.red);
 
   // Helper to check if any match in a list is signed
   const getMatchStatus = (m: SheetMatch) => {
+    const key = `${m.ringNo}-${m.matchNo}`;
+    if (localSignedMatches[key]?.blue && localSignedMatches[key]?.red) {
+      return { isSigned: true, hasBlue: true, hasRed: true };
+    }
+
     let data = null;
     for (const ring of rings) {
       if (ring.ringNumber.toString() === m.ringNo) {
@@ -429,7 +437,9 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           </button>
         </div>
       </div>
+    </div>
 
+      <div className="print:hidden space-y-6">
         {error && (
           <div className="w-full p-4 bg-red-50 text-red-600 rounded-xl text-sm font-bold flex items-center gap-2 border border-red-100">
             <AlertCircle size={16} />
@@ -528,6 +538,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             )}
           </div>
         </div>
+      </div>
 
       {showReprintModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 print:hidden">
@@ -629,16 +640,28 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             <SignaturePad 
               color="blue" 
               boutId={`${currentMatch.ringNo}-${currentMatch.matchNo}`}
-              isConfirmed={!!actualMatchData?.blue_inspected}
-              onConfirm={() => onUpdateInspection(currentMatch.ringNo, currentMatch.matchNo, 'blue', true)}
+              isConfirmed={!!actualMatchData?.blue_inspected || localSignedMatches[matchKey]?.blue}
+              onConfirm={() => {
+                setLocalSignedMatches(prev => ({
+                  ...prev,
+                  [matchKey]: { ...prev[matchKey], blue: true }
+                }));
+                if (onUpdateInspection) onUpdateInspection(currentMatch.ringNo, currentMatch.matchNo, 'blue', true);
+              }}
             />
           </div>
           <div className="flex-1">
             <SignaturePad 
               color="red" 
               boutId={`${currentMatch.ringNo}-${currentMatch.matchNo}`}
-              isConfirmed={!!actualMatchData?.red_inspected}
-              onConfirm={() => onUpdateInspection(currentMatch.ringNo, currentMatch.matchNo, 'red', true)}
+              isConfirmed={!!actualMatchData?.red_inspected || localSignedMatches[matchKey]?.red}
+              onConfirm={() => {
+                setLocalSignedMatches(prev => ({
+                  ...prev,
+                  [matchKey]: { ...prev[matchKey], red: true }
+                }));
+                if (onUpdateInspection) onUpdateInspection(currentMatch.ringNo, currentMatch.matchNo, 'red', true);
+              }}
             />
           </div>
         </div>
@@ -958,6 +981,5 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
         ))}
       </div>
     </div>
-  </div>
   );
 }
