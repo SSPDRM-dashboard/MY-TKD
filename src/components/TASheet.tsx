@@ -406,7 +406,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             max-width: none !important;
             margin: 0 !important;
             padding: 0 !important;
-            height: 277mm;
+            height: 275mm;
             overflow: hidden;
             display: flex;
             flex-direction: column;
@@ -685,21 +685,8 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full page-break mb-8 print:mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
             {/* Header */}
             <div className="flex justify-between items-center mb-2 print:mb-4">
-              <div className="w-48 flex items-center gap-4">
-                <img 
-                  src="https://upload.wikimedia.org/wikipedia/en/thumb/4/4c/World_Taekwondo_logo.svg/220px-World_Taekwondo_logo.svg.png" 
-                  alt="World Taekwondo" 
-                  className="h-12 w-auto object-contain"
-                  referrerPolicy="no-referrer"
-                />
-                <img 
-                  src="https://taekwondomalaysia.org.my/wp-content/uploads/2020/01/TM-Logo-New.png" 
-                  alt="Taekwondo Malaysia" 
-                  className="h-12 w-auto object-contain"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-              <div className="text-center">
+              <div className="w-48 hidden print:block"></div>
+              <div className="text-center flex-1">
                 <h1 className="text-2xl font-black tracking-widest print:text-3xl">TA SHEET</h1>
                 <div className="text-xs font-bold mt-0.5">({match.eventName || 'Event Name'})</div>
               </div>
@@ -736,8 +723,8 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
                 </thead>
                 <tbody>
                   <tr className="h-[15px] print:h-[15px]">
-                    <td className="border border-black p-0 px-1.5 w-[10%]">NAME</td>
-                    <td className="border border-black p-0 px-1.5 w-[90%]">{match.blueName}</td>
+                    <td className="border border-black p-0 px-1.5 w-[25%] print:w-[10%]">NAME</td>
+                    <td className="border border-black p-0 px-1.5 w-[75%] print:w-[90%]">{match.blueName}</td>
                   </tr>
                   <tr className="h-[15px] print:h-[15px]">
                     <td className="border border-black p-0 px-1.5">NOC</td>
@@ -753,8 +740,8 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
                 </thead>
                 <tbody>
                   <tr className="h-[15px] print:h-[15px]">
-                    <td className="border border-black p-0 px-1.5 w-[10%]">NAME</td>
-                    <td className="border border-black p-0 px-1.5 w-[90%]">{match.redName}</td>
+                    <td className="border border-black p-0 px-1.5 w-[25%] print:w-[10%]">NAME</td>
+                    <td className="border border-black p-0 px-1.5 w-[75%] print:w-[90%]">{match.redName}</td>
                   </tr>
                   <tr className="h-[15px] print:h-[15px]">
                     <td className="border border-black p-0 px-1.5">NOC</td>
