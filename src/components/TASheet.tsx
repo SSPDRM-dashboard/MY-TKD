@@ -387,7 +387,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
         {`
           @page { 
             size: A4 portrait; 
-            margin: 5mm; 
+            margin: 8mm; 
           }
           body { 
             -webkit-print-color-adjust: exact; 
@@ -395,6 +395,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             width: 100%;
             margin: 0;
             padding: 0;
+            background: white;
           }
           * { box-shadow: none !important; -webkit-box-shadow: none !important; }
           .page-break { 
@@ -403,7 +404,12 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             max-width: none !important;
             margin: 0 !important;
             padding: 0 !important;
-            transform: scale(0.98);
+            height: 285mm;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            transform: scale(0.95);
             transform-origin: top center;
           }
           .page-break:last-child { page-break-after: auto; }
@@ -945,7 +951,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           </div>
 
           {/* Officials */}
-          <table className="w-full border-collapse border border-black mb-4 print:mb-0 text-sm text-center font-bold">
+          <table className="w-full border-collapse border border-black mb-2 print:mb-0 text-sm text-center font-bold">
             <tbody>
               <tr className="h-7 print:h-7">
                 <td className="border border-black p-1.5 w-[10%] bg-gray-200">Judge 2</td>
@@ -971,7 +977,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           </table>
 
           {/* Signature */}
-          <div className="flex justify-end mt-8 mb-0">
+          <div className="flex justify-end mt-4 mb-0">
             <div className="w-64 flex items-end gap-2 text-sm font-bold">
               <span>Signature :</span>
               <div className="flex-1 border-b border-black"></div>
