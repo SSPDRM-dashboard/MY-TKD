@@ -26,6 +26,8 @@ export interface MatchData {
   category: string;
   privacy_mode: boolean;
   eventId?: string | null;
+  blue_inspected?: boolean;
+  red_inspected?: boolean;
 }
 
 export interface RingStatus {

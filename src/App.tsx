@@ -39,7 +39,7 @@ import { MatchData, RingStatus, EventData, BoutMapping, MatchHistoryItem } from 
 import { TASheet } from './components/TASheet';
 import { AdminMapping } from './components/AdminMapping';
 import { AIBracketSetup } from './components/AIBracketSetup';
-import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateTransferInGoogleSheets, testSync } from './services/googleSheets';
+import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateTransferInGoogleSheets, updateBoutDetailsInGoogleSheets, testSync } from './services/googleSheets';
 import { cn, normalizeBoutNumber, getBoutNumber, formatBoutNumber } from './lib/utils';
 import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, getDocFromServer, where } from 'firebase/firestore';
 import { db } from './firebase';
@@ -195,6 +195,8 @@ function AnnouncementPopup({ announcement, onClose, size = 'normal' }: { announc
     </AnimatePresence>
   );
 }
+
+import { EditBoutDetailsModal } from './components/EditBoutDetailsModal';
 
 export default function App() {
   const [events, setEvents] = useSyncedState<EventData[]>('tkd_events', []);
@@ -370,6 +372,7 @@ export default function App() {
   const [showNewBoutModal, setShowNewBoutModal] = useState(false);
   const [newBoutInitialRing, setNewBoutInitialRing] = useState<number | undefined>(undefined);
   const [showEditResultModal, setShowEditResultModal] = useState(false);
+  const [showEditBoutDetailsModal, setShowEditBoutDetailsModal] = useState(false);
   const [showAddRingModal, setShowAddRingModal] = useState(false);
   const [missingBoutPrompt, setMissingBoutPrompt] = useState<{ ringNumber: number; expectedBout: number; totalBouts: number } | null>(null);
   const [finalBoutCheck, setFinalBoutCheck] = useState<{ ringNumber: number; remainingCount: number } | null>(null);
@@ -496,11 +499,11 @@ export default function App() {
       const ringBouts = dataRows.filter(row => {
         const rowEventName = row[0]?.trim();
         const rowRingNo = parseInt(row[1]);
-        return rowEventName === currentEventName && rowRingNo === user.assignedRing;
+        return rowEventName === currentEventName && rowRingNo === Number(user.assignedRing);
       });
       
       if (ringBouts.length === 0) {
-        alert(`No bouts found for Event "${currentEventName}" and Ring ${getRingName(user.assignedRing)} in the sheet.`);
+        alert(`No bouts found for Event "${currentEventName}" and Ring ${getRingName(Number(user.assignedRing))} in the sheet.`);
         return;
       }
 
@@ -533,12 +536,12 @@ export default function App() {
       });
 
       if (newBouts.length === 0) {
-        alert(`No new bouts to import for Ring ${getRingName(user.assignedRing)}. All bouts from sheet already exist in system.`);
+        alert(`No new bouts to import for Ring ${getRingName(Number(user.assignedRing))}. All bouts from sheet already exist in system.`);
         return;
       }
 
       setBoutQueue(prev => [...prev, ...newBouts]);
-      alert(`Successfully imported ${newBouts.length} new bouts for Ring ${getRingName(user.assignedRing)}.`);
+      alert(`Successfully imported ${newBouts.length} new bouts for Ring ${getRingName(Number(user.assignedRing))}.`);
     } catch (error) {
       console.error("Error importing bouts:", error);
       alert("Error importing bouts. Please check console for details.");
@@ -788,6 +791,42 @@ export default function App() {
     // Always close the prompt after recording a reason.
     // If there's no next bout in the queue, the ring will just become inactive.
     setMissingBoutPrompt(null);
+  };
+
+  const handleUpdateMatchInspection = async (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean) => {
+    setRings(prev => {
+      const updated = [...prev];
+      let changed = false;
+      updated.forEach(ring => {
+        if (ring.ringNumber.toString() === ringNo) {
+          if (ring.currentBout && ring.currentBout.bout.toString() === matchNo) {
+            ring.currentBout = { ...ring.currentBout, [`${color}_inspected`]: inspected };
+            changed = true;
+          }
+          if (ring.onDeck && ring.onDeck.bout.toString() === matchNo) {
+            ring.onDeck = { ...ring.onDeck, [`${color}_inspected`]: inspected };
+            changed = true;
+          }
+          if (ring.inTheHole && ring.inTheHole.bout.toString() === matchNo) {
+            ring.inTheHole = { ...ring.inTheHole, [`${color}_inspected`]: inspected };
+            changed = true;
+          }
+        }
+      });
+      return changed ? updated : prev;
+    });
+
+    setBoutQueue(prev => {
+      const updated = [...prev];
+      let changed = false;
+      updated.forEach(item => {
+        if (item.data.ring.toString() === ringNo && item.data.bout.toString() === matchNo) {
+          item.data = { ...item.data, [`${color}_inspected`]: inspected };
+          changed = true;
+        }
+      });
+      return changed ? updated : prev;
+    });
   };
 
   const handleMissingBoutManual = async (ringNumber: number, data: MatchData) => {
@@ -1534,10 +1573,10 @@ export default function App() {
             <>
               <NavItem 
                 icon={<LayoutDashboard size={20} />} 
-                label={`Ring ${getRingName(user?.assignedRing || 1)}`} 
+                label={`Ring ${getRingName(Number(user?.assignedRing) || 1)}`} 
                 active={activeTab === 'mats'} 
                 onClick={() => setActiveTab('mats')} 
-                badge={rings.find(r => r.ringNumber === user?.assignedRing)?.totalBouts || 0}
+                badge={rings.find(r => r.ringNumber === Number(user?.assignedRing))?.totalBouts || 0}
               />
               <NavItem 
                 icon={<Database size={20} />} 
@@ -1698,11 +1737,20 @@ export default function App() {
                     <span>Broadcast</span>
                   </button>
                   <button 
+                    onClick={() => setShowEditBoutDetailsModal(true)}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] md:text-sm font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
+                  >
+                    <Edit2 size={16} />
+                    <span className="hidden md:inline">Edit Details</span>
+                    <span className="md:hidden">Details</span>
+                  </button>
+                  <button 
                     onClick={() => setShowEditResultModal(true)}
                     className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-blue-600 text-white rounded-xl text-[10px] md:text-sm font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
                   >
                     <Edit2 size={16} />
-                    <span>Edit</span>
+                    <span className="hidden md:inline">Edit Result</span>
+                    <span className="md:hidden">Result</span>
                   </button>
                   <button 
                     onClick={() => setShowNewBoutModal(true)}
@@ -1719,7 +1767,7 @@ export default function App() {
           </div>
 
           {activeTab === 'dashboard' && (() => {
-            const dashboardRings = rings.filter(r => user?.role === 'admin' || r.ringNumber === user?.assignedRing);
+            const dashboardRings = rings.filter(r => user?.role === 'admin' || r.ringNumber === Number(user?.assignedRing));
             const activeCount = dashboardRings.filter(r => r.currentBout).length;
 
             return (
@@ -1880,7 +1928,7 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-bold flex items-center gap-2">
                   <LayoutDashboard size={20} className="text-red-600" />
-                  {user?.role === 'admin' ? "Live Ring Control Center" : `Ring ${getRingName(user?.assignedRing || 1)} Controller`}
+                  {user?.role === 'admin' ? "Live Ring Control Center" : `Ring ${getRingName(Number(user?.assignedRing) || 1)} Controller`}
                   {isSyncing && (
                     <span className="ml-4 flex items-center gap-2 text-green-600 text-[10px] font-black animate-pulse">
                       <div className="w-1.5 h-1.5 bg-green-600 rounded-full" />
@@ -1926,7 +1974,7 @@ export default function App() {
                 ) : (
                   <>
                     <div className="lg:col-span-2">
-                      {rings.filter(r => r.ringNumber === user?.assignedRing).map((ring) => (
+                      {rings.filter(r => r.ringNumber === Number(user?.assignedRing)).map((ring) => (
                         <RingCard 
                           key={ring.ringNumber} 
                           ring={ring} 
@@ -2068,6 +2116,7 @@ export default function App() {
                 boutQueue={boutQueue} 
                 rings={rings} 
                 currentEventName={getCurrentEventName()} 
+                onUpdateInspection={handleUpdateMatchInspection}
               />
             </div>
           )}
@@ -2275,6 +2324,53 @@ export default function App() {
         />
       )}
 
+      {showEditBoutDetailsModal && (
+        <EditBoutDetailsModal
+          onClose={() => setShowEditBoutDetailsModal(false)}
+          onSubmit={(ringNumber, boutNumber, updates) => {
+            // Update in rings
+            setRings(prev => prev.map(r => {
+              if (r.ringNumber === ringNumber && r.currentBout && r.currentBout.bout.toString() === boutNumber) {
+                return {
+                  ...r,
+                  currentBout: { ...r.currentBout, ...updates }
+                };
+              }
+              return r;
+            }));
+
+            // Update in queue
+            setBoutQueue(prev => prev.map(q => {
+              if (q.data.ring === ringNumber && q.data.bout.toString() === boutNumber) {
+                return {
+                  ...q,
+                  data: { ...q.data, ...updates }
+                };
+              }
+              return q;
+            }));
+
+            // Sync to Google Sheets
+            if (googleSheetUrl) {
+              setIsSyncing(true);
+              updateBoutDetailsInGoogleSheets(
+                googleSheetUrl,
+                ringNumber,
+                boutNumber,
+                updates.blue_name || '',
+                updates.blue_club || '',
+                updates.red_name || '',
+                updates.red_club || '',
+                getCurrentEventName()
+              ).finally(() => setIsSyncing(false));
+            }
+          }}
+          rings={rings}
+          queue={boutQueue}
+          user={user}
+        />
+      )}
+
       {!['standby', 'general'].includes(activeTab) && (
         <AnnouncementPopup announcement={activeAnnouncement} onClose={handleAnnouncementClose} />
       )}
@@ -2417,10 +2513,10 @@ export default function App() {
               <div className="relative">
                 <LayoutDashboard size={24} />
                 <span className="absolute -top-2 -right-2 bg-red-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full">
-                  {rings.find(r => r.ringNumber === user?.assignedRing)?.totalBouts || 0}
+                  {rings.find(r => r.ringNumber === Number(user?.assignedRing))?.totalBouts || 0}
                 </span>
               </div>
-              <span className="text-[10px] font-bold">Ring {getRingName(user?.assignedRing || 1)}</span>
+              <span className="text-[10px] font-bold">Ring {getRingName(Number(user?.assignedRing) || 1)}</span>
             </button>
             <button 
               onClick={() => setActiveTab('general')}
@@ -2718,7 +2814,7 @@ interface EditResultModalProps {
 }
 
 function EditResultModal({ onClose, onSubmit, rings, user }: EditResultModalProps) {
-  const defaultRing = user?.role === 'admin' ? (rings[0]?.ringNumber || 1) : (user?.assignedRing || 1);
+  const defaultRing = user?.role === 'admin' ? (rings[0]?.ringNumber || 1) : (Number(user?.assignedRing) || 1);
   
   const [formData, setFormData] = useState({
     ring: defaultRing,
@@ -2735,7 +2831,11 @@ function EditResultModal({ onClose, onSubmit, rings, user }: EditResultModalProp
 
   const availableRings = user?.role === 'admin' 
     ? rings 
-    : rings.filter(r => r.ringNumber === user?.assignedRing);
+    : rings.filter(r => r.ringNumber === Number(user?.assignedRing));
+
+  const displayRings = availableRings.length > 0 
+    ? availableRings 
+    : (user?.assignedRing ? [{ ringNumber: Number(user.assignedRing) } as RingStatus] : rings);
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -2764,12 +2864,13 @@ function EditResultModal({ onClose, onSubmit, rings, user }: EditResultModalProp
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Ring</label>
               <select 
-                value={formData.ring}
+                value={formData.ring || ''}
                 onChange={(e) => setFormData({...formData, ring: parseInt(e.target.value)})}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
                 required
               >
-                {availableRings.map(r => (
+                <option value="" disabled>Select Ring</option>
+                {displayRings.map(r => (
                   <option key={r.ringNumber} value={r.ringNumber}>Ring {r.ringNumber}</option>
                 ))}
               </select>
@@ -2883,7 +2984,7 @@ interface NewBoutModalProps {
 }
 
 function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user, initialRing, currentEventId, isSyncing }: NewBoutModalProps) {
-  const defaultRing = initialRing || (user?.role === 'admin' ? (rings[0]?.ringNumber || 1) : (user?.assignedRing || 1));
+  const defaultRing = initialRing || (user?.role === 'admin' ? (rings[0]?.ringNumber || 1) : (Number(user?.assignedRing) || 1));
   
   const getNextBoutNumber = (ringNum: number) => {
     let maxBout = ringNum * 1000;
@@ -3003,7 +3104,11 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
 
   const availableRings = user?.role === 'admin' 
     ? rings 
-    : rings.filter(r => r.ringNumber === user?.assignedRing);
+    : rings.filter(r => r.ringNumber === Number(user?.assignedRing));
+
+  const displayRings = availableRings.length > 0 
+    ? availableRings 
+    : (user?.assignedRing ? [{ ringNumber: Number(user.assignedRing) } as RingStatus] : rings);
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -3043,7 +3148,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                 required
                 autoComplete="off"
               >
-                {availableRings.map(r => (
+                {displayRings.map(r => (
                   <option key={r.ringNumber} value={r.ringNumber}>Ring {r.ringNumber}</option>
                 ))}
               </select>
@@ -3399,9 +3504,9 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
               </div>
               
               <div className="flex items-center gap-4">
-                <FighterSide color="blue" name={current.blue_name} club={current.blue_club} privacy={current.privacy_mode} />
+                <FighterSide color="blue" name={current.blue_name} club={current.blue_club} privacy={current.privacy_mode} inspected={current.blue_inspected} />
                 <div className="text-xs font-black text-slate-300 italic">VS</div>
-                <FighterSide color="red" name={current.red_name} club={current.red_club} privacy={current.privacy_mode} />
+                <FighterSide color="red" name={current.red_name} club={current.red_club} privacy={current.privacy_mode} inspected={current.red_inspected} />
               </div>
               
               <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
@@ -3539,14 +3644,33 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
   );
 }
 
-function FighterSide({ color, name, club, privacy }: { color: 'blue' | 'red', name: string, club: string, privacy: boolean }) {
+function FighterSide({ color, name, club, privacy, inspected }: { color: 'blue' | 'red', name: string, club: string, privacy: boolean, inspected?: boolean }) {
+  const getDynamicFontSize = (name: string) => {
+    const len = name.length;
+    if (len <= 15) return 'text-[18px]';
+    if (len <= 25) return 'text-[16px]';
+    if (len <= 35) return 'text-[14px]';
+    return 'text-[12px]';
+  };
+
   return (
     <div className="flex-1 space-y-1">
       <div className={cn(
+        "flex items-center gap-1 text-[9px] font-black uppercase tracking-widest mb-1",
+        inspected 
+          ? (color === 'blue' ? "text-[#00a2e8]" : "text-[#ed1c24]")
+          : "text-slate-400"
+      )}>
+        INSPECTION {inspected ? <Check size={12} strokeWidth={4} /> : <X size={12} strokeWidth={4} />}
+      </div>
+      <div className={cn(
         "h-1 w-full rounded-full mb-2",
-        color === 'blue' ? "bg-blue-600" : "bg-red-600"
+        color === 'blue' ? "bg-[#00a2e8]" : "bg-[#ed1c24]"
       )} />
-      <p className="text-sm font-black text-slate-800 truncate">
+      <p className={cn(
+        "font-black text-slate-800 leading-tight line-clamp-3",
+        getDynamicFontSize(privacy ? "---" : name)
+      )}>
         {privacy ? "---" : name}
       </p>
       <p className="text-[10px] font-bold text-slate-400 uppercase">{club}</p>
@@ -3842,6 +3966,15 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
     ? rings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
     : rings;
 
+  const getDynamicFontSize = (name: string) => {
+    const len = name.length;
+    if (len <= 15) return isFullscreen ? 'text-[52px] tracking-[2px]' : 'text-[34px] tracking-[1px]';
+    if (len <= 25) return isFullscreen ? 'text-[38px] tracking-[1px]' : 'text-[26px] tracking-normal';
+    if (len <= 35) return isFullscreen ? 'text-[28px] tracking-tight' : 'text-[20px] tracking-tight';
+    if (len <= 45) return isFullscreen ? 'text-[22px] tracking-tighter' : 'text-[16px] tracking-tighter';
+    return isFullscreen ? 'text-[18px] tracking-tighter' : 'text-[12px] tracking-tighter';
+  };
+
   return (
     <div 
       ref={containerRef}
@@ -3941,14 +4074,17 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                   
                   <div className={cn(
                     "flex items-center bg-slate-900 rounded-[3rem] border-4 border-slate-800 shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-500",
-                    isFullscreen ? "h-32" : "h-36"
+                    isFullscreen ? "h-36" : "h-40"
                   )}>
                     {/* Blue Side */}
                     <div className="flex-1 h-full bg-blue-600 flex flex-col justify-center px-10 relative overflow-hidden group">
                       <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/20 to-transparent pointer-events-none" />
                       <div className="absolute -right-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">BLUE</div>
                       <p className="text-[15px] font-black text-blue-200 uppercase tracking-[0.2em] mb-1 relative z-10">{current?.blue_club || "---"}</p>
-                      <h4 className="text-[28px] font-black text-white uppercase tracking-[3px] relative z-10 leading-tight line-clamp-2">
+                      <h4 className={cn(
+                        "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
+                        getDynamicFontSize(current?.blue_name || "")
+                      )}>
                         {current?.privacy_mode ? "---" : (current?.blue_name || "---")}
                       </h4>
                     </div>
@@ -3965,7 +4101,10 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                       <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/20 to-transparent pointer-events-none" />
                       <div className="absolute -left-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">RED</div>
                       <p className="text-[15px] font-black text-red-200 uppercase tracking-[0.2em] mb-1 relative z-10">{current?.red_club || "---"}</p>
-                      <h4 className="text-[28px] font-black text-white uppercase tracking-[3px] relative z-10 leading-tight line-clamp-2">
+                      <h4 className={cn(
+                        "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
+                        getDynamicFontSize(current?.red_name || "")
+                      )}>
                         {current?.privacy_mode ? "---" : (current?.red_name || "---")}
                       </h4>
                     </div>
@@ -3999,7 +4138,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                           <p className="text-[8px] font-bold text-blue-200 uppercase leading-none mb-0.5 relative z-10">
                             {bout ? bout.data.blue_club : "---"}
                           </p>
-                          <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-1">
+                          <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
                             {bout ? (bout.data.privacy_mode ? "---" : bout.data.blue_name) : "---"}
                           </p>
                         </div>
@@ -4017,7 +4156,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                           <p className="text-[8px] font-bold text-red-200 uppercase leading-none mb-0.5 relative z-10">
                             {bout ? bout.data.red_club : "---"}
                           </p>
-                          <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-1">
+                          <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
                             {bout ? (bout.data.privacy_mode ? "---" : bout.data.red_name) : "---"}
                           </p>
                         </div>
@@ -4254,13 +4393,24 @@ function PublicRingCard({ ring, namingMode, queueCount }: PublicRingCardProps) {
 }
 
 function PublicFighterSide({ color, name, club, privacy }: { color: 'blue' | 'red', name: string, club: string, privacy: boolean }) {
+  const getDynamicFontSize = (name: string) => {
+    const len = name.length;
+    if (len <= 15) return 'text-[24px]';
+    if (len <= 25) return 'text-[20px]';
+    if (len <= 35) return 'text-[16px]';
+    return 'text-[14px]';
+  };
+
   return (
     <div className="flex-1 space-y-2">
       <div className={cn(
         "h-2 w-full rounded-full shadow-inner",
-        color === 'blue' ? "bg-blue-500 shadow-blue-900/50" : "bg-red-500 shadow-red-900/50"
+        color === 'blue' ? "bg-[#00a2e8] shadow-blue-900/50" : "bg-[#ed1c24] shadow-red-900/50"
       )} />
-      <p className="text-lg font-black text-white tracking-tight">
+      <p className={cn(
+        "font-black text-white tracking-tight leading-tight line-clamp-3",
+        getDynamicFontSize(privacy ? "---" : name)
+      )}>
         {privacy ? "---" : name}
       </p>
       <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">{club}</p>

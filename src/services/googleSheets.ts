@@ -117,6 +117,42 @@ export async function updateTransferInGoogleSheets(url: string, ring: number, bo
   }
 }
 
+export async function updateBoutDetailsInGoogleSheets(url: string, ring: number, bout: string | number, blueName: string, blueClub: string, redName: string, redClub: string, eventName: string = '') {
+  const targetUrl = url?.trim();
+  if (!targetUrl) return false;
+
+  try {
+    const payload = {
+      action: 'updateBoutDetails',
+      ring: ring,
+      bout: formatBout(ring, bout).toUpperCase(),
+      blue_name: (blueName || '-').toUpperCase(),
+      blue_club: (blueClub || '-').toUpperCase(),
+      red_name: (redName || '-').toUpperCase(),
+      red_club: (redClub || '-').toUpperCase(),
+      timestamp: getMalaysiaTimestamp(),
+      event_name: (eventName || '-').toUpperCase()
+    };
+
+    console.log('>>> GOOGLE SHEETS SYNC START (Edit Details) <<<');
+    console.log('Target URL:', targetUrl);
+    console.log('Payload:', JSON.stringify(payload, null, 2));
+
+    await fetch(targetUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      cache: 'no-cache',
+      body: JSON.stringify(payload),
+    });
+
+    console.log('>>> GOOGLE SHEETS SYNC REQUEST SENT <<<');
+    return true;
+  } catch (error) {
+    console.error('Google Sheets Sync Error (Edit Details):', error);
+    return false;
+  }
+}
+
 export async function updateWinnerInGoogleSheets(url: string, ring: number, bout: string | number, winner: string, eventName: string = '', winnerSide?: string, blueName?: string, redName?: string) {
   const targetUrl = url?.trim();
   if (!targetUrl) return false;

@@ -165,8 +165,7 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
         }
       `;
 
-      // Add a timeout to prevent indefinite waiting
-      const analysisPromise = ai.models.generateContent({
+      const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: [
           {
@@ -220,11 +219,6 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
         },
       });
 
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Analysis timed out after 3 minutes. The image might be too complex or the connection is slow.")), 180000)
-      );
-
-      const response = await Promise.race([analysisPromise, timeoutPromise]) as any;
       const result = JSON.parse(response.text);
       
       // Capitalize and infer ring from bout number
