@@ -730,8 +730,8 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
                 </thead>
                 <tbody>
                   <tr className="h-[15px] print:h-[15px]">
-                    <td className="border border-black p-0 px-1.5 w-[18%]">NAME</td>
-                    <td className="border border-black p-0 px-1.5 w-[82%]">{match.blueName}</td>
+                    <td className="border border-black p-0 px-1.5 w-[10%]">NAME</td>
+                    <td className="border border-black p-0 px-1.5 w-[90%]">{match.blueName}</td>
                   </tr>
                   <tr className="h-[15px] print:h-[15px]">
                     <td className="border border-black p-0 px-1.5">NOC</td>
@@ -747,8 +747,8 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
                 </thead>
                 <tbody>
                   <tr className="h-[15px] print:h-[15px]">
-                    <td className="border border-black p-0 px-1.5 w-[18%]">NAME</td>
-                    <td className="border border-black p-0 px-1.5 w-[82%]">{match.redName}</td>
+                    <td className="border border-black p-0 px-1.5 w-[10%]">NAME</td>
+                    <td className="border border-black p-0 px-1.5 w-[90%]">{match.redName}</td>
                   </tr>
                   <tr className="h-[15px] print:h-[15px]">
                     <td className="border border-black p-0 px-1.5">NOC</td>

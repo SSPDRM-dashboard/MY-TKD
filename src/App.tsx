@@ -1475,7 +1475,7 @@ export default function App() {
     setUser(null);
     localStorage.removeItem('tkd_user');
     localStorage.removeItem('tkd_login_time');
-    setShowLogin(false);
+    setShowLogin(true);
   };
 
   const handleAddEvent = (newEvent: EventData) => {
