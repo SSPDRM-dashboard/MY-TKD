@@ -142,9 +142,10 @@ interface TASheetProps {
   rings: RingStatus[];
   currentEventName: string;
   onUpdateInspection?: (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean) => void;
+  viewMode?: 'print' | 'signature';
 }
 
-export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection }: TASheetProps) {
+export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection, viewMode = 'print' }: TASheetProps) {
   const [matches, setMatches] = useState<SheetMatch[]>([]);
   const [fallbackMatches, setFallbackMatches] = useState<SheetMatch[]>([]);
   const [selectedRing, setSelectedRing] = useState<string>('');
@@ -418,6 +419,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           .no-print { display: none !important; }
         `}
       </style>
+      {viewMode === 'print' && (
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 print:hidden flex flex-wrap gap-4 items-end">
         <div className="w-full flex justify-between items-center mb-2">
           <h2 className="text-lg font-bold flex items-center gap-2">
@@ -445,6 +447,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
         </div>
       </div>
     </div>
+    )}
 
       <div className="print:hidden space-y-6">
         {error && (
@@ -521,6 +524,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           </div>
 
           <div className="ml-auto flex flex-col items-end gap-2">
+            {viewMode === 'print' && (
             <div className="flex gap-2">
               <button 
                 onClick={() => handlePrint('single')}
@@ -538,7 +542,8 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
                 Print Signed for Ring {selectedRing}
               </button>
             </div>
-            {!isFullySigned && currentMatch && (
+            )}
+            {!isFullySigned && currentMatch && viewMode === 'print' && (
               <p className="text-[10px] font-black text-red-500 uppercase tracking-tighter animate-pulse">
                 * Both players must sign before printing
               </p>
@@ -547,7 +552,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
         </div>
       </div>
 
-      {showReprintModal && (
+      {showReprintModal && viewMode === 'print' && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 print:hidden">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
@@ -641,7 +646,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
         </div>
       )}
 
-      {currentMatch && onUpdateInspection && (
+      {currentMatch && onUpdateInspection && viewMode === 'signature' && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 print:hidden flex gap-8">
           <div className="flex-1">
             <SignaturePad 
@@ -674,6 +679,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
         </div>
       )}
 
+      {viewMode === 'print' && (
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 print:shadow-none print:border-none print:p-0 overflow-x-auto print:overflow-visible">
         {matchesToRender.map((match, index) => (
           <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full page-break mb-8 print:mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
@@ -987,6 +993,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
         </div>
         ))}
       </div>
+      )}
     </div>
   );
 }

@@ -1667,12 +1667,20 @@ export default function App() {
             </>
           )}
           {user?.role === 'ta' && (
-            <NavItem 
-              icon={<LayoutDashboard size={20} />} 
-              label="TA Sheet" 
-              active={activeTab === 'ta-sheet'} 
-              onClick={() => setActiveTab('ta-sheet')} 
-            />
+            <>
+              <NavItem 
+                icon={<LayoutDashboard size={20} />} 
+                label="TA Sheet" 
+                active={activeTab === 'ta-sheet'} 
+                onClick={() => setActiveTab('ta-sheet')} 
+              />
+              <NavItem 
+                icon={<Edit2 size={20} />} 
+                label="Player Signature" 
+                active={activeTab === 'player-signature'} 
+                onClick={() => setActiveTab('player-signature')} 
+              />
+            </>
           )}
           {user?.role === 'admin' && (
             <>
@@ -2181,6 +2189,19 @@ export default function App() {
                 rings={rings} 
                 currentEventName={getCurrentEventName()} 
                 onUpdateInspection={handleUpdateMatchInspection}
+                viewMode="print"
+              />
+            </div>
+          )}
+
+          {activeTab === 'player-signature' && (
+            <div className="max-w-5xl mx-auto">
+              <TASheet 
+                boutQueue={boutQueue} 
+                rings={rings} 
+                currentEventName={getCurrentEventName()} 
+                onUpdateInspection={handleUpdateMatchInspection}
+                viewMode="signature"
               />
             </div>
           )}
