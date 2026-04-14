@@ -400,17 +400,18 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           * { box-shadow: none !important; -webkit-box-shadow: none !important; }
           .page-break { 
             page-break-after: always; 
+            break-inside: avoid;
             width: 100% !important;
             max-width: none !important;
             margin: 0 !important;
             padding: 0 !important;
-            height: 285mm;
+            height: 277mm;
             overflow: hidden;
             display: flex;
             flex-direction: column;
-            justify-content: flex-start;
             transform: scale(0.95);
             transform-origin: top center;
+            background: white;
           }
           .page-break:last-child { page-break-after: auto; }
           table { width: 100% !important; table-layout: fixed; }
@@ -977,7 +978,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           </table>
 
           {/* Signature */}
-          <div className="flex justify-end mt-4 mb-0">
+          <div className="flex justify-end mt-auto mb-0">
             <div className="w-64 flex items-end gap-2 text-sm font-bold">
               <span>Signature :</span>
               <div className="flex-1 border-b border-black"></div>
