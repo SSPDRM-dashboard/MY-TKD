@@ -729,13 +729,13 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td className="border border-black p-1.5 w-1/4">NAME</td>
-                    <td className="border border-black p-1.5 w-3/4">{match.blueName}</td>
+                  <tr className="h-[15px] print:h-[15px]">
+                    <td className="border border-black p-0 px-1.5 w-[18%]">NAME</td>
+                    <td className="border border-black p-0 px-1.5 w-[82%]">{match.blueName}</td>
                   </tr>
-                  <tr>
-                    <td className="border border-black p-1.5">NOC</td>
-                    <td className="border border-black p-1.5">{match.blueClub}</td>
+                  <tr className="h-[15px] print:h-[15px]">
+                    <td className="border border-black p-0 px-1.5">NOC</td>
+                    <td className="border border-black p-0 px-1.5">{match.blueClub}</td>
                   </tr>
                 </tbody>
               </table>
@@ -746,13 +746,13 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td className="border border-black p-1.5 w-1/4">NAME</td>
-                    <td className="border border-black p-1.5 w-3/4">{match.redName}</td>
+                  <tr className="h-[15px] print:h-[15px]">
+                    <td className="border border-black p-0 px-1.5 w-[18%]">NAME</td>
+                    <td className="border border-black p-0 px-1.5 w-[82%]">{match.redName}</td>
                   </tr>
-                  <tr>
-                    <td className="border border-black p-1.5">NOC</td>
-                    <td className="border border-black p-1.5">{match.redClub}</td>
+                  <tr className="h-[15px] print:h-[15px]">
+                    <td className="border border-black p-0 px-1.5">NOC</td>
+                    <td className="border border-black p-0 px-1.5">{match.redClub}</td>
                   </tr>
                 </tbody>
               </table>
@@ -771,7 +771,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             </thead>
             <tbody>
               {[1, 2, 3].map((round) => (
-                <tr key={round} className="h-8 print:h-8">
+                <tr key={round} className="h-[30px] print:h-[30px]">
                   <td className="border border-black"></td>
                   <td className="border border-black w-[10%]"></td>
                   <td className="border border-black w-[10%]"></td>
@@ -827,7 +827,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             </thead>
             <tbody>
               {[1, 2, 3].map((round) => (
-                <tr key={round} className="h-6 print:h-6">
+                <tr key={round} className="h-[22px] print:h-[22px]">
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
@@ -857,7 +857,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           {/* Win Types */}
           <table className="w-full border-collapse border border-black mb-2 print:mb-4 text-sm text-center font-bold">
             <tbody>
-              <tr className="h-8 print:h-8">
+              <tr className="h-[30px] print:h-[30px]">
                 <td className="border border-black w-1/5">PTF</td>
                 <td className="border border-black w-1/5">RSC</td>
                 <td className="border border-black w-1/5">WDR</td>
@@ -887,7 +887,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
                 "Requested by CR",
                 "Rejected by CR"
               ].map((reason, idx) => (
-                <tr key={idx} className="h-5 print:h-5">
+                <tr key={idx} className="h-[18px] print:h-[18px]">
                   <td className="border border-black p-1 text-left px-2">{reason}</td>
                   <td className="border border-black p-1 w-5">A/R</td>
                   <td className="border border-black p-1 w-5">A/R</td>
@@ -926,7 +926,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
                 </tr>
               </thead>
               <tbody>
-                <tr className="h-6 print:h-6">
+                <tr className="h-[22px] print:h-[22px]">
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
@@ -942,7 +942,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
                 </tr>
               </thead>
               <tbody>
-                <tr className="h-6 print:h-6">
+                <tr className="h-[22px] print:h-[22px]">
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
                   <td className="border border-black"></td>
