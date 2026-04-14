@@ -395,6 +395,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             max-width: none !important;
             margin: 0 !important;
             padding: 0 !important;
+            transform: scale(0.98);
             transform-origin: top center;
           }
           .page-break:last-child { page-break-after: auto; }
@@ -643,11 +644,11 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
         </div>
       )}
 
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 overflow-x-auto print:overflow-visible print:p-8">
+      <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 print:shadow-none print:border-none print:p-0 overflow-x-auto print:overflow-visible">
         {matchesToRender.map((match, index) => (
-          <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full page-break mb-8 print:mb-8" style={{ fontFamily: 'Arial, sans-serif' }}>
+          <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full page-break mb-8 print:mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
             {/* Header */}
-            <div className="flex justify-between items-center mb-2 print:mb-2">
+            <div className="flex justify-between items-center mb-2 print:mb-4">
               <div className="w-48 flex items-center gap-4">
                 <img 
                   src="https://upload.wikimedia.org/wikipedia/en/thumb/4/4c/World_Taekwondo_logo.svg/220px-World_Taekwondo_logo.svg.png" 
@@ -663,14 +664,14 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
                 />
               </div>
               <div className="text-center">
-                <h1 className="text-2xl font-black tracking-widest print:text-2xl">TA SHEET</h1>
+                <h1 className="text-2xl font-black tracking-widest print:text-3xl">TA SHEET</h1>
                 <div className="text-xs font-bold mt-0.5">({match.eventName || 'Event Name'})</div>
               </div>
               <div className="text-base font-black w-48 text-right">Best of 3</div>
             </div>
 
             {/* Match Info */}
-            <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-sm font-bold match-info-table">
+            <table className="w-full border-collapse border border-black mb-2 print:mb-4 text-sm font-bold match-info-table">
               <tbody>
                 <tr>
                   <td className="border border-black p-1.5 w-[33%]">Date : <span className="ml-2 font-normal">{sheetDate}</span></td>
@@ -690,7 +691,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             </table>
 
             {/* Players */}
-            <div className="flex gap-4 mb-2 print:mb-2">
+            <div className="flex gap-4 mb-2 print:mb-4">
               <table className="w-1/2 border-collapse border border-black text-sm font-bold text-center">
                 <thead>
                   <tr>
@@ -728,7 +729,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             </div>
 
           {/* Round Scores */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-sm text-center font-bold">
+          <table className="w-full border-collapse border border-black mb-2 print:mb-4 text-sm text-center font-bold">
             <thead>
               <tr>
                 <th className="border border-black p-1.5 w-[15%]">Gam-Jeom</th>
@@ -756,7 +757,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           </table>
 
           {/* Decision of Superiority */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-[10px] text-center font-bold">
+          <table className="w-full border-collapse border border-black mb-2 print:mb-4 text-[10px] text-center font-bold">
             <thead>
               <tr>
                 <th colSpan={19} className="border border-black p-1.5 bg-gray-200 text-sm tracking-widest">DECISION OF ROUND SUPERIORITY</th>
@@ -824,7 +825,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           </table>
 
           {/* Win Types */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-sm text-center font-bold">
+          <table className="w-full border-collapse border border-black mb-2 print:mb-4 text-sm text-center font-bold">
             <tbody>
               <tr className="h-8 print:h-8">
                 <td className="border border-black w-1/5">PTF</td>
@@ -837,7 +838,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           </table>
 
           {/* Video Replay & Match Winner */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-xs text-center font-bold">
+          <table className="w-full border-collapse border border-black mb-2 print:mb-4 text-xs text-center font-bold">
             <thead>
               <tr>
                 <th className="border border-black p-1.5 bg-[#00a2e8] text-white text-left px-2 w-[20%]">Reason</th>
