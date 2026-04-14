@@ -303,9 +303,16 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
     setPrintedMatches(prev => {
       const newSet = new Set(prev);
       if (mode === 'single' && currentMatch) {
-        newSet.add(`${currentMatch.ringNo}-${currentMatch.matchNo}`);
+        const status = getMatchStatus(currentMatch);
+        if (status.isSigned) {
+          newSet.add(`${currentMatch.ringNo}-${currentMatch.matchNo}`);
+        }
       } else if (mode === 'all') {
-        ringMatches.forEach(m => newSet.add(`${m.ringNo}-${m.matchNo}`));
+        ringMatches.forEach(m => {
+          if (getMatchStatus(m).isSigned) {
+            newSet.add(`${m.ringNo}-${m.matchNo}`);
+          }
+        });
       }
       return newSet;
     });
@@ -335,8 +342,33 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
   };
 
   const actualMatchData = getActualMatchData();
+  const isFullySigned = !!actualMatchData?.blue_inspected && !!actualMatchData?.red_inspected;
 
-  const matchesToRender = printMode === 'all' ? ringMatches : (currentMatch ? [currentMatch] : []);
+  // Helper to check if any match in a list is signed
+  const getMatchStatus = (m: SheetMatch) => {
+    let data = null;
+    for (const ring of rings) {
+      if (ring.ringNumber.toString() === m.ringNo) {
+        if (ring.currentBout?.bout.toString() === m.matchNo) data = ring.currentBout;
+        else if (ring.onDeck?.bout.toString() === m.matchNo) data = ring.onDeck;
+        else if (ring.inTheHole?.bout.toString() === m.matchNo) data = ring.inTheHole;
+        break;
+      }
+    }
+    if (!data) {
+      const queued = boutQueue.find(q => q.data.ring.toString() === m.ringNo && q.data.bout.toString() === m.matchNo);
+      if (queued) data = queued.data;
+    }
+    return {
+      isSigned: !!data?.blue_inspected && !!data?.red_inspected,
+      hasBlue: !!data?.blue_inspected,
+      hasRed: !!data?.red_inspected
+    };
+  };
+
+  const matchesToRender = printMode === 'all' 
+    ? ringMatches.filter(m => getMatchStatus(m).isSigned) 
+    : (currentMatch ? [currentMatch] : []);
 
   return (
     <div className="space-y-6">
@@ -458,21 +490,29 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             </select>
           </div>
 
-          <div className="ml-auto flex gap-2">
-            <button 
-              onClick={() => handlePrint('single')}
-              disabled={!currentMatch}
-              className="px-6 py-2 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors disabled:opacity-50 text-sm"
-            >
-              Print Current Match
-            </button>
-            <button 
-              onClick={() => handlePrint('all')}
-              disabled={ringMatches.length === 0}
-              className="px-6 py-2 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors disabled:opacity-50 text-sm"
-            >
-              Print All for Ring {selectedRing}
-            </button>
+          <div className="ml-auto flex flex-col items-end gap-2">
+            <div className="flex gap-2">
+              <button 
+                onClick={() => handlePrint('single')}
+                disabled={!currentMatch || !isFullySigned}
+                className="px-6 py-2 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:bg-slate-300 text-sm flex items-center gap-2"
+              >
+                {!isFullySigned && currentMatch && <AlertCircle size={16} />}
+                Print Current Match
+              </button>
+              <button 
+                onClick={() => handlePrint('all')}
+                disabled={ringMatches.filter(m => getMatchStatus(m).isSigned).length === 0}
+                className="px-6 py-2 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors disabled:opacity-50 disabled:bg-slate-300 text-sm"
+              >
+                Print Signed for Ring {selectedRing}
+              </button>
+            </div>
+            {!isFullySigned && currentMatch && (
+              <p className="text-[10px] font-black text-red-500 uppercase tracking-tighter animate-pulse">
+                * Both players must sign before printing
+              </p>
+            )}
           </div>
         </div>
       </div>

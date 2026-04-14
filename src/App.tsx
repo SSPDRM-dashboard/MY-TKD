@@ -1543,7 +1543,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row text-slate-900 font-sans">
+    <div className="min-h-[100dvh] bg-slate-50 flex flex-col md:flex-row text-slate-900 font-sans">
       {/* Mobile Header */}
       <header className="md:hidden bg-white border-b border-slate-200 p-4 flex items-center justify-between sticky top-0 z-[60] print:hidden">
         <div className="flex items-center gap-3">
@@ -4288,7 +4288,7 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
     : rings;
 
   return (
-    <div ref={containerRef} className="min-h-screen bg-slate-900 text-white font-sans overflow-x-hidden flex flex-col">
+    <div ref={containerRef} className="min-h-[100dvh] bg-slate-900 text-white font-sans overflow-x-hidden flex flex-col">
       {/* Public Header */}
       <header className={cn(
         "p-6 bg-slate-800 border-b border-slate-700 flex items-center justify-between sticky top-0 z-50 transition-all",
@@ -4310,15 +4310,6 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
             title="Fullscreen Mode"
           >
             <Maximize size={20} />
-          </button>
-          <button 
-            onClick={onBack}
-            className={cn(
-              "px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-bold transition-colors",
-              isSpectator && "bg-slate-800/50 border border-slate-700 text-slate-400 hover:text-white"
-            )}
-          >
-            {isSpectator ? "Operator Login" : "Back to Admin"}
           </button>
         </div>
       </header>
@@ -4361,7 +4352,15 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
             </div>
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Scan for Live Updates</p>
           </div>
-          <p className="text-xs text-slate-500 font-medium">© 2026 MY-TKD Tournament Management System</p>
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-xs text-slate-500 font-medium">© 2026 MY-TKD Tournament Management System</p>
+            <button 
+              onClick={onBack}
+              className="text-[9px] text-slate-600 hover:text-slate-500 uppercase font-black tracking-widest transition-colors mt-2"
+            >
+              {isSpectator ? "System Access" : "Back to Admin"}
+            </button>
+          </div>
         </footer>
       )}
 
@@ -4487,7 +4486,7 @@ function LoginScreen({ onLogin, events, onBack }: { onLogin: (u: string, p: stri
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+    <div className="min-h-[100dvh] bg-slate-50 flex items-center justify-center p-6">
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
