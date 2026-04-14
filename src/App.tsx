@@ -405,7 +405,7 @@ export default function App() {
   });
   const [isImportingBouts, setIsImportingBouts] = useState(false);
   const [isPublicView, setIsPublicView] = useState(false);
-  const [showLogin, setShowLogin] = useState(false);
+  const [showLogin, setShowLogin] = useState(true);
   const [showNewBoutModal, setShowNewBoutModal] = useState(false);
   const [newBoutInitialRing, setNewBoutInitialRing] = useState<number | undefined>(undefined);
   const [showEditResultModal, setShowEditResultModal] = useState(false);

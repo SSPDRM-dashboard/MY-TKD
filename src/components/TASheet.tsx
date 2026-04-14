@@ -376,7 +376,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
         {`
           @page { 
             size: A4 portrait; 
-            margin: 10mm; 
+            margin: 5mm; 
           }
           body { 
             -webkit-print-color-adjust: exact; 
@@ -392,17 +392,12 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             max-width: none !important;
             margin: 0 !important;
             padding: 0 !important;
-            display: flex !important;
-            flex-direction: column !important;
-            height: 270mm !important;
+            transform: scale(0.98);
+            transform-origin: top center;
           }
           .page-break:last-child { page-break-after: auto; }
-          table { width: 100% !important; table-layout: fixed; border-collapse: collapse !important; }
+          table { width: 100% !important; table-layout: fixed; }
           .no-print { display: none !important; }
-          
-          /* Ensure tables don't have extra margins in print */
-          table { margin-bottom: 3mm !important; }
-          .match-info-table { margin-bottom: 4mm !important; }
         `}
       </style>
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 print:hidden flex flex-wrap gap-4 items-end">
@@ -847,7 +842,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           </table>
 
           {/* Signature */}
-          <div className="flex justify-end mt-4 print:mt-auto mb-0 print:mb-2">
+          <div className="flex justify-end mt-8 mb-0">
             <div className="w-64 flex items-end gap-2 text-sm font-bold">
               <span>Signature :</span>
               <div className="flex-1 border-b border-black"></div>
