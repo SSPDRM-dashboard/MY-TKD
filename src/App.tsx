@@ -40,6 +40,7 @@ import { MatchData, RingStatus, EventData, BoutMapping, MatchHistoryItem } from 
 import { TASheet } from './components/TASheet';
 import { AdminMapping } from './components/AdminMapping';
 import { AIBracketSetup } from './components/AIBracketSetup';
+import { TournamentAssistant } from './components/TournamentAssistant';
 import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateTransferInGoogleSheets, updateBoutDetailsInGoogleSheets, testSync } from './services/googleSheets';
 import { cn, normalizeBoutNumber, getBoutNumber, formatBoutNumber } from './lib/utils';
 import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, getDocFromServer, where } from 'firebase/firestore';
@@ -242,6 +243,8 @@ export default function App() {
   const [autoPullRings, setAutoPullRings] = useSyncedState<Record<number, boolean>>('tkd_autopull', {});
   const [boutQueue, setBoutQueue] = useSyncedState<{id: string, data: MatchData}[]>('tkd_bout_queue', []);
   const [matchHistory, setMatchHistory] = useSyncedState<MatchHistoryItem[]>('tkd_match_history', []);
+  const [sharedSelectedRing, setSharedSelectedRing] = useSyncedState<string>('tkd_shared_ring', '');
+  const [sharedSelectedMatchNo, setSharedSelectedMatchNo] = useSyncedState<string>('tkd_shared_match', '');
   const [mappings, setMappings] = useState<BoutMapping[]>([]);
   const [athletes, setAthletes] = useState([
     { name: "Ahmad bin Ibrahim", ic: "080512-14-5567", club: "KST", category: "Junior Male -45kg", status: "Verified" as const },
@@ -391,7 +394,7 @@ export default function App() {
       console.error("Error sending announcement:", error);
     }
   };
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'mats' | 'athletes' | 'settings' | 'general' | 'standby' | 'mapping'>(() => {
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'mats' | 'athletes' | 'settings' | 'general' | 'standby' | 'mapping' | 'ai-setup'>(() => {
     const savedUser = localStorage.getItem('tkd_user');
     if (savedUser) {
       try {
@@ -407,16 +410,11 @@ export default function App() {
   const [isImportingBouts, setIsImportingBouts] = useState(false);
   const [isPublicView, setIsPublicView] = useState(() => {
     // Check environment variable or URL parameter
-    const isPublicEnv = import.meta.env.VITE_APP_MODE === 'PUBLIC';
-    const isPublicUrl = new URLSearchParams(window.location.search).get('view') === 'public';
+    const isPublicEnv = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_APP_MODE === 'PUBLIC';
+    const isPublicUrl = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('view') === 'public';
     return isPublicEnv || isPublicUrl;
   });
-  const [showLogin, setShowLogin] = useState(() => {
-    // Hide login if in public mode
-    const isPublicEnv = import.meta.env.VITE_APP_MODE === 'PUBLIC';
-    const isPublicUrl = new URLSearchParams(window.location.search).get('view') === 'public';
-    return !(isPublicEnv || isPublicUrl);
-  });
+  const [showLogin, setShowLogin] = useState(false);
   const [showNewBoutModal, setShowNewBoutModal] = useState(false);
   const [newBoutInitialRing, setNewBoutInitialRing] = useState<number | undefined>(undefined);
   const [showEditResultModal, setShowEditResultModal] = useState(false);
@@ -1615,7 +1613,7 @@ export default function App() {
     localStorage.setItem('tkd_accounts', JSON.stringify(updated));
   };
 
-  if (!user && showLogin) {
+  if (!user && showLogin && !isPublicView) {
     return <LoginScreen onLogin={handleLogin} events={events} onBack={() => setShowLogin(false)} />;
   }
 
@@ -2005,6 +2003,7 @@ export default function App() {
                             onForceSync={handleForceSync}
                             isAutoPull={autoPullRings[ring.ringNumber] || false}
                             onToggleAutoPull={() => setAutoPullRings(prev => ({ ...prev, [ring.ringNumber]: !prev[ring.ringNumber] }))}
+                            user={user}
                           />
                         ))
                       )}
@@ -2137,6 +2136,7 @@ export default function App() {
                       onForceSync={handleForceSync}
                       isAutoPull={autoPullRings[ring.ringNumber] || false}
                       onToggleAutoPull={() => setAutoPullRings(prev => ({ ...prev, [ring.ringNumber]: !prev[ring.ringNumber] }))}
+                      user={user}
                     />
                   ))
                 ) : (
@@ -2159,6 +2159,7 @@ export default function App() {
                           onForceSync={handleForceSync}
                           isAutoPull={autoPullRings[ring.ringNumber] || false}
                           onToggleAutoPull={() => setAutoPullRings(prev => ({ ...prev, [ring.ringNumber]: !prev[ring.ringNumber] }))}
+                          user={user}
                         />
                       ))}
                     </div>
@@ -2289,6 +2290,10 @@ export default function App() {
                 currentEventDate={getCurrentEventDate()}
                 onUpdateInspection={handleUpdateMatchInspection}
                 viewMode="print"
+                selectedRing={sharedSelectedRing}
+                setSelectedRing={setSharedSelectedRing}
+                selectedMatchNo={sharedSelectedMatchNo}
+                setSelectedMatchNo={setSharedSelectedMatchNo}
               />
             </div>
           )}
@@ -2302,6 +2307,10 @@ export default function App() {
                 currentEventDate={getCurrentEventDate()}
                 onUpdateInspection={handleUpdateMatchInspection}
                 viewMode="signature"
+                selectedRing={sharedSelectedRing}
+                setSelectedRing={setSharedSelectedRing}
+                selectedMatchNo={sharedSelectedMatchNo}
+                setSelectedMatchNo={setSharedSelectedMatchNo}
               />
             </div>
           )}
@@ -2713,6 +2722,16 @@ export default function App() {
           </>
         )}
       </nav>
+
+      {user?.role === 'admin' && (
+        <TournamentAssistant 
+          currentEventId={currentEventId}
+          events={events}
+          rings={rings}
+          boutQueue={boutQueue}
+          athletes={athletes}
+        />
+      )}
     </div>
   );
 }
@@ -2991,6 +3010,7 @@ interface RingCardProps {
   onTransferSelect?: (reason: string) => void;
   isAutoPull?: boolean;
   onToggleAutoPull?: () => void;
+  user?: UserAccount | null;
 }
 
 interface EditResultModalProps {
@@ -3573,7 +3593,7 @@ function AddRingModal({ onClose, onAdd, existingRings, namingMode }: AddRingModa
   );
 }
 
-function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, onTransferSelect, currentEventId, onForceSync, isAutoPull, onToggleAutoPull }: RingCardProps & { currentEventId?: string | null, onForceSync?: (data: MatchData) => void }) {
+function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, onTransferSelect, currentEventId, onForceSync, isAutoPull, onToggleAutoPull, user }: RingCardProps & { currentEventId?: string | null, onForceSync?: (data: MatchData) => void }) {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isFinalBoutSelection, setIsFinalBoutSelection] = useState(false);
   const [transferReason, setTransferReason] = useState('');
@@ -3600,7 +3620,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
   const progress = ring.totalBouts && current ? Math.min(100, (getBoutNumber(current.bout) / ring.totalBouts) * 100) : 0;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:border-red-200 transition-colors">
+    <div className="relative bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:border-red-200 transition-colors">
       <div className="p-4 bg-slate-900 flex items-center justify-between text-white">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center font-black text-sm">
@@ -3851,25 +3871,25 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
       </div>
 
       {showInspectionWarning && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+        <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-sm w-full"
+            className="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-[280px] w-full"
           >
-            <div className="p-6 text-center space-y-4">
-              <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto">
-                <AlertTriangle size={32} />
+            <div className="p-4 text-center space-y-3">
+              <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto">
+                <AlertTriangle size={24} />
               </div>
               <div>
-                <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Inspection Required</h3>
-                <p className="text-sm text-slate-500 mt-2">
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">Inspection Required</h3>
+                <p className="text-[10px] font-bold text-slate-500 mt-1 leading-relaxed">
                   One or both players have not passed inspection. Please ensure they are inspected before starting the bout.
                 </p>
               </div>
               <button
                 onClick={() => setShowInspectionWarning(false)}
-                className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-colors"
+                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-colors"
               >
                 Acknowledge
               </button>
@@ -3999,7 +4019,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
-  const ringsPerPage = 3;
+  const ringsPerPage = 4;
   const totalPages = Math.ceil(rings.length / ringsPerPage);
 
   const toggleFullScreen = () => {
@@ -4110,11 +4130,11 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                   </div>
                   {/* Players */}
                   <div className="col-span-10 flex flex-col">
-                    <div className="flex-1 bg-blue-600/90 flex flex-col justify-center px-4 border-b border-white/10">
+                    <div className="flex-1 bg-blue-600/90 flex flex-col justify-center px-4 border-b border-white/10 relative">
                       <p className="text-[10px] font-bold text-blue-200 uppercase leading-none mb-1">{current?.blue_club || "---"}</p>
                       <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current?.blue_name || "---"}</h4>
                     </div>
-                    <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4">
+                    <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
                       <p className="text-[10px] font-bold text-red-200 uppercase leading-none mb-1">{current?.red_club || "---"}</p>
                       <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current?.red_name || "---"}</h4>
                     </div>
@@ -4137,13 +4157,23 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                       <div className="col-span-3 flex items-center justify-center text-xl font-black text-white bg-[#161f33] border-r border-white/10">
                         {b ? formatBoutNumber(ring.ringNumber, b.data.bout) : "---"}
                       </div>
-                      <div className="col-span-5 bg-blue-600/80 flex flex-col justify-center px-3 border-r border-white/10">
+                      <div className="col-span-5 bg-blue-600/80 flex flex-col justify-center px-3 border-r border-white/10 relative">
                         <span className="text-[8px] font-bold text-blue-200 uppercase leading-none">{b?.data.blue_club || "---"}</span>
                         <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{b?.data.blue_name || "---"}</span>
+                        {b?.data.blue_inspected && (
+                          <div className="absolute bottom-1 right-1">
+                            <span className="text-[8px] font-black text-green-400 uppercase tracking-tighter">INSPECTED</span>
+                          </div>
+                        )}
                       </div>
-                      <div className="col-span-4 bg-red-600/80 flex flex-col justify-center px-3">
+                      <div className="col-span-4 bg-red-600/80 flex flex-col justify-center px-3 relative">
                         <span className="text-[8px] font-bold text-red-200 uppercase leading-none">{b?.data.red_club || "---"}</span>
                         <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{b?.data.red_name || "---"}</span>
+                        {b?.data.red_inspected && (
+                          <div className="absolute bottom-1 right-1">
+                            <span className="text-[8px] font-black text-green-400 uppercase tracking-tighter">INSPECTED</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -4162,7 +4192,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
-  const ringsPerPage = 3;
+  const ringsPerPage = 4;
   const totalPages = Math.ceil(rings.length / ringsPerPage);
 
   const toggleFullScreen = () => {
@@ -4378,6 +4408,11 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                           <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
                             {bout ? (bout.data.privacy_mode ? "---" : bout.data.blue_name) : "---"}
                           </p>
+                          {bout?.data.blue_inspected && (
+                            <div className="absolute bottom-0.5 right-1 z-20">
+                              <span className="text-[8px] font-black text-green-400 uppercase tracking-tighter">INSPECTED</span>
+                            </div>
+                          )}
                         </div>
                         
                         {/* Bout Number */}
@@ -4396,6 +4431,11 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                           <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
                             {bout ? (bout.data.privacy_mode ? "---" : bout.data.red_name) : "---"}
                           </p>
+                          {bout?.data.red_inspected && (
+                            <div className="absolute bottom-0.5 right-1 z-20">
+                              <span className="text-[8px] font-black text-green-400 uppercase tracking-tighter">INSPECTED</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -4435,6 +4475,8 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
   const [logoClicks, setLogoClicks] = React.useState(0);
   const clickTimer = React.useRef<NodeJS.Timeout | null>(null);
 
+  const isStrictPublic = import.meta.env.VITE_APP_MODE === 'PUBLIC' || new URLSearchParams(window.location.search).get('view') === 'public';
+
   const handleLogoClick = () => {
     setLogoClicks(prev => prev + 1);
     if (clickTimer.current) clearTimeout(clickTimer.current);
@@ -4442,7 +4484,7 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
     
     if (logoClicks >= 2) { // 3rd click
       // Only allow exiting if not in strict public mode
-      if (import.meta.env.VITE_APP_MODE !== 'PUBLIC') {
+      if (!isStrictPublic) {
         onBack();
       }
       setLogoClicks(0);
@@ -4560,7 +4602,7 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
           <div className="flex flex-col items-center gap-2">
             <p className="text-xs text-slate-500 font-medium">© 2026 MY-TKD Tournament Management System</p>
             {/* Hide back button in strict public mode */}
-            {import.meta.env.VITE_APP_MODE !== 'PUBLIC' && (
+            {!isStrictPublic && (
               <button 
                 onClick={onBack}
                 className="px-4 py-2 bg-slate-700/30 hover:bg-slate-700 text-[10px] text-slate-400 hover:text-white uppercase font-black tracking-widest transition-all mt-4 rounded-lg border border-slate-700/50"
@@ -4664,7 +4706,7 @@ function PublicFighterSide({ color, name, club, privacy }: { color: 'blue' | 're
   };
 
   return (
-    <div className="flex-1 space-y-2">
+    <div className="flex-1 space-y-2 relative">
       <div className={cn(
         "h-2 w-full rounded-full shadow-inner",
         color === 'blue' ? "bg-[#00a2e8] shadow-blue-900/50" : "bg-[#ed1c24] shadow-red-900/50"

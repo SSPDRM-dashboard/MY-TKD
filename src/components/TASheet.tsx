@@ -144,13 +144,34 @@ interface TASheetProps {
   currentEventDate?: string;
   onUpdateInspection?: (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean) => void;
   viewMode?: 'print' | 'signature';
+  selectedRing?: string;
+  setSelectedRing?: (ring: string) => void;
+  selectedMatchNo?: string;
+  setSelectedMatchNo?: (matchNo: string) => void;
 }
 
-export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, onUpdateInspection, viewMode = 'print' }: TASheetProps) {
+export function TASheet({ 
+  boutQueue, 
+  rings, 
+  currentEventName, 
+  currentEventDate, 
+  onUpdateInspection, 
+  viewMode = 'print',
+  selectedRing: externalSelectedRing,
+  setSelectedRing: externalSetSelectedRing,
+  selectedMatchNo: externalSelectedMatchNo,
+  setSelectedMatchNo: externalSetSelectedMatchNo
+}: TASheetProps) {
   const [matches, setMatches] = useState<SheetMatch[]>([]);
   const [fallbackMatches, setFallbackMatches] = useState<SheetMatch[]>([]);
-  const [selectedRing, setSelectedRing] = useState<string>('');
-  const [selectedMatchNo, setSelectedMatchNo] = useState<string>('');
+  
+  const [internalSelectedRing, setInternalSelectedRing] = useState<string>('');
+  const [internalSelectedMatchNo, setInternalSelectedMatchNo] = useState<string>('');
+
+  const selectedRing = externalSelectedRing !== undefined ? externalSelectedRing : internalSelectedRing;
+  const setSelectedRing = externalSetSelectedRing !== undefined ? externalSetSelectedRing : setInternalSelectedRing;
+  const selectedMatchNo = externalSelectedMatchNo !== undefined ? externalSelectedMatchNo : internalSelectedMatchNo;
+  const setSelectedMatchNo = externalSetSelectedMatchNo !== undefined ? externalSetSelectedMatchNo : setInternalSelectedMatchNo;
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sheetDate, setSheetDate] = useState(currentEventDate || '');
@@ -286,14 +307,20 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
       setSelectedRing('');
       setSelectedMatchNo('');
     }
-  }, [boutQueue, rings, currentEventName, fallbackMatches]);
+  }, [boutQueue, rings, currentEventName, fallbackMatches, selectedRing, setSelectedRing, setSelectedMatchNo]);
 
   const filteredMatches = matches.filter(m => {
     const isPrinted = printedMatches.has(`${m.ringNo}-${m.matchNo}`);
+    const status = getMatchStatus(m);
+    const isSigned = status.isSigned;
+    
     if (searchQuery) {
       return m.matchNo.toLowerCase().includes(searchQuery.toLowerCase());
     }
-    return !isPrinted;
+    
+    // For TA account, we want to hide matches that are already signed or printed
+    // unless they are explicitly searched for
+    return !isPrinted && !isSigned;
   });
 
   const uniqueRings = Array.from(new Set(filteredMatches.map(m => m.ringNo))).sort((a, b) => {
@@ -315,10 +342,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
     setPrintedMatches(prev => {
       const newSet = new Set(prev);
       if (mode === 'single' && currentMatch) {
-        const status = getMatchStatus(currentMatch);
-        if (status.isSigned) {
-          newSet.add(`${currentMatch.ringNo}-${currentMatch.matchNo}`);
-        }
+        newSet.add(`${currentMatch.ringNo}-${currentMatch.matchNo}`);
       } else if (mode === 'all') {
         ringMatches.forEach(m => {
           if (getMatchStatus(m).isSigned) {
@@ -328,6 +352,11 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
       }
       return newSet;
     });
+
+    // Clear selection after printing single match
+    if (mode === 'single') {
+      setSelectedMatchNo('');
+    }
 
     setTimeout(() => {
       window.print();
@@ -707,17 +736,27 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
           <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full page-break mb-8 print:mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
             {/* Header */}
             <div className="flex justify-between items-center mb-2 print:mb-2">
-              <div className="w-48 flex items-center gap-2">
+              <div className="w-48 flex items-center gap-3">
                 <img 
-                  src="https://upload.wikimedia.org/wikipedia/en/thumb/e/e7/World_Taekwondo_logo.svg/512px-World_Taekwondo_logo.svg.png" 
+                  src="/input_file_0.png" 
                   alt="World Taekwondo" 
-                  className="h-10 object-contain" 
+                  className="h-12 object-contain" 
+                  referrerPolicy="no-referrer"
                   onError={(e) => {
                     e.currentTarget.onerror = null;
-                    e.currentTarget.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 30'><text x='0' y='20' font-family='Arial' font-size='12' font-weight='bold' fill='%23000'>WORLD</text><text x='0' y='30' font-family='Arial' font-size='12' font-weight='bold' fill='%23000'>TAEKWONDO</text></svg>";
+                    e.currentTarget.src = "https://upload.wikimedia.org/wikipedia/en/thumb/e/e7/World_Taekwondo_logo.svg/512px-World_Taekwondo_logo.svg.png";
                   }}
                 />
-                <div className="h-10 w-10 bg-orange-500 rounded-full flex items-center justify-center text-white font-bold text-[10px] leading-none text-center">TM</div>
+                <img 
+                  src="/input_file_1.png" 
+                  alt="Taekwondo Malaysia" 
+                  className="h-12 object-contain" 
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><circle cx='20' cy='20' r='20' fill='%23f97316'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='Arial' font-size='12' font-weight='bold' fill='white'>TM</text></svg>";
+                  }}
+                />
               </div>
               <div className="text-center flex-1">
                 <h1 className="text-2xl font-black tracking-widest print:text-3xl">TA SHEET</h1>

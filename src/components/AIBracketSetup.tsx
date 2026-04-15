@@ -13,7 +13,8 @@ import {
   FileSpreadsheet,
   File as FileIcon,
   X,
-  Send
+  Send,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
@@ -22,6 +23,7 @@ import { cn, normalizeBoutNumber } from '../lib/utils';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { syncToGoogleSheets } from '../services/googleSheets';
+import Papa from 'papaparse';
 
 interface AIBracketSetupProps {
   currentEventId: string | null;
@@ -40,16 +42,143 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
   const [previewData, setPreviewData] = useState<{
     matches: MatchData[];
     mappings: Partial<BoutMapping>[];
-  } | null>(null);
+    fileName?: string;
+    fileType?: string;
+  } | null>(() => {
+    const key = currentEventId ? `tkd_ai_preview_data_${currentEventId}` : 'tkd_ai_preview_data';
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  });
   const [activePreviewTab, setActivePreviewTab] = useState<'matches' | 'mappings'>('matches');
-  const [adminNote, setAdminNote] = useState('');
+  const [adminNote, setAdminNote] = useState(() => {
+    const key = currentEventId ? `tkd_ai_admin_note_${currentEventId}` : 'tkd_ai_admin_note';
+    return localStorage.getItem(key) || '';
+  });
   const [isDragging, setIsDragging] = useState(false);
-  const [processedFiles, setProcessedFiles] = useState<Set<string>>(new Set());
+  const [isThinkingMode, setIsThinkingMode] = useState(false);
+  const [processedFiles, setProcessedFiles] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem('tkd_ai_processed_files');
+    if (saved) {
+      try {
+        return new Set(JSON.parse(saved));
+      } catch (e) {
+        return new Set();
+      }
+    }
+    return new Set();
+  });
+
+  // Persist state changes
+  React.useEffect(() => {
+    if (currentEventId) {
+      const key = `tkd_ai_preview_data_${currentEventId}`;
+      if (previewData) {
+        localStorage.setItem(key, JSON.stringify(previewData));
+      } else {
+        localStorage.removeItem(key);
+      }
+    }
+  }, [previewData, currentEventId]);
+
+  React.useEffect(() => {
+    if (currentEventId) {
+      localStorage.setItem(`tkd_ai_admin_note_${currentEventId}`, adminNote);
+    }
+  }, [adminNote, currentEventId]);
+
+  // Load data when event changes
+  React.useEffect(() => {
+    if (currentEventId) {
+      const savedData = localStorage.getItem(`tkd_ai_preview_data_${currentEventId}`);
+      if (savedData) {
+        try {
+          setPreviewData(JSON.parse(savedData));
+        } catch (e) {
+          setPreviewData(null);
+        }
+      } else {
+        setPreviewData(null);
+      }
+
+      const savedNote = localStorage.getItem(`tkd_ai_admin_note_${currentEventId}`);
+      setAdminNote(savedNote || '');
+    }
+  }, [currentEventId]);
+
+  React.useEffect(() => {
+    localStorage.setItem('tkd_ai_processed_files', JSON.stringify(Array.from(processedFiles)));
+  }, [processedFiles]);
+
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentEvent = events.find(e => e.id === currentEventId);
+
+  const clearResults = () => {
+    setPreviewData(null);
+    setFile(null);
+    setError(null);
+  };
+
+  const refineWithAI = async () => {
+    if (!previewData) return;
+    setIsProcessing(true);
+    setError(null);
+
+    try {
+      const apiKey = typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined;
+      if (!apiKey) throw new Error("API Key missing");
+
+      const ai = new GoogleGenAI({ apiKey });
+      const prompt = `
+        You are an expert tournament bracket auditor. I have extracted match data and advancement mappings from a bracket.
+        Please review the following JSON and fix any logical inconsistencies.
+        
+        COMMON ISSUES TO FIX:
+        1. Bout numbers that don't match the ring (e.g. Bout 101 should be Ring 1).
+        2. Mappings where the sourceBout doesn't exist in the matches list.
+        3. Mappings where sourceBout and nextBout are the same.
+        4. Inconsistent capitalization (everything should be UPPERCASE).
+        5. Missing categories or club names if they can be inferred from context.
+        
+        CURRENT DATA:
+        ${JSON.stringify(previewData, null, 2)}
+        
+        Return ONLY the corrected JSON in the same format.
+      `;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              matches: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { ring: { type: Type.NUMBER }, bout: { type: Type.STRING }, category: { type: Type.STRING }, blue_name: { type: Type.STRING }, blue_club: { type: Type.STRING }, red_name: { type: Type.STRING }, red_club: { type: Type.STRING } } } },
+              mappings: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { sourceBout: { type: Type.STRING }, nextBout: { type: Type.STRING }, slot: { type: Type.STRING } } } }
+            }
+          }
+        }
+      });
+
+      const result = JSON.parse(response.text);
+      setPreviewData(result);
+    } catch (err: any) {
+      console.error("Refinement Error:", err);
+      setError("Failed to refine data. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const acceptFile = (selectedFile: File) => {
     setFile(selectedFile);
@@ -137,6 +266,49 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
     setError(null);
     setPreviewData(null);
 
+    // Handle CSV files locally (No API Key required)
+    if (file.name.toLowerCase().endsWith('.csv')) {
+      try {
+        const text = await file.text();
+        Papa.parse(text, {
+          header: true,
+          skipEmptyLines: true,
+          complete: (results) => {
+            const matches: MatchData[] = results.data.map((row: any) => ({
+              bout: (row.bout || row['Bout #'] || row['Bout'] || '').toString().toUpperCase(),
+              ring: parseInt(row.ring || row['Ring'] || '1'),
+              category: (row.category || row['Category'] || '').toUpperCase(),
+              blue_name: (row.blue_name || row['Blue Player'] || row['Blue Name'] || '').toUpperCase(),
+              blue_club: (row.blue_club || row['Blue Club'] || '').toUpperCase(),
+              red_name: (row.red_name || row['Red Player'] || row['Red Name'] || '').toUpperCase(),
+              red_club: (row.red_club || row['Red Club'] || '').toUpperCase(),
+              privacy_mode: false,
+              eventId: currentEventId
+            }));
+
+            if (matches.length === 0) {
+              setError("No valid match data found in CSV. Ensure headers match: Bout, Category, Blue Player, Red Player.");
+              setIsProcessing(false);
+              return;
+            }
+
+            setPreviewData({ matches, mappings: [] });
+            setIsProcessing(false);
+            setProcessedFiles(prev => new Set(prev).add(`${file.name}-${file.size}`));
+          },
+          error: (err) => {
+            setError(`Failed to parse CSV: ${err.message}`);
+            setIsProcessing(false);
+          }
+        });
+        return;
+      } catch (err: any) {
+        setError(`Error reading file: ${err.message}`);
+        setIsProcessing(false);
+        return;
+      }
+    }
+
     // Check file size (max 15MB to stay safe with base64 encoding)
     const MAX_FILE_SIZE = 15 * 1024 * 1024;
     if (file.size > MAX_FILE_SIZE) {
@@ -146,11 +318,13 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
     }
 
     try {
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error("Gemini API Key is not configured.");
+      const apiKey = typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined;
+      
+      if (!apiKey) {
+        throw new Error("Gemini API Key is not configured. To process images/PDFs, please add your GEMINI_API_KEY to the environment. Alternatively, upload a CSV file which does not require an API key.");
       }
       
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey });
       const base64Data = await fileToBase64(file);
       
       const prompt = `
@@ -178,7 +352,7 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
       `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: isThinkingMode ? "gemini-3.1-pro-preview" : "gemini-3-flash-preview",
         contents: [
           {
             parts: [
@@ -195,6 +369,7 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
         config: {
           temperature: 0.1,
           responseMimeType: "application/json",
+          thinkingConfig: isThinkingMode ? { thinkingLevel: ThinkingLevel.HIGH } : undefined,
           responseSchema: {
             type: Type.OBJECT,
             properties: {
@@ -232,66 +407,70 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
       });
 
       const result = JSON.parse(response.text);
-      
+      const normalizedResult = {
+        matches: Array.isArray(result.matches) ? result.matches : [],
+        mappings: Array.isArray(result.mappings) ? result.mappings : []
+      };
+
       // Capitalize and infer ring from bout number
-      if (result.matches) {
-        result.matches = result.matches.map((m: any) => {
-          const bout = m.bout?.toUpperCase() || '';
-          const prefix = bout.charAt(0);
-          const boutNum = parseInt(bout.replace(/[^0-9]/g, ''));
-          let inferredRing = m.ring;
-          
-          // Numeric range logic (1000s = Ring 1, 2000s = Ring 2, etc.)
-          if (!isNaN(boutNum) && boutNum >= 1000) {
-            inferredRing = Math.floor(boutNum / 1000);
-          } 
-          // Letter prefix logic
-          else if (prefix === 'A') inferredRing = 1;
-          else if (prefix === 'B') inferredRing = 2;
-          else if (prefix === 'C') inferredRing = 3;
-          else if (prefix === 'D') inferredRing = 4;
-          else if (prefix === 'E') inferredRing = 5;
-          else if (prefix === 'F') inferredRing = 6;
-          else if (prefix === 'G') inferredRing = 7;
-          else if (prefix === 'H') inferredRing = 8;
-
-          return {
-            ...m,
-            ring: Number(inferredRing) || 1,
-            blue_name: m.blue_name?.toUpperCase(),
-            blue_club: m.blue_club?.toUpperCase(),
-            red_name: m.red_name?.toUpperCase(),
-            red_club: m.red_club?.toUpperCase(),
-            category: m.category?.toUpperCase(),
-            bout: bout
-          };
-        });
-      }
-      if (result.mappings) {
-        result.mappings = result.mappings.map((m: any) => ({
-          ...m,
-          sourceBout: m.sourceBout?.toUpperCase(),
-          nextBout: m.nextBout?.toUpperCase()
-        }));
+      normalizedResult.matches = normalizedResult.matches.map((m: any) => {
+        const bout = (m.bout || '').toString().toUpperCase();
+        const prefix = bout.charAt(0);
+        const boutNum = parseInt(bout.replace(/[^0-9]/g, ''));
+        let inferredRing = m.ring;
         
-        // Sort mappings by source bout number
-        result.mappings.sort((a: any, b: any) => {
-          const aNum = parseInt(a.sourceBout?.replace(/[^0-9]/g, '') || '0');
-          const bNum = parseInt(b.sourceBout?.replace(/[^0-9]/g, '') || '0');
-          return aNum - bNum;
-        });
-      }
+        // Numeric range logic (1000s = Ring 1, 2000s = Ring 2, etc.)
+        if (!isNaN(boutNum) && boutNum >= 1000) {
+          inferredRing = Math.floor(boutNum / 1000);
+        } 
+        // Letter prefix logic
+        else if (prefix === 'A') inferredRing = 1;
+        else if (prefix === 'B') inferredRing = 2;
+        else if (prefix === 'C') inferredRing = 3;
+        else if (prefix === 'D') inferredRing = 4;
+        else if (prefix === 'E') inferredRing = 5;
+        else if (prefix === 'F') inferredRing = 6;
+        else if (prefix === 'G') inferredRing = 7;
+        else if (prefix === 'H') inferredRing = 8;
 
-      if (result.matches) {
-        // Sort matches by bout number
-        result.matches.sort((a: any, b: any) => {
-          const aNum = parseInt(a.bout?.replace(/[^0-9]/g, '') || '0');
-          const bNum = parseInt(b.bout?.replace(/[^0-9]/g, '') || '0');
-          return aNum - bNum;
-        });
-      }
+        return {
+          ...m,
+          ring: Number(inferredRing) || 1,
+          blue_name: (m.blue_name || '').toString().toUpperCase(),
+          blue_club: (m.blue_club || '').toString().toUpperCase(),
+          red_name: (m.red_name || '').toString().toUpperCase(),
+          red_club: (m.red_club || '').toString().toUpperCase(),
+          category: (m.category || '').toString().toUpperCase(),
+          bout: bout,
+          privacy_mode: false
+        };
+      });
 
-      setPreviewData(result);
+      normalizedResult.mappings = normalizedResult.mappings.map((m: any) => ({
+        ...m,
+        sourceBout: (m.sourceBout || '').toString().toUpperCase(),
+        nextBout: (m.nextBout || '').toString().toUpperCase()
+      }));
+      
+      // Sort mappings by source bout number
+      normalizedResult.mappings.sort((a: any, b: any) => {
+        const aNum = parseInt((a.sourceBout || '').toString().replace(/[^0-9]/g, '') || '0');
+        const bNum = parseInt((b.sourceBout || '').toString().replace(/[^0-9]/g, '') || '0');
+        return aNum - bNum;
+      });
+
+      // Sort matches by bout number
+      normalizedResult.matches.sort((a: any, b: any) => {
+        const aNum = parseInt((a.bout || '').toString().replace(/[^0-9]/g, '') || '0');
+        const bNum = parseInt((b.bout || '').toString().replace(/[^0-9]/g, '') || '0');
+        return aNum - bNum;
+      });
+
+      setPreviewData({
+        ...normalizedResult,
+        fileName: file.name,
+        fileType: file.type
+      });
       setProcessedFiles(prev => {
         const newSet = new Set(prev);
         newSet.add(`${file.name}-${file.size}`);
@@ -343,8 +522,8 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
       
       // 2. Add Matches to Queue
       const sortedMatches = [...previewData.matches].sort((a, b) => {
-        const aNum = parseInt(a.bout.replace(/[^0-9]/g, '')) || 0;
-        const bNum = parseInt(b.bout.replace(/[^0-9]/g, '')) || 0;
+        const aNum = parseInt((a.bout || '').toString().replace(/[^0-9]/g, '')) || 0;
+        const bNum = parseInt((b.bout || '').toString().replace(/[^0-9]/g, '')) || 0;
         return aNum - bNum;
       });
 
@@ -363,13 +542,14 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
       const ringTotals = new Map<number, number>();
       
       // Helper to get ring from bout prefix or number
-      const getRingFromBout = (bout: string) => {
-        const boutNum = parseInt(bout.replace(/[^0-9]/g, ''));
+      const getRingFromBout = (bout: string | number) => {
+        const boutStr = (bout || '').toString();
+        const boutNum = parseInt(boutStr.replace(/[^0-9]/g, ''));
         if (!isNaN(boutNum) && boutNum >= 1000) {
           return Math.floor(boutNum / 1000);
         }
 
-        const prefix = bout.charAt(0).toUpperCase();
+        const prefix = boutStr.charAt(0).toUpperCase();
         if (prefix === 'A') return 1;
         if (prefix === 'B') return 2;
         if (prefix === 'C') return 3;
@@ -382,8 +562,9 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
       };
 
       previewData.matches.forEach(m => {
-        const boutNum = parseInt(m.bout.replace(/[^0-9]/g, ''));
-        const ringNum = Number(m.ring || getRingFromBout(m.bout));
+        const boutStr = (m.bout || '').toString();
+        const boutNum = parseInt(boutStr.replace(/[^0-9]/g, ''));
+        const ringNum = Number(m.ring || getRingFromBout(boutStr));
         if (!isNaN(boutNum)) {
           const currentMax = ringTotals.get(ringNum) || 0;
           if (boutNum > currentMax) ringTotals.set(ringNum, boutNum);
@@ -392,11 +573,13 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
 
       // Also check mappings for higher bout numbers
       previewData.mappings.forEach(m => {
-        const sourceNum = parseInt(m.sourceBout?.replace(/[^0-9]/g, '') || '0');
-        const nextNum = parseInt(m.nextBout?.replace(/[^0-9]/g, '') || '0');
+        const sourceStr = (m.sourceBout || '').toString();
+        const nextStr = (m.nextBout || '').toString();
+        const sourceNum = parseInt(sourceStr.replace(/[^0-9]/g, '') || '0');
+        const nextNum = parseInt(nextStr.replace(/[^0-9]/g, '') || '0');
         
-        const sRing = getRingFromBout(m.sourceBout || '');
-        const nRing = getRingFromBout(m.nextBout || '');
+        const sRing = getRingFromBout(sourceStr);
+        const nRing = getRingFromBout(nextStr);
 
         if (sourceNum > (ringTotals.get(sRing) || 0)) ringTotals.set(sRing, sourceNum);
         if (nextNum > (ringTotals.get(nRing) || 0)) ringTotals.set(nRing, nextNum);
@@ -562,20 +745,22 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
                 accept=".pdf,.png,.jpg,.jpeg,.csv,.xlsx"
               />
               
-              {file ? (
+              {file || (previewData && previewData.fileName) ? (
                 <div className="space-y-4">
                   <div className="w-20 h-20 bg-green-600 rounded-3xl flex items-center justify-center mx-auto shadow-xl shadow-green-900/20">
-                    {file.type.includes('pdf') ? <FileText size={40} className="text-white" /> : <FileIcon size={40} className="text-white" />}
+                    {(file?.type || previewData?.fileType || '').includes('pdf') ? <FileText size={40} className="text-white" /> : <FileIcon size={40} className="text-white" />}
                   </div>
                   <div>
-                    <p className="text-xl font-black text-slate-900">{file.name}</p>
-                    <p className="text-sm font-bold text-green-600 uppercase tracking-widest mt-1">File Ready for Processing</p>
+                    <p className="text-xl font-black text-slate-900">{file?.name || previewData?.fileName}</p>
+                    <p className="text-sm font-bold text-green-600 uppercase tracking-widest mt-1">
+                      {file ? "File Ready for Processing" : "Previously Analyzed Results"}
+                    </p>
                   </div>
                   <button 
-                    onClick={(e) => { e.stopPropagation(); setFile(null); setPreviewData(null); }}
+                    onClick={(e) => { e.stopPropagation(); clearResults(); }}
                     className="text-xs font-bold text-slate-400 hover:text-red-600 uppercase tracking-widest flex items-center gap-1 mx-auto"
                   >
-                    <X size={14} /> Remove File
+                    <X size={14} /> {file ? "Remove File" : "Clear Results"}
                   </button>
                 </div>
               ) : (
@@ -597,6 +782,38 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
                 {error}
               </div>
             )}
+
+            {/* AI Settings */}
+            <div className="flex flex-wrap items-center gap-6 p-6 bg-white rounded-3xl border border-slate-200 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                  isThinkingMode ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-100 text-slate-400"
+                )}>
+                  <Sparkles size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-900">Deep Thinking Mode</span>
+                    <button 
+                      onClick={() => setIsThinkingMode(!isThinkingMode)}
+                      className={cn(
+                        "w-10 h-5 rounded-full relative transition-all",
+                        isThinkingMode ? "bg-indigo-600" : "bg-slate-200"
+                      )}
+                    >
+                      <div className={cn(
+                        "absolute top-1 w-3 h-3 bg-white rounded-full transition-all",
+                        isThinkingMode ? "left-6" : "left-1"
+                      )} />
+                    </button>
+                  </div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                    {isThinkingMode ? "Using Pro Model + Reasoning (Slower, More Accurate)" : "Using Flash Model (Faster, Standard Accuracy)"}
+                  </p>
+                </div>
+              </div>
+            </div>
 
             {/* Admin Note Section */}
             <div className="space-y-2">
@@ -641,24 +858,33 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Review before applying to system</p>
                 </div>
               </div>
-              <div className="flex bg-white/10 p-1 rounded-xl">
+              <div className="flex items-center gap-4">
+                <div className="flex bg-white/10 p-1 rounded-xl">
+                  <button 
+                    onClick={() => setActivePreviewTab('matches')}
+                    className={cn(
+                      "px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all",
+                      activePreviewTab === 'matches' ? "bg-white text-slate-900" : "text-slate-400 hover:text-white"
+                    )}
+                  >
+                    Matches ({previewData.matches.length})
+                  </button>
+                  <button 
+                    onClick={() => setActivePreviewTab('mappings')}
+                    className={cn(
+                      "px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all",
+                      activePreviewTab === 'mappings' ? "bg-white text-slate-900" : "text-slate-400 hover:text-white"
+                    )}
+                  >
+                    Mappings ({previewData.mappings.length})
+                  </button>
+                </div>
                 <button 
-                  onClick={() => setActivePreviewTab('matches')}
-                  className={cn(
-                    "px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all",
-                    activePreviewTab === 'matches' ? "bg-white text-slate-900" : "text-slate-400 hover:text-white"
-                  )}
+                  onClick={clearResults}
+                  className="p-2 text-slate-400 hover:text-red-400 transition-colors"
+                  title="Clear Results"
                 >
-                  Matches ({previewData.matches.length})
-                </button>
-                <button 
-                  onClick={() => setActivePreviewTab('mappings')}
-                  className={cn(
-                    "px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all",
-                    activePreviewTab === 'mappings' ? "bg-white text-slate-900" : "text-slate-400 hover:text-white"
-                  )}
-                >
-                  Mappings ({previewData.mappings.length})
+                  <X size={20} />
                 </button>
               </div>
             </div>
@@ -669,6 +895,14 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
                   <div className="flex items-center justify-between">
                     <h4 className="text-sm font-black text-slate-900 uppercase tracking-widest">Initial Matches Found</h4>
                     <div className="flex items-center gap-4">
+                      <button 
+                        onClick={refineWithAI}
+                        disabled={isProcessing}
+                        className="flex items-center gap-2 text-xs font-black text-amber-600 uppercase tracking-widest hover:text-amber-700 disabled:opacity-50"
+                      >
+                        {isProcessing ? <RefreshCw size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                        Refine with AI
+                      </button>
                       <button 
                         onClick={syncToSheet}
                         disabled={isSyncing}
@@ -822,8 +1056,9 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
                     };
 
                     previewData.matches.forEach(m => {
-                      const boutNum = parseInt(m.bout.toString().replace(/[^0-9]/g, ''));
-                      const ringNum = Number(m.ring || getRingFromBout(m.bout.toString()));
+                      const boutStr = (m.bout || '').toString();
+                      const boutNum = parseInt(boutStr.replace(/[^0-9]/g, ''));
+                      const ringNum = Number(m.ring || getRingFromBout(boutStr));
                       if (!isNaN(boutNum)) {
                         const currentMax = ringTotals.get(ringNum) || 0;
                         if (boutNum > currentMax) ringTotals.set(ringNum, boutNum);
@@ -831,10 +1066,12 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
                     });
 
                     previewData.mappings.forEach(m => {
-                      const sourceNum = parseInt(m.sourceBout?.toString().replace(/[^0-9]/g, '') || '0');
-                      const nextNum = parseInt(m.nextBout?.toString().replace(/[^0-9]/g, '') || '0');
-                      const sRing = getRingFromBout(m.sourceBout?.toString() || '');
-                      const nRing = getRingFromBout(m.nextBout?.toString() || '');
+                      const sourceStr = (m.sourceBout || '').toString();
+                      const nextStr = (m.nextBout || '').toString();
+                      const sourceNum = parseInt(sourceStr.replace(/[^0-9]/g, '') || '0');
+                      const nextNum = parseInt(nextStr.replace(/[^0-9]/g, '') || '0');
+                      const sRing = getRingFromBout(sourceStr);
+                      const nRing = getRingFromBout(nextStr);
 
                       if (sourceNum > (ringTotals.get(sRing) || 0)) ringTotals.set(sRing, sourceNum);
                       if (nextNum > (ringTotals.get(nRing) || 0)) ringTotals.set(nRing, nextNum);
