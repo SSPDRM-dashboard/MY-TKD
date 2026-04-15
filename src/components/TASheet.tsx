@@ -388,7 +388,7 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
         {`
           @page { 
             size: A4 portrait; 
-            margin: 8mm; 
+            margin: 0.5cm; 
           }
           body { 
             -webkit-print-color-adjust: exact; 
@@ -648,7 +648,11 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
 
       {currentMatch && onUpdateInspection && viewMode === 'signature' && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 print:hidden flex gap-8">
-          <div className="flex-1">
+          <div className="flex-1 flex flex-col">
+            <div className="mb-4 text-center">
+              <h3 className="text-lg font-black text-[#00a2e8] uppercase">{actualMatchData?.blue_name || 'Blue Player'}</h3>
+              <p className="text-sm font-bold text-slate-500 uppercase">{actualMatchData?.blue_club || 'Blue Club'}</p>
+            </div>
             <SignaturePad 
               color="blue" 
               boutId={`${currentMatch.ringNo}-${currentMatch.matchNo}`}
@@ -662,7 +666,11 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
               }}
             />
           </div>
-          <div className="flex-1">
+          <div className="flex-1 flex flex-col">
+            <div className="mb-4 text-center">
+              <h3 className="text-lg font-black text-[#ed1c24] uppercase">{actualMatchData?.red_name || 'Red Player'}</h3>
+              <p className="text-sm font-bold text-slate-500 uppercase">{actualMatchData?.red_club || 'Red Club'}</p>
+            </div>
             <SignaturePad 
               color="red" 
               boutId={`${currentMatch.ringNo}-${currentMatch.matchNo}`}
@@ -685,7 +693,10 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full page-break mb-8 print:mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
             {/* Header */}
             <div className="flex justify-between items-center mb-2 print:mb-4">
-              <div className="w-48 hidden print:block"></div>
+              <div className="w-48 flex items-center gap-2">
+                <img src="https://upload.wikimedia.org/wikipedia/en/thumb/e/e7/World_Taekwondo_logo.svg/320px-World_Taekwondo_logo.svg.png" alt="World Taekwondo" className="h-8 object-contain" referrerPolicy="no-referrer" />
+                <div className="h-8 w-8 bg-orange-500 rounded-full flex items-center justify-center text-white font-bold text-[8px] leading-none text-center">TM</div>
+              </div>
               <div className="text-center flex-1">
                 <h1 className="text-2xl font-black tracking-widest print:text-3xl">TA SHEET</h1>
                 <div className="text-xs font-bold mt-0.5">({match.eventName || 'Event Name'})</div>
@@ -944,37 +955,39 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             </table>
           </div>
 
-          {/* Officials */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-0 text-sm text-center font-bold">
-            <tbody>
-              <tr className="h-7 print:h-7">
-                <td className="border border-black p-1.5 w-[10%] bg-gray-200">Judge 2</td>
-                <td className="border border-black p-1.5 w-[15%]"></td>
-                <td className="border border-black p-1.5 w-[10%] bg-gray-200">Judge 1</td>
-                <td className="border border-black p-1.5 w-[15%]"></td>
-                <td className="border border-black p-1.5 w-[10%] bg-gray-200">Referee</td>
-                <td className="border border-black p-1.5 w-[15%]"></td>
-                <td className="border border-black p-1.5 w-[10%] bg-gray-200">Review Jury</td>
-                <td className="border border-black p-1.5 w-[15%]"></td>
-              </tr>
-              <tr className="h-8 print:h-8">
-                <td className="border border-black p-1.5 bg-gray-200">NOC</td>
-                <td className="border border-black p-1.5"></td>
-                <td className="border border-black p-1.5 bg-gray-200">NOC</td>
-                <td className="border border-black p-1.5"></td>
-                <td className="border border-black p-1.5 bg-gray-200">NOC</td>
-                <td className="border border-black p-1.5"></td>
-                <td className="border border-black p-1.5 bg-gray-200">NOC</td>
-                <td className="border border-black p-1.5"></td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="mt-auto">
+            {/* Officials */}
+            <table className="w-full border-collapse border border-black mb-2 print:mb-0 text-sm text-center font-bold">
+              <tbody>
+                <tr className="h-7 print:h-7">
+                  <td className="border border-black p-1.5 w-[10%] bg-gray-200">Judge 2</td>
+                  <td className="border border-black p-1.5 w-[15%]"></td>
+                  <td className="border border-black p-1.5 w-[10%] bg-gray-200">Judge 1</td>
+                  <td className="border border-black p-1.5 w-[15%]"></td>
+                  <td className="border border-black p-1.5 w-[10%] bg-gray-200">Referee</td>
+                  <td className="border border-black p-1.5 w-[15%]"></td>
+                  <td className="border border-black p-1.5 w-[10%] bg-gray-200">Review Jury</td>
+                  <td className="border border-black p-1.5 w-[15%]"></td>
+                </tr>
+                <tr className="h-8 print:h-8">
+                  <td className="border border-black p-1.5 bg-gray-200">NOC</td>
+                  <td className="border border-black p-1.5"></td>
+                  <td className="border border-black p-1.5 bg-gray-200">NOC</td>
+                  <td className="border border-black p-1.5"></td>
+                  <td className="border border-black p-1.5 bg-gray-200">NOC</td>
+                  <td className="border border-black p-1.5"></td>
+                  <td className="border border-black p-1.5 bg-gray-200">NOC</td>
+                  <td className="border border-black p-1.5"></td>
+                </tr>
+              </tbody>
+            </table>
 
-          {/* Signature */}
-          <div className="flex justify-end mt-auto mb-0">
-            <div className="w-64 flex items-end gap-2 text-sm font-bold">
-              <span>Signature :</span>
-              <div className="flex-1 border-b border-black"></div>
+            {/* Signature */}
+            <div className="flex justify-end mb-0 mt-4">
+              <div className="w-64 flex items-end gap-2 text-sm font-bold">
+                <span>Signature :</span>
+                <div className="flex-1 border-b border-black"></div>
+              </div>
             </div>
           </div>
         </div>

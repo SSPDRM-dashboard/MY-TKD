@@ -239,6 +239,7 @@ export default function App() {
   })());
 
   const [rings, setRings] = useSyncedState<RingStatus[]>('tkd_rings', INITIAL_RINGS);
+  const [autoPullRings, setAutoPullRings] = useSyncedState<Record<number, boolean>>('tkd_autopull', {});
   const [boutQueue, setBoutQueue] = useSyncedState<{id: string, data: MatchData}[]>('tkd_bout_queue', []);
   const [matchHistory, setMatchHistory] = useSyncedState<MatchHistoryItem[]>('tkd_match_history', []);
   const [mappings, setMappings] = useState<BoutMapping[]>([]);
@@ -1087,12 +1088,26 @@ export default function App() {
     }
 
     // Auto-advance ring: Move onDeck to current, inTheHole to onDeck
+    let pulledFromQueue = false;
+    let nextItemToPull: {id: string, data: MatchData} | null = null;
+
+    if (autoPullRings[ringNumber] && !ring?.onDeck) {
+      if (ringQueue.length > 0) {
+        nextItemToPull = ringQueue[0];
+        pulledFromQueue = true;
+      }
+    }
+
     setRings(prev => {
       const updated = prev.map(r => {
         if (r.ringNumber === ringNumber) {
-          const nextBout = r.onDeck;
-          const nextNextBout = r.inTheHole;
+          let nextBout = r.onDeck;
+          let nextNextBout = r.inTheHole;
           
+          if (!nextBout && pulledFromQueue && nextItemToPull) {
+            nextBout = nextItemToPull.data;
+          }
+
           return {
             ...r,
             currentBout: nextBout,
@@ -1107,8 +1122,16 @@ export default function App() {
       return updated;
     });
 
+    if (pulledFromQueue && nextItemToPull) {
+      setBoutQueue(prev => {
+        const updated = prev.filter(q => q.id !== nextItemToPull!.id);
+        localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
+        return updated;
+      });
+    }
+
     // If queue is empty but we haven't reached total bouts, show the missing bout prompt
-    if (ring && ring.totalBouts && !ring.onDeck && !ring.inTheHole && ringQueue.length === 0 && getBoutNumber(ring.currentBout?.bout || 0) < ring.totalBouts) {
+    if (ring && ring.totalBouts && !ring.onDeck && !ring.inTheHole && ringQueue.length === (pulledFromQueue ? 1 : 0) && getBoutNumber(ring.currentBout?.bout || 0) < ring.totalBouts) {
       setMissingBoutPrompt({ ringNumber, expectedBout: getBoutNumber(ring.currentBout?.bout || 0) + 1, totalBouts: ring.totalBouts });
     }
   };
@@ -1149,28 +1172,52 @@ export default function App() {
       setFinalBoutCheck({ ringNumber, remainingCount: ringQueue.length - 1 });
     }
 
-    // Auto-pull disabled: Just clear the ring and wait for manual pull
-    if (ring && ring.totalBouts && ring.currentBout && getBoutNumber(ring.currentBout.bout) < ring.totalBouts) {
-      setMissingBoutPrompt({ ringNumber, expectedBout: getBoutNumber(ring.currentBout.bout) + 1, totalBouts: ring.totalBouts });
-      setRings(prev => {
-        const updated = prev.map(r => r.ringNumber === ringNumber ? { 
-          ...r, 
-          currentBout: null,
-          nextBoutNumber: getBoutNumber(ring.currentBout!.bout) + 1
-        } : r);
-        localStorage.setItem('tkd_rings', JSON.stringify(updated));
+    // Auto-advance ring: Move onDeck to current, inTheHole to onDeck
+    let pulledFromQueue = false;
+    let nextItemToPull: {id: string, data: MatchData} | null = null;
+
+    if (autoPullRings[ringNumber] && !ring?.onDeck) {
+      if (ringQueue.length > 0) {
+        nextItemToPull = ringQueue[0];
+        pulledFromQueue = true;
+      }
+    }
+
+    setRings(prev => {
+      const updated = prev.map(r => {
+        if (r.ringNumber === ringNumber) {
+          let nextBout = r.onDeck;
+          let nextNextBout = r.inTheHole;
+          
+          if (!nextBout && pulledFromQueue && nextItemToPull) {
+            nextBout = nextItemToPull.data;
+          }
+
+          return {
+            ...r,
+            currentBout: nextBout,
+            onDeck: nextNextBout,
+            inTheHole: null,
+            nextBoutNumber: nextBout ? getBoutNumber(nextBout.bout) + 1 : (r.currentBout ? getBoutNumber(r.currentBout.bout) + 1 : r.nextBoutNumber)
+          };
+        }
+        return r;
+      });
+      localStorage.setItem('tkd_rings', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (pulledFromQueue && nextItemToPull) {
+      setBoutQueue(prev => {
+        const updated = prev.filter(q => q.id !== nextItemToPull!.id);
+        localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
         return updated;
       });
-    } else {
-      setRings(prev => {
-        const updated = prev.map(r => r.ringNumber === ringNumber ? { 
-          ...r, 
-          currentBout: null,
-          nextBoutNumber: (ring?.currentBout ? getBoutNumber(ring.currentBout.bout) : 0) + 1
-        } : r);
-        localStorage.setItem('tkd_rings', JSON.stringify(updated));
-        return updated;
-      });
+    }
+
+    // If queue is empty but we haven't reached total bouts, show the missing bout prompt
+    if (ring && ring.totalBouts && !ring.onDeck && !ring.inTheHole && ringQueue.length === (pulledFromQueue ? 1 : 0) && getBoutNumber(ring.currentBout?.bout || 0) < ring.totalBouts) {
+      setMissingBoutPrompt({ ringNumber, expectedBout: getBoutNumber(ring.currentBout?.bout || 0) + 1, totalBouts: ring.totalBouts });
     }
   };
 
@@ -1772,7 +1819,7 @@ export default function App() {
             
             <div className="flex flex-wrap items-center gap-2 md:gap-4">
               {events.length > 0 && (
-                currentEventId ? (
+                (currentEventId && user?.role !== 'admin') ? (
                   <div className="px-4 py-2 bg-slate-100 rounded-xl text-[10px] md:text-xs font-black text-slate-600 border border-slate-200 uppercase tracking-widest flex items-center gap-2">
                     <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
                     Event: {events.find(e => e.id === currentEventId)?.name}
@@ -1816,21 +1863,25 @@ export default function App() {
                     <span className="hidden md:inline">Edit Details</span>
                     <span className="md:hidden">Details</span>
                   </button>
-                  <button 
-                    onClick={() => setShowEditResultModal(true)}
-                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-blue-600 text-white rounded-xl text-[10px] md:text-sm font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
-                  >
-                    <Edit2 size={16} />
-                    <span className="hidden md:inline">Edit Result</span>
-                    <span className="md:hidden">Result</span>
-                  </button>
-                  <button 
-                    onClick={() => setShowNewBoutModal(true)}
-                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-slate-900 text-white rounded-xl text-[10px] md:text-sm font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
-                  >
-                    <Plus size={16} />
-                    <span>New</span>
-                  </button>
+                  {user?.role !== 'ta' && (
+                    <>
+                      <button 
+                        onClick={() => setShowEditResultModal(true)}
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-blue-600 text-white rounded-xl text-[10px] md:text-sm font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
+                      >
+                        <Edit2 size={16} />
+                        <span className="hidden md:inline">Edit Result</span>
+                        <span className="md:hidden">Result</span>
+                      </button>
+                      <button 
+                        onClick={() => setShowNewBoutModal(true)}
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-slate-900 text-white rounded-xl text-[10px] md:text-sm font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+                      >
+                        <Plus size={16} />
+                        <span>New</span>
+                      </button>
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                 </div>
@@ -1911,6 +1962,8 @@ export default function App() {
                             onTransferSelect={(reason) => handleTransferSelect(ring.ringNumber, ring.currentBout?.bout || 0, reason)}
                             currentEventId={currentEventId}
                             onForceSync={handleForceSync}
+                            isAutoPull={autoPullRings[ring.ringNumber] || false}
+                            onToggleAutoPull={() => setAutoPullRings(prev => ({ ...prev, [ring.ringNumber]: !prev[ring.ringNumber] }))}
                           />
                         ))
                       )}
@@ -2041,6 +2094,8 @@ export default function App() {
                       onTransferSelect={(reason) => handleTransferSelect(ring.ringNumber, ring.currentBout?.bout || 0, reason)}
                       currentEventId={currentEventId}
                       onForceSync={handleForceSync}
+                      isAutoPull={autoPullRings[ring.ringNumber] || false}
+                      onToggleAutoPull={() => setAutoPullRings(prev => ({ ...prev, [ring.ringNumber]: !prev[ring.ringNumber] }))}
                     />
                   ))
                 ) : (
@@ -2061,6 +2116,8 @@ export default function App() {
                           onTransferSelect={(reason) => handleTransferSelect(ring.ringNumber, ring.currentBout?.bout || 0, reason)}
                           currentEventId={currentEventId}
                           onForceSync={handleForceSync}
+                          isAutoPull={autoPullRings[ring.ringNumber] || false}
+                          onToggleAutoPull={() => setAutoPullRings(prev => ({ ...prev, [ring.ringNumber]: !prev[ring.ringNumber] }))}
                         />
                       ))}
                     </div>
@@ -2889,6 +2946,8 @@ interface RingCardProps {
   onDelete?: () => void;
   onWinnerSelect?: (winner: string) => void;
   onTransferSelect?: (reason: string) => void;
+  isAutoPull?: boolean;
+  onToggleAutoPull?: () => void;
 }
 
 interface EditResultModalProps {
@@ -3471,14 +3530,27 @@ function AddRingModal({ onClose, onAdd, existingRings, namingMode }: AddRingModa
   );
 }
 
-function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, onTransferSelect, currentEventId, onForceSync }: RingCardProps & { currentEventId?: string | null, onForceSync?: (data: MatchData) => void }) {
+function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, onTransferSelect, currentEventId, onForceSync, isAutoPull, onToggleAutoPull }: RingCardProps & { currentEventId?: string | null, onForceSync?: (data: MatchData) => void }) {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isFinalBoutSelection, setIsFinalBoutSelection] = useState(false);
   const [transferReason, setTransferReason] = useState('');
   const [isSyncingLocal, setIsSyncingLocal] = useState(false);
+  const [showInspectionWarning, setShowInspectionWarning] = useState(false);
   
   // Only show current bout if it belongs to the current event
   const current = ring.currentBout && (!currentEventId || ring.currentBout.eventId === currentEventId) ? ring.currentBout : null;
+
+  useEffect(() => {
+    if (current) {
+      if (!current.blue_inspected || !current.red_inspected) {
+        setShowInspectionWarning(true);
+      } else {
+        setShowInspectionWarning(false);
+      }
+    } else {
+      setShowInspectionWarning(false);
+    }
+  }, [current?.bout, current?.blue_inspected, current?.red_inspected]);
   
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
   
@@ -3528,6 +3600,15 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {onToggleAutoPull && (
+            <button
+              onClick={onToggleAutoPull}
+              className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest transition-colors ${isAutoPull ? 'bg-green-500/20 text-green-400' : 'bg-slate-800 text-slate-400'}`}
+              title={isAutoPull ? "Auto-pull is ON" : "Auto-pull is OFF"}
+            >
+              {isAutoPull ? "Auto" : "Manual"}
+            </button>
+          )}
           {onDelete && (
             <div className="flex items-center">
               {isConfirmingDelete ? (
@@ -3725,6 +3806,34 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
           </div>
         )}
       </div>
+
+      {showInspectionWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-sm w-full"
+          >
+            <div className="p-6 text-center space-y-4">
+              <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto">
+                <AlertTriangle size={32} />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Inspection Required</h3>
+                <p className="text-sm text-slate-500 mt-2">
+                  One or both players have not passed inspection. Please ensure they are inspected before starting the bout.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowInspectionWarning(false)}
+                className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-colors"
+              >
+                Acknowledge
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
