@@ -388,34 +388,43 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
         {`
           @page { 
             size: A4 portrait; 
-            margin: 0.5cm; 
+            margin: 0; 
           }
           body { 
             -webkit-print-color-adjust: exact; 
             print-color-adjust: exact;
-            width: 100%;
+            width: 210mm;
+            height: 297mm;
             margin: 0;
             padding: 0;
-            background: white;
+            background: #ffffff !important;
           }
-          * { box-shadow: none !important; -webkit-box-shadow: none !important; }
+          * { 
+            box-shadow: none !important; 
+            -webkit-box-shadow: none !important; 
+            border-color: #000 !important; 
+          }
           .page-break { 
             page-break-after: always; 
             break-inside: avoid;
-            width: 100% !important;
+            width: 210mm !important;
+            height: 297mm !important;
             max-width: none !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            height: 275mm;
+            margin: 0 auto !important;
+            padding: 5mm !important;
+            box-sizing: border-box;
             overflow: hidden;
             display: flex;
             flex-direction: column;
-            transform: scale(0.95);
-            transform-origin: top center;
-            background: white;
+            background: #ffffff !important;
           }
           .page-break:last-child { page-break-after: auto; }
-          table { width: 100% !important; table-layout: fixed; }
+          table { 
+            width: 100% !important; 
+            table-layout: fixed; 
+            border-collapse: collapse; 
+            font-size: 9pt; 
+          }
           .no-print { display: none !important; }
         `}
       </style>
@@ -694,8 +703,16 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             {/* Header */}
             <div className="flex justify-between items-center mb-2 print:mb-4">
               <div className="w-48 flex items-center gap-2">
-                <img src="https://upload.wikimedia.org/wikipedia/en/thumb/e/e7/World_Taekwondo_logo.svg/320px-World_Taekwondo_logo.svg.png" alt="World Taekwondo" className="h-8 object-contain" referrerPolicy="no-referrer" />
-                <div className="h-8 w-8 bg-orange-500 rounded-full flex items-center justify-center text-white font-bold text-[8px] leading-none text-center">TM</div>
+                <img 
+                  src="https://upload.wikimedia.org/wikipedia/en/thumb/e/e7/World_Taekwondo_logo.svg/512px-World_Taekwondo_logo.svg.png" 
+                  alt="World Taekwondo" 
+                  className="h-10 object-contain" 
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 30'><text x='0' y='20' font-family='Arial' font-size='12' font-weight='bold' fill='%23000'>WORLD</text><text x='0' y='30' font-family='Arial' font-size='12' font-weight='bold' fill='%23000'>TAEKWONDO</text></svg>";
+                  }}
+                />
+                <div className="h-10 w-10 bg-orange-500 rounded-full flex items-center justify-center text-white font-bold text-[10px] leading-none text-center">TM</div>
               </div>
               <div className="text-center flex-1">
                 <h1 className="text-2xl font-black tracking-widest print:text-3xl">TA SHEET</h1>
@@ -791,42 +808,72 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           </table>
 
           {/* Decision of Superiority */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-4 text-[10px] text-center font-bold">
+          <table className="w-[190mm] mx-auto border-collapse border border-black mb-2 print:mb-4 text-[10px] text-center font-bold">
+            <colgroup>
+              {/* Chung Superiority: 27mm (9mm each) */}
+              <col style={{ width: '9mm' }} />
+              <col style={{ width: '9mm' }} />
+              <col style={{ width: '9mm' }} />
+              {/* Chung Reg Hits: 15mm */}
+              <col style={{ width: '15mm' }} />
+              {/* Chung Highest Point Value: GJ (10mm), 1 (10mm), 2 (10mm), 3 (10mm) */}
+              <col style={{ width: '10mm' }} />
+              <col style={{ width: '10mm' }} />
+              <col style={{ width: '10mm' }} />
+              <col style={{ width: '10mm' }} />
+              {/* Chung Turning Kick Pts: 18mm */}
+              <col style={{ width: '18mm' }} />
+              {/* Round: 10mm */}
+              <col style={{ width: '10mm' }} />
+              {/* Hong Turning Kick Pts: 18mm */}
+              <col style={{ width: '18mm' }} />
+              {/* Hong Highest Point Value: 3 (10mm), 2 (10mm), 1 (10mm), GJ (10mm) */}
+              <col style={{ width: '10mm' }} />
+              <col style={{ width: '10mm' }} />
+              <col style={{ width: '10mm' }} />
+              <col style={{ width: '10mm' }} />
+              {/* Hong Reg Hits: 15mm */}
+              <col style={{ width: '15mm' }} />
+              {/* Hong Superiority: 27mm (9mm each) */}
+              <col style={{ width: '9mm' }} />
+              <col style={{ width: '9mm' }} />
+              <col style={{ width: '9mm' }} />
+            </colgroup>
             <thead>
               <tr>
                 <th colSpan={19} className="border border-black p-1.5 bg-gray-200 text-sm tracking-widest">DECISION OF ROUND SUPERIORITY</th>
               </tr>
               <tr>
                 <th colSpan={3} className="border border-black p-1 text-[#00a2e8]">Superiority</th>
-                <th rowSpan={2} className="border border-black p-1 text-[#00a2e8] w-8">Reg.<br/>Hits</th>
+                <th rowSpan={2} className="border border-black p-1 text-[#00a2e8]">Reg.<br/>Hits</th>
                 <th colSpan={4} className="border border-black p-1 text-[#00a2e8]">Highest point value</th>
-                <th rowSpan={2} className="border border-black p-1 text-[#00a2e8] w-10">Turning<br/>kick pts</th>
+                <th rowSpan={2} className="border border-black p-1 text-[#00a2e8]">Turning<br/>kick pts</th>
                 
-                <th rowSpan={2} className="border border-black p-1 bg-gray-200 w-12 text-black text-xs">Round</th>
+                <th rowSpan={2} className="border border-black p-1 bg-gray-200 text-black text-xs">Round</th>
                 
-                <th rowSpan={2} className="border border-black p-1 text-[#ed1c24] w-10">Turning<br/>kick pts</th>
+                <th rowSpan={2} className="border border-black p-1 text-[#ed1c24]">Turning<br/>kick pts</th>
                 <th colSpan={4} className="border border-black p-1 text-[#ed1c24]">Highest point value</th>
-                <th rowSpan={2} className="border border-black p-1 text-[#ed1c24] w-8">Reg.<br/>Hits</th>
+                <th rowSpan={2} className="border border-black p-1 text-[#ed1c24]">Reg.<br/>Hits</th>
                 <th colSpan={3} className="border border-black p-1 text-[#ed1c24]">Superiority</th>
               </tr>
               <tr>
-                <th className="border border-black p-1 text-[#00a2e8] w-5">J2</th>
-                <th className="border border-black p-1 text-[#00a2e8] w-5">J1</th>
-                <th className="border border-black p-1 text-[#00a2e8] w-5">CR</th>
+                <th className="border border-black p-1 text-[#00a2e8]">J2</th>
+                <th className="border border-black p-1 text-[#00a2e8]">J1</th>
+                <th className="border border-black p-1 text-[#00a2e8]">CR</th>
                 
-                <th className="border border-black p-1 text-[#00a2e8] w-5">GJ</th>
-                <th className="border border-black p-1 text-[#00a2e8] w-5">1</th>
-                <th className="border border-black p-1 text-[#00a2e8] w-5">2</th>
-                <th className="border border-black p-1 text-[#00a2e8] w-5">3</th>
+                <th className="border border-black p-1 text-[#00a2e8]">GJ</th>
+                <th className="border border-black p-1 text-[#00a2e8]">1</th>
+                <th className="border border-black p-1 text-[#00a2e8]">2</th>
+                <th className="border border-black p-1 text-[#00a2e8]">3</th>
                 
-                <th className="border border-black p-1 text-[#ed1c24] w-5">3</th>
-                <th className="border border-black p-1 text-[#ed1c24] w-5">2</th>
-                <th className="border border-black p-1 text-[#ed1c24] w-5">1</th>
-                <th className="border border-black p-1 text-[#ed1c24] w-5">GJ</th>
+                <th className="border border-black p-1 text-[#ed1c24]">3</th>
+                <th className="border border-black p-1 text-[#ed1c24]">2</th>
+                <th className="border border-black p-1 text-[#ed1c24]">1</th>
+                <th className="border border-black p-1 text-[#ed1c24]">GJ</th>
                 
-                <th className="border border-black p-1 text-[#ed1c24] w-5">CR</th>
-                <th className="border border-black p-1 text-[#ed1c24] w-5">J1</th>
-                <th className="border border-black p-1 text-[#ed1c24] w-5">J2</th>
+                <th className="border border-black p-1 text-[#ed1c24]">CR</th>
+                <th className="border border-black p-1 text-[#ed1c24]">J1</th>
+                <th className="border border-black p-1 text-[#ed1c24]">J2</th>
               </tr>
             </thead>
             <tbody>
