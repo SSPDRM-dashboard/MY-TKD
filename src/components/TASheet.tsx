@@ -414,11 +414,11 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
           .page-break { 
             page-break-after: always; 
             break-inside: avoid;
-            width: 210mm !important;
-            height: 297mm !important;
+            width: 190mm !important;
+            height: 277mm !important;
             max-width: none !important;
-            margin: 0 auto !important;
-            padding: 5mm !important;
+            margin: 10mm auto !important;
+            padding: 0 !important;
             box-sizing: border-box;
             overflow: hidden;
             display: flex;
@@ -727,7 +727,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
             </div>
 
             {/* Match Info */}
-            <table className="w-full border-collapse border border-black mb-2 print:mb-4 text-sm font-bold match-info-table table-fixed">
+            <table className="w-full border-collapse border border-black mb-1 print:mb-2 text-sm font-bold match-info-table table-fixed">
               <colgroup>
                 <col style={{ width: '22%' }} />
                 <col style={{ width: '45%' }} />
@@ -753,7 +753,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
             </table>
 
             {/* Players */}
-            <div className="flex gap-4 mb-2 print:mb-2">
+            <div className="flex gap-4 mb-1 print:mb-1">
               <table className="w-1/2 border-collapse border border-black text-sm font-bold text-center table-fixed">
                 <colgroup>
                   <col style={{ width: '18%' }} />
@@ -799,7 +799,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
             </div>
 
           {/* Round Scores */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-sm text-center font-bold table-fixed">
+          <table className="w-full border-collapse border border-black mb-1 print:mb-1 text-sm text-center font-bold table-fixed">
             <colgroup>
               <col style={{ width: '8%' }} />
               <col style={{ width: '12%' }} />
@@ -840,7 +840,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
           </table>
 
           {/* Decision of Superiority */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-[10px] text-center font-bold table-fixed">
+          <table className="w-full border-collapse border border-black mb-1 print:mb-1 text-[10px] text-center font-bold table-fixed">
             <colgroup>
               {/* Chung Superiority: 13.5% (4.5% each) */}
               <col style={{ width: '4.5%' }} />
@@ -938,7 +938,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
           </table>
 
           {/* Win Types */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-sm text-center font-bold table-fixed">
+          <table className="w-full border-collapse border border-black mb-1 print:mb-1 text-sm text-center font-bold table-fixed">
             <colgroup>
               <col style={{ width: '20%' }} />
               <col style={{ width: '20%' }} />
@@ -958,7 +958,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
           </table>
 
           {/* Video Replay & Match Winner */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-xs text-center font-bold table-fixed">
+          <table className="w-full border-collapse border border-black mb-1 print:mb-1 text-xs text-center font-bold table-fixed">
             <colgroup>
               <col style={{ width: '18%' }} />
               <col style={{ width: '3.33%' }} />
@@ -989,7 +989,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
                 "Requested by CR",
                 "Rejected by CR"
               ].map((reason, idx) => (
-                <tr key={idx} className="h-[17px] print:h-[17px]">
+                <tr key={idx} className="h-[20px] print:h-[20px]">
                   <td className="border border-black p-1 text-left px-2">{reason}</td>
                   <td className="border border-black p-1">A/R</td>
                   <td className="border border-black p-1">A/R</td>
@@ -1052,7 +1052,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
             </table>
           </div>
 
-          <div className="mt-[25px]">
+          <div className="mt-[15px]">
             {/* Officials */}
             <table className="w-full border-collapse border border-black mb-2 print:mb-0 text-sm text-center font-bold table-fixed">
               <colgroup>
@@ -1066,7 +1066,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
                 <col style={{ width: '10%' }} />
               </colgroup>
               <tbody>
-                <tr className="h-[35px] print:h-[35px]">
+                <tr className="h-[30px] print:h-[30px]">
                   <td className="border border-black p-1 bg-gray-200">Judge 2</td>
                   <td className="border border-black p-1"></td>
                   <td className="border border-black p-1 bg-gray-200">Judge 1</td>
@@ -1076,7 +1076,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
                   <td className="border border-black p-1 bg-gray-200">Review Jury</td>
                   <td className="border border-black p-1"></td>
                 </tr>
-                <tr className="h-[35px] print:h-[35px]">
+                <tr className="h-[30px] print:h-[30px]">
                   <td className="border border-black p-1 bg-gray-200">NOC</td>
                   <td className="border border-black p-1"></td>
                   <td className="border border-black p-1 bg-gray-200">NOC</td>
