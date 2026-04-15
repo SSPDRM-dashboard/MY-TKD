@@ -4045,7 +4045,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
 
   React.useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isFullscreen && totalPages > 1) {
+    if (totalPages > 1) {
       interval = setInterval(() => {
         setCurrentPage((prev) => (prev + 1) % totalPages);
       }, 30000); // 30 seconds
@@ -4053,11 +4053,9 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isFullscreen, totalPages]);
+  }, [totalPages]);
 
-  const displayedRings = isFullscreen 
-    ? rings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
-    : rings;
+  const displayedRings = rings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage);
 
   return (
     <div 
@@ -4216,10 +4214,10 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  // Auto-scroll logic for fullscreen mode
+  // Auto-scroll logic
   React.useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isFullscreen && totalPages > 1) {
+    if (totalPages > 1) {
       interval = setInterval(() => {
         setCurrentPage((prev) => (prev + 1) % totalPages);
       }, 30000); // 30 seconds
@@ -4227,11 +4225,9 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isFullscreen, totalPages]);
+  }, [totalPages]);
 
-  const displayedRings = isFullscreen 
-    ? rings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
-    : rings;
+  const displayedRings = rings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage);
 
   const getDynamicFontSize = (name: string) => {
     const len = name.length;
