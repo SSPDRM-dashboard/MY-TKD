@@ -405,8 +405,18 @@ export default function App() {
     return 'dashboard';
   });
   const [isImportingBouts, setIsImportingBouts] = useState(false);
-  const [isPublicView, setIsPublicView] = useState(false);
-  const [showLogin, setShowLogin] = useState(true);
+  const [isPublicView, setIsPublicView] = useState(() => {
+    // Check environment variable or URL parameter
+    const isPublicEnv = import.meta.env.VITE_APP_MODE === 'PUBLIC';
+    const isPublicUrl = new URLSearchParams(window.location.search).get('view') === 'public';
+    return isPublicEnv || isPublicUrl;
+  });
+  const [showLogin, setShowLogin] = useState(() => {
+    // Hide login if in public mode
+    const isPublicEnv = import.meta.env.VITE_APP_MODE === 'PUBLIC';
+    const isPublicUrl = new URLSearchParams(window.location.search).get('view') === 'public';
+    return !(isPublicEnv || isPublicUrl);
+  });
   const [showNewBoutModal, setShowNewBoutModal] = useState(false);
   const [newBoutInitialRing, setNewBoutInitialRing] = useState<number | undefined>(undefined);
   const [showEditResultModal, setShowEditResultModal] = useState(false);
@@ -4431,7 +4441,10 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
     clickTimer.current = setTimeout(() => setLogoClicks(0), 1000);
     
     if (logoClicks >= 2) { // 3rd click
-      onBack();
+      // Only allow exiting if not in strict public mode
+      if (import.meta.env.VITE_APP_MODE !== 'PUBLIC') {
+        onBack();
+      }
       setLogoClicks(0);
     }
   };
@@ -4546,12 +4559,15 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
           </div>
           <div className="flex flex-col items-center gap-2">
             <p className="text-xs text-slate-500 font-medium">© 2026 MY-TKD Tournament Management System</p>
-            <button 
-              onClick={onBack}
-              className="px-4 py-2 bg-slate-700/30 hover:bg-slate-700 text-[10px] text-slate-400 hover:text-white uppercase font-black tracking-widest transition-all mt-4 rounded-lg border border-slate-700/50"
-            >
-              {isSpectator ? "Operator Access" : "Exit Public View"}
-            </button>
+            {/* Hide back button in strict public mode */}
+            {import.meta.env.VITE_APP_MODE !== 'PUBLIC' && (
+              <button 
+                onClick={onBack}
+                className="px-4 py-2 bg-slate-700/30 hover:bg-slate-700 text-[10px] text-slate-400 hover:text-white uppercase font-black tracking-widest transition-all mt-4 rounded-lg border border-slate-700/50"
+              >
+                {isSpectator ? "Operator Access" : "Exit Public View"}
+              </button>
+            )}
           </div>
         </footer>
       )}

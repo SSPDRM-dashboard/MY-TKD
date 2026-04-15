@@ -137,7 +137,19 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
     setError(null);
     setPreviewData(null);
 
+    // Check file size (max 15MB to stay safe with base64 encoding)
+    const MAX_FILE_SIZE = 15 * 1024 * 1024;
+    if (file.size > MAX_FILE_SIZE) {
+      setError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Please use a file smaller than 15MB.`);
+      setIsProcessing(false);
+      return;
+    }
+
     try {
+      if (!process.env.GEMINI_API_KEY) {
+        throw new Error("Gemini API Key is not configured.");
+      }
+      
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const base64Data = await fileToBase64(file);
       
@@ -285,13 +297,29 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
         newSet.add(`${file.name}-${file.size}`);
         return newSet;
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("AI Processing Error:", err);
-      if (err instanceof Error && err.message.includes("timed out")) {
-        setError(err.message);
-      } else {
-        setError("Failed to process the file. The image might be too large or the AI service is temporarily busy. Please try again with a smaller file or a clearer image.");
+      
+      let errorMessage = "Failed to process the file. Please try again with a smaller file or a clearer image.";
+      
+      if (err instanceof Error) {
+        const msg = err.message.toLowerCase();
+        if (msg.includes("timed out")) {
+          errorMessage = "The request timed out. The image might be too complex or the connection is slow.";
+        } else if (msg.includes("api_key_invalid") || msg.includes("api key")) {
+          errorMessage = "Invalid API Key. Please check your configuration.";
+        } else if (msg.includes("quota") || msg.includes("rate limit")) {
+          errorMessage = "API quota exceeded. Please try again in a few minutes.";
+        } else if (msg.includes("model not found") || msg.includes("404")) {
+          errorMessage = "The AI model is currently unavailable. Please contact support.";
+        } else if (msg.includes("safety")) {
+          errorMessage = "The file was flagged by safety filters. Please ensure it contains only tournament data.";
+        } else {
+          errorMessage = `Error: ${err.message}`;
+        }
       }
+      
+      setError(errorMessage);
     } finally {
       setIsProcessing(false);
     }
