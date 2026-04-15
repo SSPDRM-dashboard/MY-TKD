@@ -791,13 +791,11 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
             <thead>
               <tr className="h-[30px]">
                 <th className="border border-black p-1.5 w-[8%]">Gam-Jeom</th>
-                <th className="border border-black p-1.5 w-[16%]">Deuk-jeum</th>
-                <th className="border border-black p-1.5 w-[8%]">Deuk-jeum</th>
+                <th colSpan={2} className="border border-black p-1.5 w-[24%]">Deuk-jeum</th>
                 <th className="border border-black p-1.5 w-[12%]">CHUNG</th>
                 <th className="border border-black p-1.5 w-[6%]">Round</th>
                 <th className="border border-black p-1.5 w-[12%]">HONG</th>
-                <th className="border border-black p-1.5 w-[8%]">Deuk-jeum</th>
-                <th className="border border-black p-1.5 w-[18%]">Deuk-jeum</th>
+                <th colSpan={2} className="border border-black p-1.5 w-[26%]">Deuk-jeum</th>
                 <th className="border border-black p-1.5 w-[8%]">Gam-Jeom</th>
               </tr>
             </thead>
@@ -957,17 +955,17 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
                   
                   {idx === 0 && (
                     <>
-                      <td rowSpan={3} className="border border-black p-1 text-[#00a2e8] text-xl w-[15%]">CHUNG</td>
-                      <td rowSpan={3} className="border border-black p-1 text-[#ed1c24] text-xl w-[15%]">HONG</td>
+                      <td rowSpan={2} className="border border-black p-1 text-[#00a2e8] text-xl w-[15%]">CHUNG</td>
+                      <td rowSpan={2} className="border border-black p-1 text-[#ed1c24] text-xl w-[15%]">HONG</td>
                     </>
                   )}
-                  {idx === 3 && (
+                  {idx === 2 && (
                     <td colSpan={2} className="border border-black p-1 text-sm">Round Won</td>
                   )}
-                  {idx > 3 && (
+                  {idx === 3 && (
                     <>
-                      <td className="border border-black p-1 w-[15%]"></td>
-                      <td className="border border-black p-1 w-[15%]"></td>
+                      <td rowSpan={3} className="border border-black p-1 w-[15%]"></td>
+                      <td rowSpan={3} className="border border-black p-1 w-[15%]"></td>
                     </>
                   )}
                   

@@ -1564,8 +1564,8 @@ export default function App() {
     localStorage.setItem('tkd_match_history', JSON.stringify(updatedHistory));
 
     // Remove related bout mappings
-    const updatedMappings = boutMappings.filter(m => m.eventId !== id);
-    setBoutMappings(updatedMappings);
+    const updatedMappings = mappings.filter(m => m.eventId !== id);
+    setMappings(updatedMappings);
     localStorage.setItem('tkd_bout_mappings', JSON.stringify(updatedMappings));
 
     if (currentEventId === id) {
