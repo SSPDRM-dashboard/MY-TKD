@@ -433,6 +433,12 @@ export default function App() {
     return event ? event.name : '-';
   };
 
+  const getCurrentEventDate = () => {
+    if (!currentEventId) return '';
+    const event = events.find(e => e.id === currentEventId);
+    return event ? event.eventDate : '';
+  };
+
   const formatTime = (date: Date | string) => {
     const d = typeof date === 'string' ? new Date(date) : date;
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -1546,9 +1552,34 @@ export default function App() {
     const updated = events.filter(e => e.id !== id);
     setEvents(updated);
     localStorage.setItem('tkd_events', JSON.stringify(updated));
+    
+    // Remove related bout queue
+    const updatedQueue = boutQueue.filter(b => b.data.eventId !== id);
+    setBoutQueue(updatedQueue);
+    localStorage.setItem('tkd_bout_queue', JSON.stringify(updatedQueue));
+
+    // Remove related match history
+    const updatedHistory = matchHistory.filter(h => h.eventId !== id);
+    setMatchHistory(updatedHistory);
+    localStorage.setItem('tkd_match_history', JSON.stringify(updatedHistory));
+
+    // Remove related bout mappings
+    const updatedMappings = boutMappings.filter(m => m.eventId !== id);
+    setBoutMappings(updatedMappings);
+    localStorage.setItem('tkd_bout_mappings', JSON.stringify(updatedMappings));
+
     if (currentEventId === id) {
       setCurrentEventId(null);
       localStorage.removeItem('tkd_current_event');
+      // Clear rings if current event is deleted
+      const clearedRings = rings.map(r => ({
+        ...r,
+        currentBout: null,
+        onDeck: null,
+        inTheHole: null
+      }));
+      setRings(clearedRings);
+      localStorage.setItem('tkd_rings', JSON.stringify(clearedRings));
     }
   };
 
@@ -2245,6 +2276,7 @@ export default function App() {
                 boutQueue={boutQueue} 
                 rings={rings} 
                 currentEventName={getCurrentEventName()} 
+                currentEventDate={getCurrentEventDate()}
                 onUpdateInspection={handleUpdateMatchInspection}
                 viewMode="print"
               />
@@ -2257,6 +2289,7 @@ export default function App() {
                 boutQueue={boutQueue} 
                 rings={rings} 
                 currentEventName={getCurrentEventName()} 
+                currentEventDate={getCurrentEventDate()}
                 onUpdateInspection={handleUpdateMatchInspection}
                 viewMode="signature"
               />
@@ -4916,6 +4949,7 @@ function DataUpdater({
 
 function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onAdd: (e: EventData) => void, onDelete: (id: string) => void }) {
   const [name, setName] = useState('');
+  const [eventDate, setEventDate] = useState('');
   const [ringQuantity, setRingQuantity] = useState(1);
   const [sheetUrl, setSheetUrl] = useState('');
   const [showScript, setShowScript] = useState(false);
@@ -4944,11 +4978,13 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
     onAdd({
       id: Math.random().toString(36).substr(2, 9),
       name,
+      eventDate,
       ringQuantity,
       sheetUrl: finalSheetUrl,
       createdAt: new Date()
     });
     setName('');
+    setEventDate('');
     setRingQuantity(1);
     setSheetUrl('');
   };
@@ -5037,7 +5073,7 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
         <div className="space-y-1 md:col-span-1">
           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Event Name</label>
           <input 
@@ -5046,6 +5082,16 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
             onChange={(e) => setName(e.target.value)}
             className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
             placeholder="e.g. National Open 2026"
+            required
+          />
+        </div>
+        <div className="space-y-1 md:col-span-1">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Event Date</label>
+          <input 
+            type="date" 
+            value={eventDate}
+            onChange={(e) => setEventDate(e.target.value)}
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
             required
           />
         </div>

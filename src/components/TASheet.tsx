@@ -141,18 +141,19 @@ interface TASheetProps {
   boutQueue: { id: string, data: MatchData }[];
   rings: RingStatus[];
   currentEventName: string;
+  currentEventDate?: string;
   onUpdateInspection?: (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean) => void;
   viewMode?: 'print' | 'signature';
 }
 
-export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection, viewMode = 'print' }: TASheetProps) {
+export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, onUpdateInspection, viewMode = 'print' }: TASheetProps) {
   const [matches, setMatches] = useState<SheetMatch[]>([]);
   const [fallbackMatches, setFallbackMatches] = useState<SheetMatch[]>([]);
   const [selectedRing, setSelectedRing] = useState<string>('');
   const [selectedMatchNo, setSelectedMatchNo] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sheetDate, setSheetDate] = useState('');
+  const [sheetDate, setSheetDate] = useState(currentEventDate || '');
   const [sheetDayNo, setSheetDayNo] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showReprintModal, setShowReprintModal] = useState(false);
@@ -210,6 +211,12 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (currentEventDate) {
+      setSheetDate(currentEventDate);
+    }
+  }, [currentEventDate]);
 
   useEffect(() => {
     const allMatches: SheetMatch[] = [];

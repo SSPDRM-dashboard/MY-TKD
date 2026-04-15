@@ -1,6 +1,7 @@
 export interface EventData {
   id: string;
   name: string;
+  eventDate: string;
   sheetUrl: string;
   ringQuantity: number;
   createdAt: Date;
