@@ -784,24 +784,22 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
             <thead>
               <tr>
                 <th className="border border-black p-1.5 w-[15%]">Gam-Jeom</th>
-                <th className="border border-black p-1.5 w-[20%]" colSpan={2}>Deuk-jeum</th>
+                <th className="border border-black p-1.5 w-[20%]">Deuk-jeum</th>
                 <th className="border border-black p-1.5 w-[30%]" colSpan={3}>Round Winner</th>
-                <th className="border border-black p-1.5 w-[20%]" colSpan={2}>Deuk-jeum</th>
+                <th className="border border-black p-1.5 w-[20%]">Deuk-jeum</th>
                 <th className="border border-black p-1.5 w-[15%]">Gam-Jeom</th>
               </tr>
             </thead>
             <tbody>
               {[1, 2, 3].map((round) => (
                 <tr key={round} className="h-[30px] print:h-[30px]">
-                  <td className="border border-black"></td>
-                  <td className="border border-black w-[10%]"></td>
-                  <td className="border border-black w-[10%]"></td>
-                  <td className="border border-black text-[#00a2e8] w-[80px]">CHUNG</td>
-                  <td className="border border-black bg-gray-200 w-[50px]">R{round}</td>
-                  <td className="border border-black text-[#ed1c24] w-[80px]">HONG</td>
-                  <td className="border border-black w-[10%]"></td>
-                  <td className="border border-black w-[10%]"></td>
-                  <td className="border border-black"></td>
+                  <td className="border border-black w-[15%]"></td>
+                  <td className="border border-black w-[20%]"></td>
+                  <td className="border border-black text-[#00a2e8] w-[12%]">CHUNG</td>
+                  <td className="border border-black bg-gray-200 w-[6%]">R{round}</td>
+                  <td className="border border-black text-[#ed1c24] w-[12%]">HONG</td>
+                  <td className="border border-black w-[20%]"></td>
+                  <td className="border border-black w-[15%]"></td>
                 </tr>
               ))}
             </tbody>
@@ -810,34 +808,34 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
           {/* Decision of Superiority */}
           <table className="w-[190mm] mx-auto border-collapse border border-black mb-2 print:mb-4 text-[10px] text-center font-bold">
             <colgroup>
-              {/* Chung Superiority: 27mm (9mm each) */}
+              {/* Chung Superiority: 24mm (8mm each) */}
+              <col style={{ width: '8mm' }} />
+              <col style={{ width: '8mm' }} />
+              <col style={{ width: '8mm' }} />
+              {/* Chung Reg Hits: 12mm */}
+              <col style={{ width: '12mm' }} />
+              {/* Chung Highest Point Value: GJ (9mm), 1 (9mm), 2 (9mm), 3 (9mm) */}
               <col style={{ width: '9mm' }} />
               <col style={{ width: '9mm' }} />
               <col style={{ width: '9mm' }} />
-              {/* Chung Reg Hits: 15mm */}
-              <col style={{ width: '15mm' }} />
-              {/* Chung Highest Point Value: GJ (10mm), 1 (10mm), 2 (10mm), 3 (10mm) */}
-              <col style={{ width: '10mm' }} />
-              <col style={{ width: '10mm' }} />
-              <col style={{ width: '10mm' }} />
-              <col style={{ width: '10mm' }} />
+              <col style={{ width: '9mm' }} />
               {/* Chung Turning Kick Pts: 18mm */}
               <col style={{ width: '18mm' }} />
               {/* Round: 10mm */}
               <col style={{ width: '10mm' }} />
               {/* Hong Turning Kick Pts: 18mm */}
               <col style={{ width: '18mm' }} />
-              {/* Hong Highest Point Value: 3 (10mm), 2 (10mm), 1 (10mm), GJ (10mm) */}
-              <col style={{ width: '10mm' }} />
-              <col style={{ width: '10mm' }} />
-              <col style={{ width: '10mm' }} />
-              <col style={{ width: '10mm' }} />
-              {/* Hong Reg Hits: 15mm */}
-              <col style={{ width: '15mm' }} />
-              {/* Hong Superiority: 27mm (9mm each) */}
+              {/* Hong Highest Point Value: 3 (9mm), 2 (9mm), 1 (9mm), GJ (9mm) */}
               <col style={{ width: '9mm' }} />
               <col style={{ width: '9mm' }} />
               <col style={{ width: '9mm' }} />
+              <col style={{ width: '9mm' }} />
+              {/* Hong Reg Hits: 12mm */}
+              <col style={{ width: '12mm' }} />
+              {/* Hong Superiority: 24mm (8mm each) */}
+              <col style={{ width: '8mm' }} />
+              <col style={{ width: '8mm' }} />
+              <col style={{ width: '8mm' }} />
             </colgroup>
             <thead>
               <tr>
@@ -940,9 +938,9 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
               ].map((reason, idx) => (
                 <tr key={idx} className="h-[18px] print:h-[18px]">
                   <td className="border border-black p-1 text-left px-2">{reason}</td>
-                  <td className="border border-black p-1 w-5">A/R</td>
-                  <td className="border border-black p-1 w-5">A/R</td>
-                  <td className="border border-black p-1 w-5">A/R</td>
+                  <td className="border border-black p-1 w-[5%]">A/R</td>
+                  <td className="border border-black p-1 w-[5%]">A/R</td>
+                  <td className="border border-black p-1 w-[5%]">A/R</td>
                   
                   {idx === 0 && (
                     <>
@@ -954,13 +952,16 @@ export function TASheet({ boutQueue, rings, currentEventName, onUpdateInspection
                     <td colSpan={2} className="border border-black p-1 text-sm">Round Won</td>
                   )}
                   {idx > 3 && (
-                    <td colSpan={2} className="border border-black p-1"></td>
+                    <>
+                      <td className="border border-black p-1 w-[15%]"></td>
+                      <td className="border border-black p-1 w-[15%]"></td>
+                    </>
                   )}
                   
                   <td className="border border-black p-1 text-left px-2">{reason}</td>
-                  <td className="border border-black p-1 w-5">A/R</td>
-                  <td className="border border-black p-1 w-5">A/R</td>
-                  <td className="border border-black p-1 w-5">A/R</td>
+                  <td className="border border-black p-1 w-[5%]">A/R</td>
+                  <td className="border border-black p-1 w-[5%]">A/R</td>
+                  <td className="border border-black p-1 w-[5%]">A/R</td>
                 </tr>
               ))}
             </tbody>
