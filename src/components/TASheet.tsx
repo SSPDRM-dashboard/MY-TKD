@@ -988,13 +988,6 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
                   <th className="border border-black p-1 text-left px-2 w-[30%]">Time</th>
                 </tr>
               </thead>
-              <tbody>
-                <tr className="h-[25px] print:h-[25px]">
-                  <td className="border border-black"></td>
-                  <td className="border border-black"></td>
-                  <td className="border border-black"></td>
-                </tr>
-              </tbody>
             </table>
             <table className="w-[48%] border-collapse border border-black text-sm font-bold ml-auto">
               <thead>
@@ -1004,13 +997,6 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
                   <th className="border border-black p-1 text-left px-2 w-[30%]">Time</th>
                 </tr>
               </thead>
-              <tbody>
-                <tr className="h-[25px] print:h-[25px]">
-                  <td className="border border-black"></td>
-                  <td className="border border-black"></td>
-                  <td className="border border-black"></td>
-                </tr>
-              </tbody>
             </table>
           </div>
 
@@ -1025,7 +1011,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
                   <td className="border border-black p-1 w-[10%]"></td>
                   <td className="border border-black p-1 w-[13%] bg-gray-200">Referee</td>
                   <td className="border border-black p-1 w-[10%]"></td>
-                  <td className="border border-black p-1 w-[21%] bg-gray-200">Review<br/>Jury</td>
+                  <td className="border border-black p-1 w-[21%] bg-gray-200">Review Jury</td>
                   <td className="border border-black p-1 w-[10%]"></td>
                 </tr>
                 <tr className="h-[35px] print:h-[35px]">
