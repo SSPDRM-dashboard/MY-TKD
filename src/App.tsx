@@ -243,8 +243,6 @@ export default function App() {
   const [autoPullRings, setAutoPullRings] = useSyncedState<Record<number, boolean>>('tkd_autopull', {});
   const [boutQueue, setBoutQueue] = useSyncedState<{id: string, data: MatchData}[]>('tkd_bout_queue', []);
   const [matchHistory, setMatchHistory] = useSyncedState<MatchHistoryItem[]>('tkd_match_history', []);
-  const [sharedSelectedRing, setSharedSelectedRing] = useSyncedState<string>('tkd_shared_ring', '');
-  const [sharedSelectedMatchNo, setSharedSelectedMatchNo] = useSyncedState<string>('tkd_shared_match', '');
   const [mappings, setMappings] = useState<BoutMapping[]>([]);
   const [athletes, setAthletes] = useState([
     { name: "Ahmad bin Ibrahim", ic: "080512-14-5567", club: "KST", category: "Junior Male -45kg", status: "Verified" as const },
@@ -2290,10 +2288,6 @@ export default function App() {
                 currentEventDate={getCurrentEventDate()}
                 onUpdateInspection={handleUpdateMatchInspection}
                 viewMode="print"
-                selectedRing={sharedSelectedRing}
-                setSelectedRing={setSharedSelectedRing}
-                selectedMatchNo={sharedSelectedMatchNo}
-                setSelectedMatchNo={setSharedSelectedMatchNo}
               />
             </div>
           )}
@@ -2307,10 +2301,6 @@ export default function App() {
                 currentEventDate={getCurrentEventDate()}
                 onUpdateInspection={handleUpdateMatchInspection}
                 viewMode="signature"
-                selectedRing={sharedSelectedRing}
-                setSelectedRing={setSharedSelectedRing}
-                selectedMatchNo={sharedSelectedMatchNo}
-                setSelectedMatchNo={setSharedSelectedMatchNo}
               />
             </div>
           )}
@@ -4045,7 +4035,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
 
   React.useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (totalPages > 1) {
+    if (isFullscreen && totalPages > 1) {
       interval = setInterval(() => {
         setCurrentPage((prev) => (prev + 1) % totalPages);
       }, 30000); // 30 seconds
@@ -4053,9 +4043,11 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [totalPages]);
+  }, [isFullscreen, totalPages]);
 
-  const displayedRings = rings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage);
+  const displayedRings = isFullscreen 
+    ? rings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
+    : rings;
 
   return (
     <div 
@@ -4214,10 +4206,10 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  // Auto-scroll logic
+  // Auto-scroll logic for fullscreen mode
   React.useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (totalPages > 1) {
+    if (isFullscreen && totalPages > 1) {
       interval = setInterval(() => {
         setCurrentPage((prev) => (prev + 1) % totalPages);
       }, 30000); // 30 seconds
@@ -4225,9 +4217,11 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [totalPages]);
+  }, [isFullscreen, totalPages]);
 
-  const displayedRings = rings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage);
+  const displayedRings = isFullscreen 
+    ? rings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
+    : rings;
 
   const getDynamicFontSize = (name: string) => {
     const len = name.length;

@@ -144,34 +144,13 @@ interface TASheetProps {
   currentEventDate?: string;
   onUpdateInspection?: (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean) => void;
   viewMode?: 'print' | 'signature';
-  selectedRing?: string;
-  setSelectedRing?: (ring: string) => void;
-  selectedMatchNo?: string;
-  setSelectedMatchNo?: (matchNo: string) => void;
 }
 
-export function TASheet({ 
-  boutQueue, 
-  rings, 
-  currentEventName, 
-  currentEventDate, 
-  onUpdateInspection, 
-  viewMode = 'print',
-  selectedRing: externalSelectedRing,
-  setSelectedRing: externalSetSelectedRing,
-  selectedMatchNo: externalSelectedMatchNo,
-  setSelectedMatchNo: externalSetSelectedMatchNo
-}: TASheetProps) {
+export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, onUpdateInspection, viewMode = 'print' }: TASheetProps) {
   const [matches, setMatches] = useState<SheetMatch[]>([]);
   const [fallbackMatches, setFallbackMatches] = useState<SheetMatch[]>([]);
-  
-  const [internalSelectedRing, setInternalSelectedRing] = useState<string>('');
-  const [internalSelectedMatchNo, setInternalSelectedMatchNo] = useState<string>('');
-
-  const selectedRing = externalSelectedRing !== undefined ? externalSelectedRing : internalSelectedRing;
-  const setSelectedRing = externalSetSelectedRing !== undefined ? externalSetSelectedRing : setInternalSelectedRing;
-  const selectedMatchNo = externalSelectedMatchNo !== undefined ? externalSelectedMatchNo : internalSelectedMatchNo;
-  const setSelectedMatchNo = externalSetSelectedMatchNo !== undefined ? externalSetSelectedMatchNo : setInternalSelectedMatchNo;
+  const [selectedRing, setSelectedRing] = useState<string>('');
+  const [selectedMatchNo, setSelectedMatchNo] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sheetDate, setSheetDate] = useState(currentEventDate || '');
@@ -307,7 +286,7 @@ export function TASheet({
       setSelectedRing('');
       setSelectedMatchNo('');
     }
-  }, [boutQueue, rings, currentEventName, fallbackMatches, selectedRing, setSelectedRing, setSelectedMatchNo]);
+  }, [boutQueue, rings, currentEventName, fallbackMatches]);
 
   const filteredMatches = matches.filter(m => {
     const isPrinted = printedMatches.has(`${m.ringNo}-${m.matchNo}`);
