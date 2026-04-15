@@ -5156,7 +5156,9 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
           <div key={ev.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
             <div>
               <p className="text-sm font-bold text-slate-800">{ev.name}</p>
-              <p className="text-[10px] text-slate-500">{ev.ringQuantity} Rings • {new Date(ev.createdAt).toLocaleDateString()}</p>
+              <p className="text-[10px] text-slate-500">
+                {ev.ringQuantity} Rings • Date: {ev.eventDate || 'Not set'} • Created: {new Date(ev.createdAt).toLocaleDateString()}
+              </p>
             </div>
             <button 
               onClick={() => onDelete(ev.id)}
