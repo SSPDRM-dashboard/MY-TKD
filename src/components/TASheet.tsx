@@ -427,9 +427,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
           }
           .page-break:last-child { page-break-after: auto; }
           table { 
-            width: 100% !important; 
-            table-layout: fixed; 
-            border-collapse: collapse; 
+            border-collapse: collapse !important; 
             font-size: 9pt; 
           }
           .no-print { display: none !important; }
@@ -729,28 +727,38 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
             </div>
 
             {/* Match Info */}
-            <table className="w-full border-collapse border border-black mb-2 print:mb-4 text-sm font-bold match-info-table">
+            <table className="w-full border-collapse border border-black mb-2 print:mb-4 text-sm font-bold match-info-table table-fixed">
+              <colgroup>
+                <col style={{ width: '22%' }} />
+                <col style={{ width: '45%' }} />
+                <col style={{ width: '16.5%' }} />
+                <col style={{ width: '16.5%' }} />
+              </colgroup>
               <tbody>
                 <tr className="h-[25px]">
-                  <td className="border border-black p-1.5 w-[22%]">Date : <span className="ml-2 font-normal">{sheetDate}</span></td>
-                  <td className="border border-black p-1.5 w-[45%]">Day No: <span className="ml-2 font-normal">{sheetDayNo}</span></td>
-                  <td colSpan={2} className="border border-black p-1.5 w-[33%]">Court No: <span className="text-lg ml-2">{match.ringNo}</span></td>
+                  <td className="border border-black p-1.5">Date : <span className="ml-2 font-normal">{sheetDate}</span></td>
+                  <td className="border border-black p-1.5">Day No: <span className="ml-2 font-normal">{sheetDayNo}</span></td>
+                  <td colSpan={2} className="border border-black p-1.5">Court No: <span className="text-lg ml-2">{match.ringNo}</span></td>
                 </tr>
                 <tr className="h-[40px]">
-                  <td className="border border-black p-1.5 w-[22%]">Match No: <span className="text-lg ml-2">{match.matchNo}</span></td>
-                  <td className="border border-black p-1.5 relative w-[45%]">
+                  <td className="border border-black p-1.5">Match No: <span className="text-lg ml-2">{match.matchNo}</span></td>
+                  <td className="border border-black p-1.5 relative">
                     Weight Category : {match.category}
                     <span className="absolute right-2 top-1.5">kg</span>
                   </td>
-                  <td className="border border-black p-1.5 w-[16.5%]">Hit Level :</td>
-                  <td className="border border-black p-1.5 w-[16.5%]">Hogu Saiz :</td>
+                  <td className="border border-black p-1.5">Hit Level :</td>
+                  <td className="border border-black p-1.5">Hogu Saiz :</td>
                 </tr>
               </tbody>
             </table>
 
             {/* Players */}
             <div className="flex gap-4 mb-2 print:mb-2">
-              <table className="w-1/2 border-collapse border border-black text-sm font-bold text-center">
+              <table className="w-1/2 border-collapse border border-black text-sm font-bold text-center table-fixed">
+                <colgroup>
+                  <col style={{ width: '18%' }} />
+                  <col style={{ width: '82%' }} />
+                </colgroup>
                 <thead>
                   <tr className="h-[25px]">
                     <th colSpan={2} className="bg-[#00a2e8] text-white border border-black p-1.5 text-lg tracking-widest">CHUNG</th>
@@ -758,16 +766,20 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
                 </thead>
                 <tbody>
                   <tr className="h-[27px] print:h-[27px]">
-                    <td className="border border-black p-0 px-1.5 w-[18%]">NAME</td>
-                    <td className="border border-black p-0 px-1.5 w-[82%]">{match.blueName}</td>
+                    <td className="border border-black p-0 px-1.5">NAME</td>
+                    <td className="border border-black p-0 px-1.5">{match.blueName}</td>
                   </tr>
                   <tr className="h-[27px] print:h-[27px]">
-                    <td className="border border-black p-0 px-1.5 w-[18%]">NOC</td>
-                    <td className="border border-black p-0 px-1.5 w-[82%]">{match.blueClub}</td>
+                    <td className="border border-black p-0 px-1.5">NOC</td>
+                    <td className="border border-black p-0 px-1.5">{match.blueClub}</td>
                   </tr>
                 </tbody>
               </table>
-              <table className="w-1/2 border-collapse border border-black text-sm font-bold text-center">
+              <table className="w-1/2 border-collapse border border-black text-sm font-bold text-center table-fixed">
+                <colgroup>
+                  <col style={{ width: '18%' }} />
+                  <col style={{ width: '82%' }} />
+                </colgroup>
                 <thead>
                   <tr className="h-[25px]">
                     <th colSpan={2} className="bg-[#ed1c24] text-white border border-black p-1.5 text-lg tracking-widest">HONG</th>
@@ -775,49 +787,60 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
                 </thead>
                 <tbody>
                   <tr className="h-[27px] print:h-[27px]">
-                    <td className="border border-black p-0 px-1.5 w-[18%]">NAME</td>
-                    <td className="border border-black p-0 px-1.5 w-[82%]">{match.redName}</td>
+                    <td className="border border-black p-0 px-1.5">NAME</td>
+                    <td className="border border-black p-0 px-1.5">{match.redName}</td>
                   </tr>
                   <tr className="h-[27px] print:h-[27px]">
-                    <td className="border border-black p-0 px-1.5 w-[18%]">NOC</td>
-                    <td className="border border-black p-0 px-1.5 w-[82%]">{match.redClub}</td>
+                    <td className="border border-black p-0 px-1.5">NOC</td>
+                    <td className="border border-black p-0 px-1.5">{match.redClub}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
           {/* Round Scores */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-sm text-center font-bold">
+          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-sm text-center font-bold table-fixed">
+            <colgroup>
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '6%' }} />
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '8%' }} />
+            </colgroup>
             <thead>
               <tr className="h-[30px]">
-                <th className="border border-black p-1.5 w-[8%]">Gam-Jeom</th>
-                <th colSpan={2} className="border border-black p-1.5 w-[24%]">Deuk-jeum</th>
-                <th className="border border-black p-1.5 w-[15%]">CHUNG</th>
-                <th className="border border-black p-1.5 w-[6%]">Round</th>
-                <th className="border border-black p-1.5 w-[15%]">HONG</th>
-                <th colSpan={2} className="border border-black p-1.5 w-[24%]">Deuk-jeum</th>
-                <th className="border border-black p-1.5 w-[8%]">Gam-Jeom</th>
+                <th className="border border-black p-1.5">Gam-Jeom</th>
+                <th colSpan={2} className="border border-black p-1.5">Deuk-jeum</th>
+                <th className="border border-black p-1.5">CHUNG</th>
+                <th className="border border-black p-1.5">Round</th>
+                <th className="border border-black p-1.5">HONG</th>
+                <th colSpan={2} className="border border-black p-1.5">Deuk-jeum</th>
+                <th className="border border-black p-1.5">Gam-Jeom</th>
               </tr>
             </thead>
             <tbody>
               {[1, 2, 3].map((round) => (
                 <tr key={round} className="h-[30px] print:h-[30px]">
-                  <td className="border border-black w-[8%]"></td>
-                  <td className="border border-black w-[12%]"></td>
-                  <td className="border border-black w-[12%]"></td>
-                  <td className="border border-black text-[#00a2e8] w-[15%]">CHUNG</td>
-                  <td className="border border-black bg-gray-200 w-[6%]">R{round}</td>
-                  <td className="border border-black text-[#ed1c24] w-[15%]">HONG</td>
-                  <td className="border border-black w-[12%]"></td>
-                  <td className="border border-black w-[12%]"></td>
-                  <td className="border border-black w-[8%]"></td>
+                  <td className="border border-black"></td>
+                  <td className="border border-black"></td>
+                  <td className="border border-black"></td>
+                  <td className="border border-black text-[#00a2e8]">CHUNG</td>
+                  <td className="border border-black bg-gray-200">R{round}</td>
+                  <td className="border border-black text-[#ed1c24]">HONG</td>
+                  <td className="border border-black"></td>
+                  <td className="border border-black"></td>
+                  <td className="border border-black"></td>
                 </tr>
               ))}
             </tbody>
           </table>
 
           {/* Decision of Superiority */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-[10px] text-center font-bold">
+          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-[10px] text-center font-bold table-fixed">
             <colgroup>
               {/* Chung Superiority: 13.5% (4.5% each) */}
               <col style={{ width: '4.5%' }} />
@@ -915,27 +938,46 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
           </table>
 
           {/* Win Types */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-sm text-center font-bold">
+          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-sm text-center font-bold table-fixed">
+            <colgroup>
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '20%' }} />
+            </colgroup>
             <tbody>
               <tr className="h-[24px] print:h-[24px]">
-                <td className="border border-black w-[20%]">PTF</td>
-                <td className="border border-black w-[20%]">RSC</td>
-                <td className="border border-black w-[20%]">WDR</td>
-                <td className="border border-black w-[20%]">DSQ</td>
-                <td className="border border-black w-[20%]">DQB</td>
+                <td className="border border-black">PTF</td>
+                <td className="border border-black">RSC</td>
+                <td className="border border-black">WDR</td>
+                <td className="border border-black">DSQ</td>
+                <td className="border border-black">DQB</td>
               </tr>
             </tbody>
           </table>
 
           {/* Video Replay & Match Winner */}
-          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-xs text-center font-bold">
+          <table className="w-full border-collapse border border-black mb-2 print:mb-2 text-xs text-center font-bold table-fixed">
+            <colgroup>
+              <col style={{ width: '18%' }} />
+              <col style={{ width: '3.33%' }} />
+              <col style={{ width: '3.33%' }} />
+              <col style={{ width: '3.33%' }} />
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '18%' }} />
+              <col style={{ width: '3.33%' }} />
+              <col style={{ width: '3.33%' }} />
+              <col style={{ width: '3.33%' }} />
+            </colgroup>
             <thead>
               <tr className="h-[36px]">
-                <th className="border border-black p-1 bg-[#00a2e8] text-white text-left px-2 w-[18%]">Reason</th>
-                <th colSpan={3} className="border border-black p-1 bg-[#00a2e8] text-white w-[10%]">Chung Video<br/>Replay</th>
-                <th colSpan={2} className="border border-black p-1 w-[30%]">Match Winner</th>
-                <th className="border border-black p-1 bg-[#ed1c24] text-white text-left px-2 w-[18%]">Reason</th>
-                <th colSpan={3} className="border border-black p-1 bg-[#ed1c24] text-white w-[10%]">Hong Video<br/>Replay</th>
+                <th className="border border-black p-1 bg-[#00a2e8] text-white text-left px-2">Reason</th>
+                <th colSpan={3} className="border border-black p-1 bg-[#00a2e8] text-white">Chung Video<br/>Replay</th>
+                <th colSpan={2} className="border border-black p-1">Match Winner</th>
+                <th className="border border-black p-1 bg-[#ed1c24] text-white text-left px-2">Reason</th>
+                <th colSpan={3} className="border border-black p-1 bg-[#ed1c24] text-white">Hong Video<br/>Replay</th>
               </tr>
             </thead>
             <tbody>
@@ -949,14 +991,14 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
               ].map((reason, idx) => (
                 <tr key={idx} className="h-[17px] print:h-[17px]">
                   <td className="border border-black p-1 text-left px-2">{reason}</td>
-                  <td className="border border-black p-1 w-[3.33%]">A/R</td>
-                  <td className="border border-black p-1 w-[3.33%]">A/R</td>
-                  <td className="border border-black p-1 w-[3.33%]">A/R</td>
+                  <td className="border border-black p-1">A/R</td>
+                  <td className="border border-black p-1">A/R</td>
+                  <td className="border border-black p-1">A/R</td>
                   
                   {idx === 0 && (
                     <>
-                      <td rowSpan={2} className="border border-black p-1 text-[#00a2e8] text-xl w-[15%]">CHUNG</td>
-                      <td rowSpan={2} className="border border-black p-1 text-[#ed1c24] text-xl w-[15%]">HONG</td>
+                      <td rowSpan={2} className="border border-black p-1 text-[#00a2e8] text-xl">CHUNG</td>
+                      <td rowSpan={2} className="border border-black p-1 text-[#ed1c24] text-xl">HONG</td>
                     </>
                   )}
                   {idx === 2 && (
@@ -964,15 +1006,15 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
                   )}
                   {idx === 3 && (
                     <>
-                      <td rowSpan={3} className="border border-black p-1 w-[15%]"></td>
-                      <td rowSpan={3} className="border border-black p-1 w-[15%]"></td>
+                      <td rowSpan={3} className="border border-black p-1"></td>
+                      <td rowSpan={3} className="border border-black p-1"></td>
                     </>
                   )}
                   
                   <td className="border border-black p-1 text-left px-2">{reason}</td>
-                  <td className="border border-black p-1 w-[3.33%]">A/R</td>
-                  <td className="border border-black p-1 w-[3.33%]">A/R</td>
-                  <td className="border border-black p-1 w-[3.33%]">A/R</td>
+                  <td className="border border-black p-1">A/R</td>
+                  <td className="border border-black p-1">A/R</td>
+                  <td className="border border-black p-1">A/R</td>
                 </tr>
               ))}
             </tbody>
@@ -980,21 +1022,31 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
 
           {/* Yellow Cards */}
           <div className="flex gap-4 mb-0 print:mb-0">
-            <table className="w-[48%] border-collapse border border-black text-sm font-bold">
+            <table className="w-[48%] border-collapse border border-black text-sm font-bold table-fixed">
+              <colgroup>
+                <col style={{ width: '40%' }} />
+                <col style={{ width: '30%' }} />
+                <col style={{ width: '30%' }} />
+              </colgroup>
               <thead>
                 <tr className="h-[25px]">
-                  <th className="border border-black p-1 text-left px-2 w-[40%] bg-yellow-300">Yellow Card</th>
-                  <th className="border border-black p-1 text-left px-2 w-[30%]">Result</th>
-                  <th className="border border-black p-1 text-left px-2 w-[30%]">Time</th>
+                  <th className="border border-black p-1 text-left px-2 bg-yellow-300">Yellow Card</th>
+                  <th className="border border-black p-1 text-left px-2">Result</th>
+                  <th className="border border-black p-1 text-left px-2">Time</th>
                 </tr>
               </thead>
             </table>
-            <table className="w-[48%] border-collapse border border-black text-sm font-bold ml-auto">
+            <table className="w-[48%] border-collapse border border-black text-sm font-bold ml-auto table-fixed">
+              <colgroup>
+                <col style={{ width: '40%' }} />
+                <col style={{ width: '30%' }} />
+                <col style={{ width: '30%' }} />
+              </colgroup>
               <thead>
                 <tr className="h-[25px]">
-                  <th className="border border-black p-1 text-left px-2 w-[40%] bg-yellow-300">Yellow Card</th>
-                  <th className="border border-black p-1 text-left px-2 w-[30%]">Result</th>
-                  <th className="border border-black p-1 text-left px-2 w-[30%]">Time</th>
+                  <th className="border border-black p-1 text-left px-2 bg-yellow-300">Yellow Card</th>
+                  <th className="border border-black p-1 text-left px-2">Result</th>
+                  <th className="border border-black p-1 text-left px-2">Time</th>
                 </tr>
               </thead>
             </table>
@@ -1002,17 +1054,27 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
 
           <div className="mt-[25px]">
             {/* Officials */}
-            <table className="w-full border-collapse border border-black mb-2 print:mb-0 text-sm text-center font-bold">
+            <table className="w-full border-collapse border border-black mb-2 print:mb-0 text-sm text-center font-bold table-fixed">
+              <colgroup>
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '21%' }} />
+                <col style={{ width: '10%' }} />
+              </colgroup>
               <tbody>
                 <tr className="h-[35px] print:h-[35px]">
-                  <td className="border border-black p-1 w-[13%] bg-gray-200">Judge 2</td>
-                  <td className="border border-black p-1 w-[10%]"></td>
-                  <td className="border border-black p-1 w-[13%] bg-gray-200">Judge 1</td>
-                  <td className="border border-black p-1 w-[10%]"></td>
-                  <td className="border border-black p-1 w-[13%] bg-gray-200">Referee</td>
-                  <td className="border border-black p-1 w-[10%]"></td>
-                  <td className="border border-black p-1 w-[21%] bg-gray-200">Review Jury</td>
-                  <td className="border border-black p-1 w-[10%]"></td>
+                  <td className="border border-black p-1 bg-gray-200">Judge 2</td>
+                  <td className="border border-black p-1"></td>
+                  <td className="border border-black p-1 bg-gray-200">Judge 1</td>
+                  <td className="border border-black p-1"></td>
+                  <td className="border border-black p-1 bg-gray-200">Referee</td>
+                  <td className="border border-black p-1"></td>
+                  <td className="border border-black p-1 bg-gray-200">Review Jury</td>
+                  <td className="border border-black p-1"></td>
                 </tr>
                 <tr className="h-[35px] print:h-[35px]">
                   <td className="border border-black p-1 bg-gray-200">NOC</td>
