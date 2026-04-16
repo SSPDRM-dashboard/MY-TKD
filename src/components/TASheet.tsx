@@ -3,10 +3,11 @@ import { Download, AlertCircle, RefreshCw, Eraser, Check, History, X, Search, Pr
 import { motion } from 'motion/react';
 import { MatchData, RingStatus } from '../types';
 import Papa from 'papaparse';
+import { cn } from '../lib/utils';
 
 interface SignaturePadProps {
   color: 'blue' | 'red';
-  onConfirm: () => void;
+  onConfirm: (signatureDataUrl: string) => void;
   isConfirmed: boolean;
   boutId: string;
 }
@@ -115,13 +116,96 @@ function SignaturePad({ color, onConfirm, isConfirmed, boutId }: SignaturePadPro
           Reset
         </button>
         <button
-          onClick={onConfirm}
+          onClick={() => onConfirm(canvasRef.current?.toDataURL() || '')}
           disabled={isConfirmed || !hasSignature}
           className="px-4 py-1.5 bg-slate-900 text-white rounded-lg font-black text-xs uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 transition-all active:scale-95"
         >
           Confirm
         </button>
       </div>
+    </div>
+  );
+}
+
+export const INSPECTION_ITEMS = [
+  {
+    category: "Mandatory Protective Gear",
+    items: [
+      { id: "head", label: "Head Protector", desc: "Correct color, no cracks/tears" },
+      { id: "trunk", label: "Trunk Protector (PSS)", desc: "Battery life & sensor connection" },
+      { id: "guards", label: "Forearm & Shin Guards", desc: "Worn underneath Dobok" },
+      { id: "groin", label: "Groin Guard", desc: "Worn underneath Dobok" },
+      { id: "gloves", label: "Gloves", desc: "Clean, not overly worn" },
+      { id: "mouthguard", label: "Mouthguard", desc: "White or Transparent" },
+      { id: "badge", label: "TM Badge", desc: "WT approved badge" },
+    ]
+  },
+  {
+    category: "Personal Identification & Uniform",
+    items: [
+      { id: "dobok", label: "Dobok (Uniform)", desc: "Official WT style, no unauthorized patches" },
+      { id: "socks", label: "Sensing Socks (E-Socks)", desc: "No dead sensors, correct size" },
+      { id: "id", label: "Accreditation Card", desc: "Photo matches player's face" },
+    ]
+  },
+  {
+    category: "Physical Safety & Hygiene",
+    items: [
+      { id: "nails", label: "Fingernails & Toenails", desc: "Trimmed short" },
+      { id: "jewelry", label: "Jewelry/Hard Objects", desc: "None allowed" },
+      { id: "tape", label: "Medical Tape", desc: "Inspected/cleared" },
+      { id: "hair", label: "Hair", desc: "Tied back with soft band" },
+    ]
+  }
+];
+
+function PlayerChecklist({ color, checkedItems, onChange }: { color: 'blue' | 'red', checkedItems: Set<string>, onChange: (items: Set<string>) => void }) {
+  const toggleItem = (id: string) => {
+    const newSet = new Set(checkedItems);
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
+    onChange(newSet);
+  };
+
+  return (
+    <div className="mt-6 space-y-6">
+      {INSPECTION_ITEMS.map((section, sIdx) => (
+        <div key={sIdx}>
+          <h4 className={cn(
+            "text-xs font-black uppercase tracking-widest mb-3 pb-2 border-b",
+            color === 'blue' ? "text-blue-600 border-blue-100" : "text-red-600 border-red-100"
+          )}>
+            {section.category}
+          </h4>
+          <div className="space-y-2">
+            {section.items.map((item) => (
+              <label 
+                key={item.id} 
+                className="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors group"
+              >
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={checkedItems.has(item.id)}
+                  onChange={() => toggleItem(item.id)}
+                />
+                <div className={cn(
+                  "w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors",
+                  checkedItems.has(item.id) 
+                    ? (color === 'blue' ? "bg-blue-600 border-blue-600 text-white" : "bg-red-600 border-red-600 text-white")
+                    : "border-slate-300 group-hover:border-slate-400 bg-white"
+                )}>
+                  {checkedItems.has(item.id) && <Check size={14} strokeWidth={3} />}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-700 leading-none mb-1">{item.label}</p>
+                  <p className="text-[10px] font-medium text-slate-500 leading-tight">{item.desc}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -142,15 +226,38 @@ interface TASheetProps {
   rings: RingStatus[];
   currentEventName: string;
   currentEventDate?: string;
-  onUpdateInspection?: (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean) => void;
+  onUpdateInspection?: (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean, signature?: string, checklist?: string[]) => void;
   viewMode?: 'print' | 'signature';
+  sharedRing?: string;
+  sharedMatchNo?: string;
+  onSharedSelectionChange?: (ring: string, matchNo: string) => void;
 }
 
-export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, onUpdateInspection, viewMode = 'print' }: TASheetProps) {
+export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, onUpdateInspection, viewMode = 'print', sharedRing, sharedMatchNo, onSharedSelectionChange }: TASheetProps) {
   const [matches, setMatches] = useState<SheetMatch[]>([]);
   const [fallbackMatches, setFallbackMatches] = useState<SheetMatch[]>([]);
-  const [selectedRing, setSelectedRing] = useState<string>('');
-  const [selectedMatchNo, setSelectedMatchNo] = useState<string>('');
+  const [internalSelectedRing, setInternalSelectedRing] = useState<string>('');
+  const [internalSelectedMatchNo, setInternalSelectedMatchNo] = useState<string>('');
+  
+  const selectedRing = sharedRing !== undefined ? sharedRing : internalSelectedRing;
+  const selectedMatchNo = sharedMatchNo !== undefined ? sharedMatchNo : internalSelectedMatchNo;
+
+  const setSelectedRing = (ring: string) => {
+    if (onSharedSelectionChange) onSharedSelectionChange(ring, selectedMatchNo);
+    setInternalSelectedRing(ring);
+  };
+
+  const setSelectedMatchNo = (matchNo: string) => {
+    if (onSharedSelectionChange) onSharedSelectionChange(selectedRing, matchNo);
+    setInternalSelectedMatchNo(matchNo);
+  };
+
+  const setRingAndMatch = (ring: string, matchNo: string) => {
+    if (onSharedSelectionChange) onSharedSelectionChange(ring, matchNo);
+    setInternalSelectedRing(ring);
+    setInternalSelectedMatchNo(matchNo);
+  };
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sheetDate, setSheetDate] = useState(currentEventDate || '');
@@ -160,6 +267,13 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
   const [reprintSearchQuery, setReprintSearchQuery] = useState('');
   const [printedMatches, setPrintedMatches] = useState<Set<string>>(new Set());
   const [localSignedMatches, setLocalSignedMatches] = useState<Record<string, {blue: boolean, red: boolean}>>({});
+  const [blueChecklist, setBlueChecklist] = useState<Set<string>>(new Set());
+  const [redChecklist, setRedChecklist] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setBlueChecklist(new Set());
+    setRedChecklist(new Set());
+  }, [selectedRing, selectedMatchNo]);
 
   const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv&gid=0";
 
@@ -278,15 +392,44 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
       const uniqueRings = Array.from(new Set(allMatches.map(m => m.ringNo)));
       if (!selectedRing || !uniqueRings.includes(selectedRing)) {
         const firstRing = uniqueRings[0];
-        setSelectedRing(firstRing);
         const firstMatch = allMatches.find(m => m.ringNo === firstRing);
-        if (firstMatch) setSelectedMatchNo(firstMatch.matchNo);
+        if (firstMatch) {
+          setRingAndMatch(firstRing, firstMatch.matchNo);
+        } else {
+          setSelectedRing(firstRing);
+        }
       }
     } else {
-      setSelectedRing('');
-      setSelectedMatchNo('');
+      setRingAndMatch('', '');
     }
   }, [boutQueue, rings, currentEventName, fallbackMatches]);
+
+  // Helper to check if any match in a list is signed
+  const getMatchStatus = (m: SheetMatch) => {
+    const key = `${m.ringNo}-${m.matchNo}`;
+    if (localSignedMatches[key]?.blue && localSignedMatches[key]?.red) {
+      return { isSigned: true, hasBlue: true, hasRed: true };
+    }
+
+    let data = null;
+    for (const ring of rings) {
+      if (ring.ringNumber.toString() === m.ringNo) {
+        if (ring.currentBout?.bout.toString() === m.matchNo) data = ring.currentBout;
+        else if (ring.onDeck?.bout.toString() === m.matchNo) data = ring.onDeck;
+        else if (ring.inTheHole?.bout.toString() === m.matchNo) data = ring.inTheHole;
+        break;
+      }
+    }
+    if (!data) {
+      const queued = boutQueue.find(q => q.data.ring.toString() === m.ringNo && q.data.bout.toString() === m.matchNo);
+      if (queued) data = queued.data;
+    }
+    return {
+      isSigned: !!data?.blue_inspected && !!data?.red_inspected,
+      hasBlue: !!data?.blue_inspected,
+      hasRed: !!data?.red_inspected
+    };
+  };
 
   const filteredMatches = matches.filter(m => {
     const isPrinted = printedMatches.has(`${m.ringNo}-${m.matchNo}`);
@@ -365,33 +508,6 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
   const matchKey = currentMatch ? `${currentMatch.ringNo}-${currentMatch.matchNo}` : '';
   const isFullySigned = (!!actualMatchData?.blue_inspected && !!actualMatchData?.red_inspected) || 
                        (localSignedMatches[matchKey]?.blue && localSignedMatches[matchKey]?.red);
-
-  // Helper to check if any match in a list is signed
-  const getMatchStatus = (m: SheetMatch) => {
-    const key = `${m.ringNo}-${m.matchNo}`;
-    if (localSignedMatches[key]?.blue && localSignedMatches[key]?.red) {
-      return { isSigned: true, hasBlue: true, hasRed: true };
-    }
-
-    let data = null;
-    for (const ring of rings) {
-      if (ring.ringNumber.toString() === m.ringNo) {
-        if (ring.currentBout?.bout.toString() === m.matchNo) data = ring.currentBout;
-        else if (ring.onDeck?.bout.toString() === m.matchNo) data = ring.onDeck;
-        else if (ring.inTheHole?.bout.toString() === m.matchNo) data = ring.inTheHole;
-        break;
-      }
-    }
-    if (!data) {
-      const queued = boutQueue.find(q => q.data.ring.toString() === m.ringNo && q.data.bout.toString() === m.matchNo);
-      if (queued) data = queued.data;
-    }
-    return {
-      isSigned: !!data?.blue_inspected && !!data?.red_inspected,
-      hasBlue: !!data?.blue_inspected,
-      hasRed: !!data?.red_inspected
-    };
-  };
 
   const matchesToRender = printMode === 'all' 
     ? ringMatches.filter(m => getMatchStatus(m).isSigned) 
@@ -516,9 +632,13 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
             <select 
               value={selectedRing} 
               onChange={(e) => {
-                setSelectedRing(e.target.value);
-                const firstMatch = filteredMatches.find(m => m.ringNo === e.target.value);
-                if (firstMatch) setSelectedMatchNo(firstMatch.matchNo);
+                const newRing = e.target.value;
+                const firstMatch = filteredMatches.find(m => m.ringNo === newRing);
+                if (firstMatch) {
+                  setRingAndMatch(newRing, firstMatch.matchNo);
+                } else {
+                  setSelectedRing(newRing);
+                }
               }}
               className="px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold min-w-[120px] text-sm"
               disabled={uniqueRings.length === 0}
@@ -627,8 +747,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
                   <button
                     key={idx}
                     onClick={() => {
-                      setSelectedRing(match.ringNo);
-                      setSelectedMatchNo(match.matchNo);
+                      setRingAndMatch(match.ringNo, match.matchNo);
                       setShowReprintModal(false);
                     }}
                     className="w-full p-4 bg-white border border-slate-100 rounded-2xl hover:border-red-200 hover:bg-red-50 transition-all text-left flex items-center justify-between group"
@@ -679,15 +798,17 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
               color="blue" 
               boutId={`${currentMatch.ringNo}-${currentMatch.matchNo}`}
               isConfirmed={!!actualMatchData?.blue_inspected || localSignedMatches[matchKey]?.blue}
-              onConfirm={() => {
+              onConfirm={(signature) => {
                 setLocalSignedMatches(prev => ({
                   ...prev,
                   [matchKey]: { ...prev[matchKey], blue: true }
                 }));
-                if (onUpdateInspection) onUpdateInspection(currentMatch.ringNo, currentMatch.matchNo, 'blue', true);
+                if (onUpdateInspection) onUpdateInspection(currentMatch.ringNo, currentMatch.matchNo, 'blue', true, signature, Array.from(blueChecklist));
               }}
             />
+            <PlayerChecklist color="blue" checkedItems={blueChecklist} onChange={setBlueChecklist} />
           </div>
+          <div className="w-px bg-slate-200 self-stretch"></div>
           <div className="flex-1 flex flex-col">
             <div className="mb-4 text-center">
               <h3 className="text-lg font-black text-[#ed1c24] uppercase">{actualMatchData?.red_name || 'Red Player'}</h3>
@@ -697,14 +818,15 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
               color="red" 
               boutId={`${currentMatch.ringNo}-${currentMatch.matchNo}`}
               isConfirmed={!!actualMatchData?.red_inspected || localSignedMatches[matchKey]?.red}
-              onConfirm={() => {
+              onConfirm={(signature) => {
                 setLocalSignedMatches(prev => ({
                   ...prev,
                   [matchKey]: { ...prev[matchKey], red: true }
                 }));
-                if (onUpdateInspection) onUpdateInspection(currentMatch.ringNo, currentMatch.matchNo, 'red', true);
+                if (onUpdateInspection) onUpdateInspection(currentMatch.ringNo, currentMatch.matchNo, 'red', true, signature, Array.from(redChecklist));
               }}
             />
+            <PlayerChecklist color="red" checkedItems={redChecklist} onChange={setRedChecklist} />
           </div>
         </div>
       )}

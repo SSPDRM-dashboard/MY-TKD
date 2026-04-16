@@ -33,6 +33,24 @@ export function normalizeBoutNumber(bout: string | number): string {
   return s;
 }
 
+export function normalizeBoutWithRing(bout: string | number, ringNum: number): string {
+  const s = bout.toString().trim().toUpperCase();
+  if (!s) return '';
+  
+  // If it already has a letter, use standard normalization
+  if (/^[A-Z]/.test(s)) return normalizeBoutNumber(s);
+  
+  const num = parseInt(s.replace(/[^0-9]/g, ''));
+  if (isNaN(num)) return s;
+  
+  // If it's a small number, assume it's relative to the ring
+  if (num < 1000) {
+    return ((ringNum * 1000) + num).toString();
+  }
+  
+  return num.toString();
+}
+
 export function getBoutNumber(bout: string | number): number {
   return parseInt(normalizeBoutNumber(bout)) || 0;
 }
@@ -49,11 +67,27 @@ export function formatBoutNumber(ringNum: number, bout: string | number): string
 
   if (isNaN(num)) return s;
 
-  // 2. If it's already a "full" numeric ID (>= 1000), keep it
-  if (num >= 1000) return s;
+  // 2. If it's a "full" numeric ID (>= 1000), convert it back to letter format
+  // e.g., 1001 -> A01, 2005 -> B05
+  if (num >= 1000) {
+    const ring = Math.floor(num / 1000);
+    const boutInRing = num % 1000;
+    const letter = String.fromCharCode(64 + ring);
+    return `${letter}${boutInRing.toString().padStart(2, '0')}${suffix}`;
+  }
 
   // 3. For small numbers (e.g., "1"), default to the letter format (e.g., "A01")
-  // as it was the previous preferred format, but this only applies to raw inputs.
   const letter = String.fromCharCode(64 + ringNum);
   return `${letter}${num.toString().padStart(2, '0')}${suffix}`;
+}
+
+/**
+ * Detects if the event data is using the A01 format.
+ * If any bout in the queue or rings starts with a letter, we assume A01 method.
+ */
+export function isUsingA01Method(data: any[]): boolean {
+  return data.some(item => {
+    const bout = item.data?.bout || item.bout || '';
+    return /^[A-Z]/.test(bout.toString().trim().toUpperCase());
+  });
 }

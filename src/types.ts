@@ -29,6 +29,10 @@ export interface MatchData {
   eventId?: string | null;
   blue_inspected?: boolean;
   red_inspected?: boolean;
+  blue_signature?: string;
+  red_signature?: string;
+  blue_checklist?: string[];
+  red_checklist?: string[];
 }
 
 export interface RingStatus {

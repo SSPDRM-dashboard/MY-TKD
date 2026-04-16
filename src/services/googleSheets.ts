@@ -73,6 +73,9 @@ export async function syncToGoogleSheets(url: string, data: MatchData, eventName
       method: 'POST',
       mode: 'no-cors',
       cache: 'no-cache',
+      headers: {
+        'Content-Type': 'text/plain',
+      },
       body: JSON.stringify(payload),
     });
 
@@ -106,6 +109,9 @@ export async function updateTransferInGoogleSheets(url: string, ring: number, bo
       method: 'POST',
       mode: 'no-cors',
       cache: 'no-cache',
+      headers: {
+        'Content-Type': 'text/plain',
+      },
       body: JSON.stringify(payload),
     });
 
@@ -142,6 +148,9 @@ export async function updateBoutDetailsInGoogleSheets(url: string, ring: number,
       method: 'POST',
       mode: 'no-cors',
       cache: 'no-cache',
+      headers: {
+        'Content-Type': 'text/plain',
+      },
       body: JSON.stringify(payload),
     });
 
@@ -179,6 +188,9 @@ export async function updateWinnerInGoogleSheets(url: string, ring: number, bout
       method: 'POST',
       mode: 'no-cors',
       cache: 'no-cache',
+      headers: {
+        'Content-Type': 'text/plain',
+      },
       body: JSON.stringify(payload),
     });
 
