@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI } from "@google/genai";
-import { cn } from '../lib/utils';
+import { cn, formatBoutNumber } from '../lib/utils';
 import { MatchData, EventData, RingStatus } from '../types';
 
 interface Message {
@@ -30,9 +30,17 @@ interface TournamentAssistantProps {
   rings: RingStatus[];
   boutQueue: { id: string, data: MatchData }[];
   athletes: any[];
+  boutNumberingMode: 'numeric' | 'alphanumeric';
 }
 
-export function TournamentAssistant({ currentEventId, events, rings, boutQueue, athletes }: TournamentAssistantProps) {
+export function TournamentAssistant({ 
+  currentEventId, 
+  events, 
+  rings, 
+  boutQueue, 
+  athletes,
+  boutNumberingMode
+}: TournamentAssistantProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [input, setInput] = useState('');
@@ -96,10 +104,10 @@ export function TournamentAssistant({ currentEventId, events, rings, boutQueue, 
         Total Athletes: ${athletes.length}
         
         Active Rings Status:
-        ${rings.map(r => `Ring ${r.ringNumber}: ${r.currentBout ? `Bout ${r.currentBout.bout} (${r.currentBout.category})` : 'Idle'}`).join('\n')}
+        ${rings.map(r => `Ring ${r.ringNumber}: ${r.currentBout ? `Bout ${formatBoutNumber(r.ringNumber, r.currentBout.bout, boutNumberingMode)} (${r.currentBout.category})` : 'Idle'}`).join('\n')}
         
         Recent Bouts in Queue:
-        ${boutQueue.slice(0, 10).map(b => `Bout ${b.data.bout}: ${b.data.blue_name} vs ${b.data.red_name} (${b.data.category})`).join('\n')}
+        ${boutQueue.slice(0, 10).map(b => `Bout ${formatBoutNumber(b.data.ring, b.data.bout, boutNumberingMode)}: ${b.data.blue_name} vs ${b.data.red_name} (${b.data.category})`).join('\n')}
         
         Instructions:
         - Be concise and professional.

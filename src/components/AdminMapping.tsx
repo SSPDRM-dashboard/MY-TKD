@@ -3,7 +3,7 @@ import { db } from '../firebase';
 import { collection, addDoc, deleteDoc, doc, onSnapshot, query, where, setDoc, serverTimestamp } from 'firebase/firestore';
 import { BoutMapping, EventData } from '../types';
 import { Trash2, Plus, Save, Hash, ArrowRight, User, Shield, RefreshCw, Trophy } from 'lucide-react';
-import { cn, normalizeBoutNumber } from '../lib/utils';
+import { cn, normalizeBoutNumber, formatBoutNumber } from '../lib/utils';
 import Papa from 'papaparse';
 
 interface AdminMappingProps {
@@ -13,9 +13,18 @@ interface AdminMappingProps {
   events: EventData[];
   onSyncMatches?: () => void;
   isSyncingMatches?: boolean;
+  boutNumberingMode?: 'numeric' | 'alphanumeric';
 }
 
-export function AdminMapping({ currentEventId, currentEventName, categories, events, onSyncMatches, isSyncingMatches }: AdminMappingProps) {
+export function AdminMapping({ 
+  currentEventId, 
+  currentEventName, 
+  categories, 
+  events, 
+  onSyncMatches, 
+  isSyncingMatches,
+  boutNumberingMode = 'alphanumeric'
+}: AdminMappingProps) {
   const [mappings, setMappings] = useState<BoutMapping[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string>(currentEventId || '');
   const [sourceBout, setSourceBout] = useState('');
@@ -32,10 +41,10 @@ export function AdminMapping({ currentEventId, currentEventName, categories, eve
   const CATEGORIES_SHEET_URL = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv&gid=0";
 
   useEffect(() => {
-    if (currentEventId) {
+    if (currentEventId && currentEventId !== selectedEventId) {
       setSelectedEventId(currentEventId);
     }
-  }, [currentEventId]);
+  }, [currentEventId, selectedEventId]);
 
   const syncCategoriesFromSheet = async () => {
     setIsSyncingCategories(true);
@@ -86,18 +95,31 @@ export function AdminMapping({ currentEventId, currentEventName, categories, eve
           for (let i = 1; i < rows.length; i++) {
             const row = rows[i];
             if (row.length >= 10) {
-              const matchNo = row[2]?.trim();
-              const category = row[3]?.trim();
+              const ringNo = row[2]?.trim();
+              const matchNo = row[3]?.trim();
+              const category = row[4]?.trim();
+              const blueName = row[5]?.trim() || '';
+              const blueClub = row[6]?.trim() || '';
+              const redName = row[7]?.trim() || '';
+              const redClub = row[8]?.trim() || '';
               const winner = row[9]?.trim(); // Column J
 
               if (matchNo && category && winner && winner !== '-' && winner !== '') {
                 const normalizedMatchNo = normalizeBoutNumber(matchNo);
-                console.log(`Processing sheet row: Bout ${matchNo} (Normalized: ${normalizedMatchNo}), Category ${category}, Winner ${winner}`);
+                const winnerTrimmed = winner.trim();
+                let winnerClub = '';
+                
+                if (winnerTrimmed === blueName) winnerClub = blueClub;
+                else if (winnerTrimmed === redName) winnerClub = redClub;
+
+                console.log(`Processing sheet row: Ring ${ringNo}, Bout ${matchNo} (Normalized: ${normalizedMatchNo}), Category ${category}, Winner ${winner}, Club ${winnerClub}`);
                 const historyId = `${selectedEventId}_${normalizedMatchNo}`;
                 const historyItem = {
+                  id: historyId,
                   bout: normalizedMatchNo,
                   category: category,
-                  winner: winner,
+                  winner: winnerTrimmed,
+                  winnerClub: winnerClub,
                   eventId: selectedEventId,
                   syncedAt: serverTimestamp()
                 };
@@ -387,13 +409,13 @@ export function AdminMapping({ currentEventId, currentEventName, categories, eve
                         <div className="w-6 h-6 bg-slate-100 rounded flex items-center justify-center text-[10px] font-black text-slate-500">
                           #
                         </div>
-                        <span className="text-sm font-black text-slate-900">{m.sourceBout}</span>
+                        <span className="text-sm font-black text-slate-900">{formatBoutNumber(0, m.sourceBout, boutNumberingMode)}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <ArrowRight size={14} className="text-slate-300" />
-                        <span className="text-sm font-black text-slate-900">{m.nextBout}</span>
+                        <span className="text-sm font-black text-slate-900">{formatBoutNumber(0, m.nextBout, boutNumberingMode)}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">

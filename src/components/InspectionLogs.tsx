@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { MatchData } from '../types';
 import { Search, CheckCircle2, XCircle } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn, formatBoutNumber } from '../lib/utils';
 import { INSPECTION_ITEMS } from './TASheet';
 
 interface InspectionLogsProps {
   boutQueue: { id: string, data: MatchData }[];
+  boutNumberingMode?: 'numeric' | 'alphanumeric';
 }
 
-export function InspectionLogs({ boutQueue }: InspectionLogsProps) {
+export function InspectionLogs({ boutQueue, boutNumberingMode = 'alphanumeric' }: InspectionLogsProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filter matches that have at least one inspection
@@ -89,7 +90,7 @@ export function InspectionLogs({ boutQueue }: InspectionLogsProps) {
                   <span className="px-3 py-1 bg-slate-800 text-white rounded-lg text-xs font-black uppercase tracking-widest">
                     Ring {match.ring}
                   </span>
-                  <span className="text-lg font-black text-slate-800">Match {match.bout}</span>
+                  <span className="text-lg font-black text-slate-800">Match {formatBoutNumber(match.ring, match.bout, boutNumberingMode)}</span>
                 </div>
                 <span className="text-sm font-bold text-slate-500 uppercase">{match.category}</span>
               </div>

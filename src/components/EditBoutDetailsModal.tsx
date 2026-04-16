@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Edit2, X } from 'lucide-react';
 import { RingStatus, MatchData } from '../types';
+import { normalizeBoutNumber, formatBoutNumber } from '../lib/utils';
 
 interface EditBoutDetailsModalProps {
   onClose: () => void;
@@ -9,9 +10,10 @@ interface EditBoutDetailsModalProps {
   rings: RingStatus[];
   queue: { id: string; data: MatchData }[];
   user: any;
+  boutNumberingMode: 'numeric' | 'alphanumeric';
 }
 
-export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user }: EditBoutDetailsModalProps) {
+export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, boutNumberingMode }: EditBoutDetailsModalProps) {
   const defaultRing = user?.role === 'admin' ? (rings[0]?.ringNumber || 1) : (Number(user?.assignedRing) || 1);
   
   const [formData, setFormData] = useState({
@@ -35,9 +37,11 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user }: 
   useEffect(() => {
     if (!formData.bout) return;
     
+    const normalizedBout = normalizeBoutNumber(formData.bout);
+    
     // Check active bout
     const ring = rings.find(r => r.ringNumber === formData.ring);
-    if (ring?.currentBout && ring.currentBout.bout.toString() === formData.bout) {
+    if (ring?.currentBout && normalizeBoutNumber(ring.currentBout.bout) === normalizedBout) {
       setFormData(prev => ({
         ...prev,
         blue_name: ring.currentBout!.blue_name,
@@ -49,7 +53,7 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user }: 
     }
 
     // Check queue
-    const queuedBout = queue.find(q => q.data.ring === formData.ring && q.data.bout.toString() === formData.bout);
+    const queuedBout = queue.find(q => q.data.ring === formData.ring && normalizeBoutNumber(q.data.bout) === normalizedBout);
     if (queuedBout) {
       setFormData(prev => ({
         ...prev,
@@ -111,17 +115,25 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user }: 
                 ))}
               </select>
             </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Bout Number</label>
-              <input 
-                type="text" 
-                value={formData.bout}
-                onChange={(e) => setFormData({...formData, bout: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
-                placeholder="e.g. 101"
-                required
-              />
-            </div>
+    <div className="space-y-2">
+      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Bout Number</label>
+      <input 
+        type="text" 
+        value={formData.bout}
+        onChange={(e) => setFormData({...formData, bout: e.target.value.toUpperCase()})}
+        onBlur={() => {
+          if (formData.bout) {
+            setFormData(prev => ({
+              ...prev,
+              bout: formatBoutNumber(formData.ring, formData.bout, boutNumberingMode)
+            }));
+          }
+        }}
+        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+        placeholder={boutNumberingMode === 'alphanumeric' ? "e.g. A01" : "e.g. 1001"}
+        required
+      />
+    </div>
           </div>
 
           <div className="space-y-4">

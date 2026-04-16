@@ -30,7 +30,27 @@ export function normalizeBoutNumber(bout: string | number): string {
     return (ringOffset + number).toString();
   }
   
+  // Handle cases where someone might input "1022" and we want to compare with "1022"
   return s;
+}
+
+export function isBoutMatch(bout1: string | number, bout2: string | number): boolean {
+  const norm1 = normalizeBoutNumber(bout1);
+  const norm2 = normalizeBoutNumber(bout2);
+  
+  if (norm1 === norm2) return true;
+  
+  // Also check if one is relative (e.g. "22") and the other is absolute (e.g. "1022")
+  const num1 = parseInt(norm1);
+  const num2 = parseInt(norm2);
+  
+  if (!isNaN(num1) && !isNaN(num2)) {
+    // If one is < 1000 and the other is exactly (Ring * 1000) + that number
+    if (num1 < 1000 && num2 >= 1000 && num2 % 1000 === num1) return true;
+    if (num2 < 1000 && num1 >= 1000 && num1 % 1000 === num2) return true;
+  }
+  
+  return false;
 }
 
 export function normalizeBoutWithRing(bout: string | number, ringNum: number): string {
@@ -55,20 +75,36 @@ export function getBoutNumber(bout: string | number): number {
   return parseInt(normalizeBoutNumber(bout)) || 0;
 }
 
-export function formatBoutNumber(ringNum: number, bout: string | number): string {
+export function formatBoutNumber(ringNum: number, bout: string | number, mode: 'numeric' | 'alphanumeric' = 'alphanumeric'): string {
   const s = bout.toString().trim().toUpperCase();
   if (!s) return '';
-
-  // 1. If it already has a letter prefix (e.g., A01), keep it
-  if (/^[A-Z]/.test(s)) return s;
 
   const num = parseInt(s.replace(/[^0-9]/g, ''));
   const suffix = s.replace(/[0-9]/g, '');
 
   if (isNaN(num)) return s;
 
+  if (mode === 'numeric') {
+    // If it's alphanumeric (e.g., A01), convert to numeric (1001)
+    if (/^[A-Z]/.test(s)) {
+      const letter = s.charAt(0);
+      const ring = letter.charCodeAt(0) - 64;
+      const boutNum = parseInt(s.substring(1).replace(/[^0-9]/g, ''));
+      return ((ring * 1000) + boutNum).toString() + suffix;
+    }
+    
+    // If it's a small number, add ring offset
+    if (num < 1000 && ringNum > 0) {
+      return ((ringNum * 1000) + num).toString() + suffix;
+    }
+    return num.toString() + suffix;
+  }
+
+  // Alphanumeric mode (A01)
+  // 1. If it already has a letter prefix (e.g., A01), keep it
+  if (/^[A-Z]/.test(s)) return s;
+
   // 2. If it's a "full" numeric ID (>= 1000), convert it back to letter format
-  // e.g., 1001 -> A01, 2005 -> B05
   if (num >= 1000) {
     const ring = Math.floor(num / 1000);
     const boutInRing = num % 1000;

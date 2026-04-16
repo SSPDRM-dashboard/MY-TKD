@@ -19,7 +19,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { MatchData, BoutMapping, EventData, RingStatus } from '../types';
-import { cn, normalizeBoutNumber } from '../lib/utils';
+import { cn, normalizeBoutNumber, formatBoutNumber } from '../lib/utils';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { syncToGoogleSheets } from '../services/googleSheets';
@@ -32,9 +32,18 @@ interface AIBracketSetupProps {
   rings: RingStatus[];
   setRings: (rings: RingStatus[]) => void;
   setBoutQueue: React.Dispatch<React.SetStateAction<{id: string, data: MatchData}[]>>;
+  boutNumberingMode: 'numeric' | 'alphanumeric';
 }
 
-export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRings, setBoutQueue }: AIBracketSetupProps) {
+export function AIBracketSetup({ 
+  currentEventId, 
+  events, 
+  onSuccess, 
+  rings, 
+  setRings, 
+  setBoutQueue,
+  boutNumberingMode
+}: AIBracketSetupProps) {
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -513,6 +522,8 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
       const mappingPromises = previewData.mappings.map(m => {
         return addDoc(collection(db, 'event_logic'), {
           ...m,
+          sourceBout: normalizeBoutNumber(m.sourceBout || ''),
+          nextBout: normalizeBoutNumber(m.nextBout || ''),
           eventId: currentEventId,
           eventName: currentEvent.name,
           categoryName: "Auto-Extracted",
@@ -529,7 +540,11 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
 
       const newQueueItems = sortedMatches.map(m => ({
         id: `ai_${currentEventId}_${m.bout}_${Math.random().toString(36).substr(2, 5)}`,
-        data: { ...m, eventId: currentEventId }
+        data: { 
+          ...m, 
+          bout: normalizeBoutNumber(m.bout || ''),
+          eventId: currentEventId 
+        }
       }));
       
       setBoutQueue(prev => {
@@ -641,7 +656,7 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
     
     const headers = ["Bout #", "Category", "Blue Player", "Blue Club", "Red Player", "Red Club"];
     const rows = previewData.matches.map(m => [
-      m.bout,
+      formatBoutNumber(m.ring || 1, m.bout, boutNumberingMode),
       m.category,
       m.blue_name,
       m.blue_club,
@@ -935,7 +950,7 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
                             <td className="px-6 py-4">
                               <input 
                                 type="text" 
-                                value={m.bout} 
+                                value={formatBoutNumber(m.ring || 1, m.bout, boutNumberingMode)} 
                                 onChange={(e) => handleMatchEdit(i, 'bout', e.target.value)}
                                 className="w-16 text-sm font-black text-slate-900 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 outline-none transition-colors"
                               />
@@ -996,7 +1011,7 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
                           <div className="w-12 h-10 bg-white rounded-xl border border-slate-200 flex items-center justify-center shadow-sm">
                             <input 
                               type="text" 
-                              value={m.sourceBout || ''} 
+                              value={formatBoutNumber(1, m.sourceBout || '', boutNumberingMode)} 
                               onChange={(e) => handleMappingEdit(i, 'sourceBout', e.target.value)}
                               className="w-full text-center font-black text-slate-900 bg-transparent outline-none"
                             />
@@ -1005,7 +1020,7 @@ export function AIBracketSetup({ currentEventId, events, onSuccess, rings, setRi
                           <div className="w-12 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-900/20">
                             <input 
                               type="text" 
-                              value={m.nextBout || ''} 
+                              value={formatBoutNumber(1, m.nextBout || '', boutNumberingMode)} 
                               onChange={(e) => handleMappingEdit(i, 'nextBout', e.target.value)}
                               className="w-full text-center font-black text-white bg-transparent outline-none placeholder-indigo-300"
                             />

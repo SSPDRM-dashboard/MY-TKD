@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, AlertCircle, RefreshCw, Eraser, Check, History, X, Search, Printer } from 'lucide-react';
+import { Download, AlertCircle, RefreshCw, Eraser, Check, History, X, Search, Printer, Trophy } from 'lucide-react';
 import { motion } from 'motion/react';
 import { MatchData, RingStatus } from '../types';
 import Papa from 'papaparse';
-import { cn } from '../lib/utils';
+import { cn, formatBoutNumber, normalizeBoutNumber } from '../lib/utils';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../firebase';
 
 interface SignaturePadProps {
   color: 'blue' | 'red';
@@ -219,6 +221,7 @@ interface SheetMatch {
   blueClub: string;
   redName: string;
   redClub: string;
+  winner?: string;
 }
 
 interface TASheetProps {
@@ -226,14 +229,28 @@ interface TASheetProps {
   rings: RingStatus[];
   currentEventName: string;
   currentEventDate?: string;
+  currentEventId?: string | null;
   onUpdateInspection?: (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean, signature?: string, checklist?: string[]) => void;
   viewMode?: 'print' | 'signature';
   sharedRing?: string;
   sharedMatchNo?: string;
   onSharedSelectionChange?: (ring: string, matchNo: string) => void;
+  boutNumberingMode?: 'numeric' | 'alphanumeric';
 }
 
-export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, onUpdateInspection, viewMode = 'print', sharedRing, sharedMatchNo, onSharedSelectionChange }: TASheetProps) {
+export function TASheet({ 
+  boutQueue, 
+  rings, 
+  currentEventName, 
+  currentEventDate, 
+  currentEventId,
+  onUpdateInspection, 
+  viewMode = 'print', 
+  sharedRing, 
+  sharedMatchNo, 
+  onSharedSelectionChange,
+  boutNumberingMode = 'alphanumeric'
+}: TASheetProps) {
   const [matches, setMatches] = useState<SheetMatch[]>([]);
   const [fallbackMatches, setFallbackMatches] = useState<SheetMatch[]>([]);
   const [internalSelectedRing, setInternalSelectedRing] = useState<string>('');
@@ -296,23 +313,76 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
           }
           
           const parsedMatches: SheetMatch[] = [];
+          const historyItems: any[] = [];
+          
           // Skip header row
           for (let i = 1; i < rows.length; i++) {
             const row = rows[i];
             if (row.length >= 4 && row[2] && row[3]) { // Ensure Ring No and Match No exist
+              const matchNo = row[3] || '';
+              const winner = row[9] || '';
+              const category = row[4] || '';
+              
+              const blueName = row[5] || '';
+              const blueClub = row[6] || '';
+              const redName = row[7] || '';
+              const redClub = row[8] || '';
+
               parsedMatches.push({
                 eventName: row[1] || '',
                 ringNo: row[2] || '',
-                matchNo: row[3] || '',
-                category: row[4] || '',
-                blueName: row[5] || '',
-                blueClub: row[6] || '',
-                redName: row[7] || '',
-                redClub: row[8] || ''
+                matchNo: matchNo,
+                category: category,
+                blueName: blueName,
+                blueClub: blueClub,
+                redName: redName,
+                redClub: redClub,
+                winner: winner
               });
+
+              // If there's a winner, prepare to sync it globally
+              if (winner && winner.trim()) {
+                const normalizedMatchNo = normalizeBoutNumber(matchNo);
+                const winnerTrimmed = winner.trim();
+                let winnerClub = '';
+                
+                // Try to resolve winner's club
+                if (winnerTrimmed === blueName.trim()) winnerClub = blueClub;
+                else if (winnerTrimmed === redName.trim()) winnerClub = redClub;
+
+                const historyId = `${currentEventId || currentEventName}_${normalizedMatchNo}`;
+                const historyItem = {
+                  id: historyId,
+                  bout: normalizedMatchNo,
+                  category: category,
+                  winner: winnerTrimmed,
+                  winnerClub: winnerClub,
+                  eventId: currentEventId || currentEventName,
+                  syncedAt: new Date().toISOString()
+                };
+                
+                historyItems.push(historyItem);
+
+                // Also attempt to write to Firestore directly if we have a DB connection
+                // This ensures all users see the update and advancement mappings trigger
+                try {
+                  setDoc(doc(db, 'matchHistory', historyId), {
+                    ...historyItem,
+                    syncedAt: serverTimestamp()
+                  });
+                } catch (err) {
+                  console.error("Error saving winner to Firestore:", err);
+                }
+              }
             }
           }
           setFallbackMatches(parsedMatches);
+          
+          // Propagate winners to global state so advancement logic triggers
+          if (historyItems.length > 0) {
+            console.log("Propagating fetched winners to history:", historyItems.length);
+            window.dispatchEvent(new CustomEvent('tkd_sync_history', { detail: historyItems }));
+          }
         },
         error: (err) => {
           setError(err.message);
@@ -576,6 +646,15 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
             <button 
               onClick={fetchFallbackData}
             disabled={isLoading}
+            className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl transition-colors flex items-center gap-2 text-sm disabled:opacity-50 border border-red-100"
+            title="Fetch winners directly from Google Sheet"
+          >
+            {isLoading ? <RefreshCw size={16} className="animate-spin" /> : <Trophy size={16} />}
+            Fetch Winner from Sheet
+          </button>
+          <button 
+              onClick={fetchFallbackData}
+            disabled={isLoading}
             className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors flex items-center gap-2 text-sm disabled:opacity-50"
             title="Fetch directly from Google Sheet if bouts are not in the system yet"
           >
@@ -660,7 +739,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
             >
               {ringMatches.length === 0 && <option value="">No Matches Found</option>}
               {ringMatches.map((match, idx) => (
-                <option key={idx} value={match.matchNo}>Match {match.matchNo} - {match.category}</option>
+                <option key={idx} value={match.matchNo}>Match {formatBoutNumber(Number(match.ringNo), match.matchNo, boutNumberingMode)} - {match.category}</option>
               ))}
             </select>
           </div>
@@ -759,7 +838,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-black text-slate-800">Match {match.matchNo}</span>
+                          <span className="text-sm font-black text-slate-800">Match {formatBoutNumber(Number(match.ringNo), match.matchNo, boutNumberingMode)}</span>
                           <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-black rounded-md uppercase tracking-tighter">Signed</span>
                         </div>
                         <p className="text-xs font-bold text-slate-500 mt-0.5">{match.category}</p>
@@ -788,7 +867,41 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
       )}
 
       {currentMatch && onUpdateInspection && viewMode === 'signature' && (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 print:hidden flex gap-8">
+        <div className="space-y-4">
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-slate-100 rounded-xl flex flex-col items-center justify-center">
+                <span className="text-[10px] font-black text-slate-400 uppercase leading-none">Ring</span>
+                <span className="text-lg font-black text-slate-700 leading-none">{currentMatch.ringNo}</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-800">Match {formatBoutNumber(Number(currentMatch.ringNo), currentMatch.matchNo, boutNumberingMode)}</h3>
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">{currentMatch.category}</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              {currentMatch.winner && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-xl">
+                  <Trophy size={16} className="text-yellow-600" />
+                  <div className="text-left">
+                    <p className="text-[10px] font-black text-yellow-600 uppercase tracking-widest leading-none">Winner Found</p>
+                    <p className="text-sm font-black text-slate-800 leading-tight">{currentMatch.winner}</p>
+                  </div>
+                </div>
+              )}
+              <button 
+                onClick={fetchFallbackData}
+                disabled={isLoading}
+                className="px-4 py-2 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors flex items-center gap-2 text-sm disabled:opacity-50"
+              >
+                {isLoading ? <RefreshCw size={16} className="animate-spin" /> : <Trophy size={16} />}
+                Fetch Winner from Sheet
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 print:hidden flex gap-8">
           <div className="flex-1 flex flex-col">
             <div className="mb-4 text-center">
               <h3 className="text-lg font-black text-[#00a2e8] uppercase">{actualMatchData?.blue_name || 'Blue Player'}</h3>
@@ -829,6 +942,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
             <PlayerChecklist color="red" checkedItems={redChecklist} onChange={setRedChecklist} />
           </div>
         </div>
+      </div>
       )}
 
       {viewMode === 'print' && (
@@ -881,7 +995,7 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
                   <td colSpan={2} className="border border-black p-1.5">Court No: <span className="text-lg ml-2">{match.ringNo}</span></td>
                 </tr>
                 <tr className="h-[40px]">
-                  <td className="border border-black p-1.5">Match No: <span className="text-lg ml-2">{match.matchNo}</span></td>
+                  <td className="border border-black p-1.5">Match No: <span className="text-lg ml-2">{formatBoutNumber(Number(match.ringNo), match.matchNo, boutNumberingMode)}</span></td>
                   <td className="border border-black p-1.5 relative">
                     Weight Category : {match.category}
                     <span className="absolute right-2 top-1.5">kg</span>
@@ -1137,8 +1251,28 @@ export function TASheet({ boutQueue, rings, currentEventName, currentEventDate, 
                   
                   {idx === 0 && (
                     <>
-                      <td rowSpan={2} className="border border-black p-1 text-[#00a2e8] text-xl">CHUNG</td>
-                      <td rowSpan={2} className="border border-black p-1 text-[#ed1c24] text-xl">HONG</td>
+                      <td rowSpan={2} className={cn(
+                        "border border-black p-1 text-[#00a2e8] text-xl relative",
+                        match.winner && match.winner.trim().toLowerCase() === match.blueName.trim().toLowerCase() && "bg-blue-50"
+                      )}>
+                        CHUNG
+                        {match.winner && match.winner.trim().toLowerCase() === match.blueName.trim().toLowerCase() && (
+                          <div className="absolute top-1 right-1">
+                            <Check size={16} className="text-blue-600" />
+                          </div>
+                        )}
+                      </td>
+                      <td rowSpan={2} className={cn(
+                        "border border-black p-1 text-[#ed1c24] text-xl relative",
+                        match.winner && match.winner.trim().toLowerCase() === match.redName.trim().toLowerCase() && "bg-red-50"
+                      )}>
+                        HONG
+                        {match.winner && match.winner.trim().toLowerCase() === match.redName.trim().toLowerCase() && (
+                          <div className="absolute top-1 right-1">
+                            <Check size={16} className="text-red-600" />
+                          </div>
+                        )}
+                      </td>
                     </>
                   )}
                   {idx === 2 && (
