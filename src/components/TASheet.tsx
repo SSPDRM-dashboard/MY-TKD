@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, AlertCircle, RefreshCw, Eraser, Check, History, X, Search, Printer, Trophy } from 'lucide-react';
+import { Download, AlertCircle, RefreshCw, Eraser, Check, History, X, Search, Printer, Trophy, Edit2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { MatchData, RingStatus, EventData, MatchHistoryItem } from '../types';
 import Papa from 'papaparse';
@@ -355,8 +355,16 @@ export function TASheet({
           // Skip header row
           for (let i = 1; i < rows.length; i++) {
             const row = rows[i];
+            
             // Basic validation: row should have at least the winner column (index 9)
             if (row.length >= 10 && row[2] && row[3]) { 
+              const sheetEventName = row[1] || '';
+              
+              // 1. MUST MATCH EVENT NAME
+              if (currentEventName && sheetEventName.trim().toLowerCase() !== currentEventName.trim().toLowerCase()) {
+                 continue; // Skip bouts that belong to a different event
+              }
+
               const matchNo = row[3] || '';
               const winner = row[9] || '';
               const category = row[4] || '';
@@ -367,7 +375,7 @@ export function TASheet({
               const redClub = row[8] || '';
 
               parsedMatches.push({
-                eventName: row[1] || '',
+                eventName: sheetEventName,
                 ringNo: row[2] || '',
                 matchNo: matchNo,
                 category: category,
@@ -553,6 +561,12 @@ export function TASheet({
     };
   };
 
+  const forcePropagateWinners = () => {
+    // Dispatch an event that we will listen to in App.tsx
+    window.dispatchEvent(new CustomEvent('tkd_force_propagate_winners', { detail: fallbackMatches }));
+    alert("Triggered forced propagation. Please check the matches.");
+  };
+
   const filteredMatches = matches.filter(m => {
     const isPrinted = printedMatches.has(`${m.ringNo}-${m.matchNo}`);
     const status = getMatchStatus(m);
@@ -699,44 +713,37 @@ export function TASheet({
           .no-print { display: none !important; }
         `}
       </style>
-      {viewMode === 'print' && (
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 print:hidden flex flex-wrap gap-4 items-end">
-        <div className="w-full flex justify-between items-center mb-2">
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 print:hidden flex flex-wrap gap-4 items-end mb-6">
+        <div className="w-full flex justify-between items-center">
           <h2 className="text-lg font-bold flex items-center gap-2">
-            <Download size={20} className="text-slate-400" />
-            TA Sheet Generator
+            {viewMode === 'print' ? (
+              <><Download size={20} className="text-slate-400" /> TA Sheet Generator</>
+            ) : (
+              <><Edit2 size={20} className="text-slate-400" /> Player Inspection Dashboard</>
+            )}
           </h2>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 justify-end">
+            {viewMode === 'print' && (
+              <button 
+                onClick={() => setShowReprintModal(true)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors flex items-center gap-2 text-sm"
+                title="Search and reprint signed TA sheets"
+              >
+                <History size={16} />
+                Reprint Signed
+              </button>
+            )}
             <button 
-              onClick={() => setShowReprintModal(true)}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors flex items-center gap-2 text-sm"
-              title="Search and reprint signed TA sheets"
+              onClick={forcePropagateWinners}
+              className="px-4 py-2 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-700 font-bold rounded-xl transition-colors flex items-center gap-2 text-sm"
+              title="Force replacement of 'WINNER OF X' with actual winner names"
             >
-              <History size={16} />
-              Reprint Signed
+              <Trophy size={16} />
+              Force Update Names
             </button>
-            <button 
-              onClick={fetchFallbackData}
-            disabled={isLoading}
-            className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl transition-colors flex items-center gap-2 text-sm disabled:opacity-50 border border-red-100"
-            title="Fetch winners directly from Google Sheet"
-          >
-            {isLoading ? <RefreshCw size={16} className="animate-spin" /> : <Trophy size={16} />}
-            Fetch Winner from Sheet
-          </button>
-          <button 
-              onClick={fetchFallbackData}
-            disabled={isLoading}
-            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors flex items-center gap-2 text-sm disabled:opacity-50"
-            title="Fetch directly from Google Sheet if bouts are not in the system yet"
-          >
-            {isLoading ? <RefreshCw size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-            Fetch from Google Sheet
-          </button>
+          </div>
         </div>
       </div>
-    </div>
-    )}
 
       <div className="print:hidden space-y-6">
         {error && (
@@ -962,14 +969,6 @@ export function TASheet({
                   </div>
                 </div>
               )}
-              <button 
-                onClick={fetchFallbackData}
-                disabled={isLoading}
-                className="px-4 py-2 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors flex items-center gap-2 text-sm disabled:opacity-50"
-              >
-                {isLoading ? <RefreshCw size={16} className="animate-spin" /> : <Trophy size={16} />}
-                Fetch Winner from Sheet
-              </button>
             </div>
           </div>
 

@@ -278,6 +278,20 @@ export default function App() {
   const [autoPullRings, setAutoPullRings] = useSyncedState<Record<number, boolean>>('tkd_autopull', {});
   const [boutQueue, setBoutQueue] = useSyncedState<{id: string, data: MatchData}[]>('tkd_bout_queue', []);
   const [matchHistory, setMatchHistory] = useState<MatchHistoryItem[]>([]);
+  
+  // Track the absolute newest data to avoid stale closures in event listeners
+  const latestDataRef = useRef({
+    matchHistory,
+    currentEventId,
+    events
+  });
+  useEffect(() => {
+    latestDataRef.current = {
+      matchHistory,
+      currentEventId,
+      events
+    };
+  }, [matchHistory, currentEventId, events]);
   const [mappings, setMappings] = useState<BoutMapping[]>([]);
   const [athletes, setAthletes] = useState([
     { name: "Ahmad bin Ibrahim", ic: "080512-14-5567", club: "KST", category: "Junior Male -45kg", status: "Verified" as const },
@@ -332,8 +346,131 @@ export default function App() {
         return updated;
       });
     };
+    
+    const handleForcePropagate = (e?: any, isSilent = false) => {
+      if (!isSilent) console.log('Force propagating winners triggered');
+      const sheetMatches: any[] = e?.detail || [];
+      
+      // We will manually scan match history and update boutQueue and rings immediately.
+      let ringsUpdated = false;
+      let queueUpdated = false;
+      
+      const processBout = (bout: MatchData) => {
+        let updated = false;
+        
+        const { matchHistory, currentEventId, events } = latestDataRef.current;
+        const currentEvt = events.find(e => e.id === currentEventId);
+        const currentEvtName = (currentEvt ? currentEvt.name : '').trim().toLowerCase();
+
+        // 1. Try to fulfill "WINNER OF X" placeholders using matchHistory
+        const blueMatch = bout.blue_name?.toUpperCase().match(/WINNER OF ([\w-]+)/);
+        if (blueMatch && blueMatch[1]) {
+          const historyMatch = matchHistory.find((h: MatchHistoryItem) => 
+            isBoutMatch(h.bout, blueMatch[1]) && 
+            (h.eventId === currentEventId || h.eventId === currentEvtName)
+          );
+          if (historyMatch && historyMatch.winner && historyMatch.winner !== '-' && historyMatch.winner.trim() !== '') {
+            bout.blue_name = historyMatch.winner.toUpperCase();
+            if (historyMatch.winnerClub) bout.blue_club = historyMatch.winnerClub.toUpperCase();
+            updated = true;
+          }
+        }
+        
+        const redMatch = bout.red_name?.toUpperCase().match(/WINNER OF ([\w-]+)/);
+        if (redMatch && redMatch[1]) {
+          const historyMatch = matchHistory.find((h: MatchHistoryItem) => 
+            isBoutMatch(h.bout, redMatch[1]) && 
+            (h.eventId === currentEventId || h.eventId === currentEvtName)
+          );
+          if (historyMatch && historyMatch.winner && historyMatch.winner !== '-' && historyMatch.winner.trim() !== '') {
+            bout.red_name = historyMatch.winner.toUpperCase();
+            if (historyMatch.winnerClub) bout.red_club = historyMatch.winnerClub.toUpperCase();
+            updated = true;
+          }
+        }
+
+        // 2. Override with direct player names from the Google Sheet if available
+        const sheetM = sheetMatches.find(sm => {
+          const matchesBout = isBoutMatch(sm.matchNo, bout.bout);
+          const matchesRing = String(sm.ringNo) === String(bout.ring);
+          const smEventName = sm.eventName ? sm.eventName.trim().toLowerCase() : '';
+          const matchesEvent = currentEvtName ? smEventName === currentEvtName : true;
+          return matchesBout && matchesRing && matchesEvent;
+        });
+        if (sheetM) {
+          if (sheetM.blueName && sheetM.blueName !== '-' && !sheetM.blueName.toUpperCase().includes('WINNER OF')) {
+            if (bout.blue_name?.toUpperCase() !== sheetM.blueName.toUpperCase()) {
+              bout.blue_name = sheetM.blueName.toUpperCase();
+              if (sheetM.blueClub) bout.blue_club = sheetM.blueClub.toUpperCase();
+              updated = true;
+            }
+          }
+          if (sheetM.redName && sheetM.redName !== '-' && !sheetM.redName.toUpperCase().includes('WINNER OF')) {
+            if (bout.red_name?.toUpperCase() !== sheetM.redName.toUpperCase()) {
+              bout.red_name = sheetM.redName.toUpperCase();
+              if (sheetM.redClub) bout.red_club = sheetM.redClub.toUpperCase();
+              updated = true;
+            }
+          }
+        }
+
+        return updated;
+      };
+
+      setRings(prevRings => {
+        let newRings = [...prevRings];
+        newRings = newRings.map(ring => {
+          let ringChanged = false;
+          let r = { ...ring };
+          ['currentBout', 'onDeck', 'inTheHole'].forEach(slot => {
+            if (r[slot as keyof typeof r]) {
+              const bout = { ...(r[slot as keyof typeof r] as MatchData) };
+              if (processBout(bout)) {
+                (r as any)[slot] = bout;
+                ringChanged = true;
+              }
+            }
+          });
+          if (ringChanged) ringsUpdated = true;
+          return r;
+        });
+        return ringsUpdated ? newRings : prevRings;
+      });
+
+      setBoutQueue(prevQueue => {
+        let newQueue = [...prevQueue];
+        newQueue = newQueue.map(item => {
+          let bout = { ...item.data };
+          if (processBout(bout)) {
+            queueUpdated = true;
+            return { ...item, data: bout };
+          }
+          return item;
+        });
+        return queueUpdated ? newQueue : prevQueue;
+      });
+      
+      // Also trigger a match history replace to poke the effect
+      if (ringsUpdated || queueUpdated) {
+        setMatchHistory(prev => [...prev]);
+        if (!isSilent) console.log('Force propagate complete.');
+      }
+    };
+
     window.addEventListener('tkd_sync_history', handleSyncHistory);
-    return () => window.removeEventListener('tkd_sync_history', handleSyncHistory);
+    window.addEventListener('tkd_force_propagate_winners', handleForcePropagate);
+    
+    // Auto-run force propagate every 60 seconds to continuously resolve WINNER OF X
+    const autoPropagateInterval = setInterval(() => {
+      // Don't log on auto-run to avoid spamming console
+      handleForcePropagate(null, true); 
+    }, 60000);
+
+    return () => {
+      window.removeEventListener('tkd_sync_history', handleSyncHistory);
+      window.removeEventListener('tkd_force_propagate_winners', handleForcePropagate);
+      clearInterval(autoPropagateInterval);
+    }
   }, [setMatchHistory]);
 
   // Ensure TA account exists for returning users
@@ -976,20 +1113,27 @@ export default function App() {
         const match = nameStr.toUpperCase().match(/WINNER OF ([\w-]+)/);
         if (match && match[1]) {
           const sourceBoutStr = match[1];
-          const historyMatch = matchHistory.find(h => isBoutMatch(h.bout, sourceBoutStr) && h.eventId === currentEventId);
-          if (historyMatch && historyMatch.winner) {
+          const historyMatch = matchHistory.find(h => 
+            isBoutMatch(h.bout, sourceBoutStr) && 
+            (h.eventId === currentEventId || h.eventId === getCurrentEventName())
+          );
+          
+          if (historyMatch && historyMatch.winner && historyMatch.winner !== '-' && historyMatch.winner.trim() !== '') {
+            console.log(`Fallback detected: Match ${boutData.bout} (${slot}) needs WINNER OF ${sourceBoutStr}. Found winner: ${historyMatch.winner}`);
             const key = normalizeBoutNumber(boutData.bout);
             if (!targetBouts.has(key)) {
               targetBouts.set(key, { category: boutData.category, bout: String(boutData.bout) });
             }
             const target = targetBouts.get(key)!;
-            if (slot === 'blue' && !target.blue) {
-              target.blue = historyMatch.winner;
+            if (slot === 'blue' && (!target.blue || target.blue === 'WINNER' || target.blue.includes('WINNER OF'))) {
+              target.blue = historyMatch.winner.toUpperCase();
               target.blueClub = historyMatch.winnerClub ? historyMatch.winnerClub.toUpperCase() : '';
-            } else if (slot === 'red' && !target.red) {
-              target.red = historyMatch.winner;
+            } else if (slot === 'red' && (!target.red || target.red === 'WINNER' || target.red.includes('WINNER OF'))) {
+              target.red = historyMatch.winner.toUpperCase();
               target.redClub = historyMatch.winnerClub ? historyMatch.winnerClub.toUpperCase() : '';
             }
+          } else {
+            console.log(`Fallback checked: Match ${boutData.bout} (${slot}) needs WINNER OF ${sourceBoutStr}, but no valid winner found in history.`);
           }
         }
       };
@@ -1076,13 +1220,13 @@ export default function App() {
           let itemChanged = false;
 
           if (info.blue && shouldUpdateField(newData.blue_name, info.blue)) {
-            console.log(`Advancing ${info.blue} to Queue Bout ${item.data.bout} (Chung)`);
+            console.log(`Advancing ${info.blue} to Queue Bout ${item.data.bout} (Chung) - REPLACING: ${newData.blue_name}`);
             newData.blue_name = info.blue.toUpperCase();
             if (info.blueClub) newData.blue_club = info.blueClub.toUpperCase();
             itemChanged = true;
           }
           if (info.red && shouldUpdateField(newData.red_name, info.red)) {
-            console.log(`Advancing ${info.red} to Queue Bout ${item.data.bout} (Hong)`);
+            console.log(`Advancing ${info.red} to Queue Bout ${item.data.bout} (Hong) - REPLACING: ${newData.red_name}`);
             newData.red_name = info.red.toUpperCase();
             if (info.redClub) newData.red_club = info.redClub.toUpperCase();
             itemChanged = true;
@@ -1894,7 +2038,7 @@ export default function App() {
               />
               <NavItem 
                 icon={<Edit2 size={20} />} 
-                label="Player Signature" 
+                label="Player Inspection" 
                 active={activeTab === 'player-signature'} 
                 onClick={() => setActiveTab('player-signature')} 
               />
