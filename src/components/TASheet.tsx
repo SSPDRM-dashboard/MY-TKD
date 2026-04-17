@@ -284,6 +284,26 @@ export function TASheet({
   const [showReprintModal, setShowReprintModal] = useState(false);
   const [reprintSearchQuery, setReprintSearchQuery] = useState('');
   const [printedMatches, setPrintedMatches] = useState<Set<string>>(new Set());
+
+  // Load printed matches from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('tkd_printed_matches');
+    if (saved) {
+      try {
+        setPrintedMatches(new Set(JSON.parse(saved)));
+      } catch (e) {
+        console.error("Failed to load printed matches:", e);
+      }
+    }
+  }, []);
+
+  // Save printed matches to localStorage
+  useEffect(() => {
+    if (printedMatches.size >= 0) {
+      localStorage.setItem('tkd_printed_matches', JSON.stringify(Array.from(printedMatches)));
+    }
+  }, [printedMatches]);
+
   const [localSignedMatches, setLocalSignedMatches] = useState<Record<string, {blue: boolean, red: boolean}>>({});
   const [blueChecklist, setBlueChecklist] = useState<Set<string>>(new Set());
   const [redChecklist, setRedChecklist] = useState<Set<string>>(new Set());
@@ -511,9 +531,14 @@ export function TASheet({
       return m.matchNo.toLowerCase().includes(searchQuery.toLowerCase());
     }
     
-    // For TA account, we want to hide matches that are already signed or printed
-    // unless they are explicitly searched for
-    return !isPrinted && !isSigned;
+    // For TA account, hide matches based on the current view mode
+    if (viewMode === 'signature') {
+      // For player signature, remove match from list once both players have signed
+      return !isSigned;
+    } else {
+      // For TA sheet, remove match from list only after it has been printed
+      return !isPrinted;
+    }
   });
 
   const uniqueRings = Array.from(new Set(filteredMatches.map(m => m.ringNo))).sort((a, b) => {
@@ -524,6 +549,21 @@ export function TASheet({
   });
   
   const ringMatches = filteredMatches.filter(m => m.ringNo === selectedRing);
+
+  // Auto-reset selection if the current match becomes hidden (e.g., signed or printed)
+  useEffect(() => {
+    if (selectedMatchNo && ringMatches.length > 0) {
+      const isAvailable = ringMatches.some(m => m.matchNo === selectedMatchNo);
+      if (!isAvailable) {
+        // Automatically select the next available match in this ring
+        setSelectedMatchNo(ringMatches[0].matchNo);
+      }
+    } else if (!selectedMatchNo && ringMatches.length > 0) {
+      // If none selected but matches available, select first one
+      setSelectedMatchNo(ringMatches[0].matchNo);
+    }
+  }, [ringMatches, selectedMatchNo, viewMode]);
+
   const currentMatch = ringMatches.find(m => m.matchNo === selectedMatchNo) || ringMatches[0];
 
   const [printMode, setPrintMode] = useState<'single' | 'all'>('single');
