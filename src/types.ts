@@ -3,6 +3,7 @@ export interface EventData {
   name: string;
   eventDate: string;
   sheetUrl: string;
+  winnerSheetUrl?: string; // Standard docs.google.com URL for CSV export
   ringQuantity: number;
   createdAt: Date;
 }
@@ -52,6 +53,7 @@ export interface MatchHistoryItem {
   category: string;
   winner: string;
   winnerClub?: string;
+  winnerSide?: 'Blue' | 'Red';
   eventId: string;
   syncedAt?: string | Date | any;
 }

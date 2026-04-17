@@ -45,14 +45,20 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
   const [includeAllEvents, setIncludeAllEvents] = useState(false);
 
   const fetchMatches = async () => {
-    // If we're getting all events, filter valid ones. Otherwise strictly current event.
+    // Determine the URL to parse: primarily winnerSheetUrl, fallback to sheetUrl if it matches docs format
+    const getValidUrl = (e: EventData) => {
+      if (e.winnerSheetUrl && e.winnerSheetUrl.includes('docs.google.com/spreadsheets')) return e.winnerSheetUrl;
+      if (e.sheetUrl && e.sheetUrl.includes('docs.google.com/spreadsheets')) return e.sheetUrl;
+      return null;
+    };
+
     const targetEvents = includeAllEvents 
-      ? events.filter(e => e.sheetUrl && e.sheetUrl.includes('docs.google.com/spreadsheets'))
-      : events.filter(e => e.id === currentEventId && e.sheetUrl && e.sheetUrl.includes('docs.google.com/spreadsheets'));
+      ? events.filter(e => getValidUrl(e) !== null)
+      : events.filter(e => e.id === currentEventId && getValidUrl(e) !== null);
 
     if (targetEvents.length === 0) {
       if (!currentEventId) return; // Silent if just no event selected
-      setError("No valid Google Sheet URLs found for the selected event(s).");
+      setError("No valid 'Winner Report Sheet URL' found for the selected event(s). Please add it in Admin settings.");
       setMatches([]);
       return;
     }
@@ -63,7 +69,7 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
       let combinedMatches: RawMatch[] = [];
 
       for (const event of targetEvents) {
-        let activeUrl = event.sheetUrl;
+        let activeUrl = getValidUrl(event)!;
         if (!activeUrl.includes('/export?')) {
           activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
         }
@@ -141,10 +147,10 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
   }, [currentEventId, includeAllEvents]);
 
   const categoryResults = useMemo(() => {
-    const categories = Array.from(new Set(matches.map(m => m.category))).filter(Boolean);
+    const categories = Array.from(new Set(matches.map(m => m.category))).filter((c): c is string => !!c);
     const results: CategoryResult[] = [];
 
-    categories.forEach(cat => {
+    categories.forEach((cat: string) => {
       // Find all matches for this category
       const catMatches = matches.filter(m => m.category === cat);
       if (catMatches.length === 0) return;
@@ -310,7 +316,11 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
             {!includeAllEvents ? (
               events.find(e => e.id === currentEventId)?.name || 'Unknown Event'
             ) : (
-              `Aggregating across ${events.filter(e => e.sheetUrl?.includes('docs.google.com/spreadsheets')).length} events`
+              `Aggregating across ${events.filter(e => {
+                if (e.winnerSheetUrl && e.winnerSheetUrl.includes('docs.google.com/spreadsheets')) return true;
+                if (e.sheetUrl && e.sheetUrl.includes('docs.google.com/spreadsheets')) return true;
+                return false;
+              }).length} events`
             )}
           </p>
         </div>

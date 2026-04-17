@@ -323,7 +323,7 @@ export function TASheet({
 
   const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv&gid=0";
 
-  const fetchFallbackData = async () => {
+  const fetchFallbackData = async (shouldPropagate = false) => {
     setIsLoading(true);
     setError(null);
     try {
@@ -350,6 +350,7 @@ export function TASheet({
           const rows = result.data as string[][];
           if (rows.length < 2) {
             setFallbackMatches([]);
+            if (shouldPropagate) alert("No data found to update names.");
             return;
           }
           
@@ -399,17 +400,22 @@ export function TASheet({
                 const normRed = redName.toLowerCase();
                 
                 let winnerClub = '';
-                if (normWinner === normBlue) winnerClub = blueClub;
-                else if (normWinner === normRed) winnerClub = redClub;
-                else if (normBlue.includes(normWinner)) winnerClub = blueClub;
-                else if (normRed.includes(normWinner)) winnerClub = redClub;
+                let winnerSide: 'Blue' | 'Red' | undefined = undefined;
+                if (normWinner === normBlue || normBlue.includes(normWinner)) {
+                  winnerClub = blueClub;
+                  winnerSide = 'Blue';
+                } else if (normWinner === normRed || normRed.includes(normWinner)) {
+                  winnerClub = redClub;
+                  winnerSide = 'Red';
+                }
 
                 const historyId = `${currentEventId || currentEventName}_${normalizedMatchNo}`;
                 
                 const existingItem = matchHistory.find((h) => h.id === historyId);
                 const isDifferent = !existingItem || 
                                     existingItem.winner !== winnerTrimmed || 
-                                    existingItem.winnerClub !== winnerClub;
+                                    existingItem.winnerClub !== winnerClub ||
+                                    existingItem.winnerSide !== winnerSide;
 
                 const historyItem = {
                   id: historyId,
@@ -417,6 +423,7 @@ export function TASheet({
                   category: category,
                   winner: winnerTrimmed,
                   winnerClub: winnerClub,
+                  winnerSide: winnerSide,
                   eventId: currentEventId || currentEventName,
                   syncedAt: existingItem ? existingItem.syncedAt : new Date().toISOString()
                 };
@@ -441,20 +448,22 @@ export function TASheet({
           if (historyItems.length > 0) {
             console.log("Propagating fetched winners to history:", historyItems.length);
             window.dispatchEvent(new CustomEvent('tkd_sync_history', { detail: historyItems }));
-            alert(`Successfully fetched ${historyItems.length} winners from Google Sheet!`);
-          } else if (parsedMatches.length > 0) {
-            alert(`Fetched ${parsedMatches.length} matches, but no winners were found in column J.`);
-          } else {
-            alert("Found no match data in the Google Sheet.");
+          } 
+
+          if (shouldPropagate) {
+            window.dispatchEvent(new CustomEvent('tkd_force_propagate_winners', { detail: parsedMatches }));
+            alert(`Finished checking the spreadsheet. Found ${historyItems.length} winners to propagate. Names have been updated.`);
           }
         },
         error: (err) => {
           setError(err.message);
+          if (shouldPropagate) alert("Error reading spreadsheet: " + err.message);
         },
         skipEmptyLines: true
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error occurred");
+      if (shouldPropagate) alert("Error fetching spreadsheet data.");
     } finally {
       setIsLoading(false);
     }
@@ -576,9 +585,7 @@ export function TASheet({
   };
 
   const forcePropagateWinners = () => {
-    // Dispatch an event that we will listen to in App.tsx
-    window.dispatchEvent(new CustomEvent('tkd_force_propagate_winners', { detail: fallbackMatches }));
-    alert("Triggered forced propagation. Please check the matches.");
+    fetchFallbackData(true);
   };
 
   const filteredMatches = matches.filter(m => {

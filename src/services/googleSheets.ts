@@ -21,17 +21,23 @@ const formatBout = (ring: number, bout: string | number) => {
   // 1. If it already has a letter prefix (e.g., A01), keep it
   if (/^[A-Z]/.test(s)) return s;
 
-  const num = parseInt(s.replace(/[^0-9]/g, ''));
-  const suffix = s.replace(/[0-9]/g, '');
+  // Extract digits and any trailing characters
+  const match = s.match(/^(\d+)(.*)$/);
+  if (!match) return s;
+
+  const num = parseInt(match[1]);
+  const suffix = match[2] || '';
 
   if (isNaN(num)) return s;
 
-  // 2. If it's already a "full" numeric ID (>= 1000), keep it
-  if (num >= 1000) return s;
+  // 2. We determine the bout number within the ring
+  // If it's 1001, boutInRing is 1. If it's 1, boutInRing is 1.
+  const boutInRing = num >= 1000 ? num % 1000 : num;
 
-  // 3. For small numbers (e.g., "1"), default to the letter format (e.g., "A01")
-  const letter = String.fromCharCode(64 + ring);
-  return `${letter}${num.toString().padStart(2, '0')}${suffix}`;
+  // 3. Format into Alphanumeric (A01) based on the active ring
+  // This matches what the user sees in the "active ring" display
+  const letter = String.fromCharCode(64 + (ring || 1));
+  return `${letter}${boutInRing.toString().padStart(2, '0')}${suffix}`;
 };
 
 export async function syncToGoogleSheets(url: string, data: MatchData, eventName: string = '', reason: string = '') {
