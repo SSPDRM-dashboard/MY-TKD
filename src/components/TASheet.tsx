@@ -417,13 +417,13 @@ export function TASheet({
                                     existingItem.winnerClub !== winnerClub ||
                                     existingItem.winnerSide !== winnerSide;
 
-                const historyItem = {
+                const historyItem: any = {
                   id: historyId,
                   bout: normalizedMatchNo,
                   category: category,
                   winner: winnerTrimmed,
                   winnerClub: winnerClub,
-                  winnerSide: winnerSide,
+                  ...(winnerSide && { winnerSide }),
                   eventId: currentEventId || currentEventName,
                   syncedAt: existingItem ? existingItem.syncedAt : new Date().toISOString()
                 };

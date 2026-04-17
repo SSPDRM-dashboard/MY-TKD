@@ -1036,35 +1036,41 @@ export default function App() {
     };
 
     setRings(prev => {
-      const updated = [...prev];
       let changed = false;
-      updated.forEach(ring => {
+      const updated = prev.map(ring => {
         if (ring.ringNumber.toString() === ringNo) {
-          if (ring.currentBout && ring.currentBout.bout.toString() === matchNo) {
-            ring.currentBout = updateData(ring.currentBout);
-            changed = true;
+          let r = { ...ring };
+          let ringChanged = false;
+          if (r.currentBout && r.currentBout.bout.toString() === matchNo) {
+            r.currentBout = updateData(r.currentBout);
+            ringChanged = true;
           }
-          if (ring.onDeck && ring.onDeck.bout.toString() === matchNo) {
-            ring.onDeck = updateData(ring.onDeck);
-            changed = true;
+          if (r.onDeck && r.onDeck.bout.toString() === matchNo) {
+            r.onDeck = updateData(r.onDeck);
+            ringChanged = true;
           }
-          if (ring.inTheHole && ring.inTheHole.bout.toString() === matchNo) {
-            ring.inTheHole = updateData(ring.inTheHole);
+          if (r.inTheHole && r.inTheHole.bout.toString() === matchNo) {
+            r.inTheHole = updateData(r.inTheHole);
+            ringChanged = true;
+          }
+          if (ringChanged) {
             changed = true;
+            return r;
           }
         }
+        return ring;
       });
       return changed ? updated : prev;
     });
 
     setBoutQueue(prev => {
-      const updated = [...prev];
       let changed = false;
-      updated.forEach(item => {
+      const updated = prev.map(item => {
         if (item.data.ring.toString() === ringNo && item.data.bout.toString() === matchNo) {
-          item.data = updateData(item.data);
           changed = true;
+          return { ...item, data: updateData(item.data) };
         }
+        return item;
       });
       return changed ? updated : prev;
     });
@@ -1361,10 +1367,14 @@ export default function App() {
 
       // Also save to Firestore
       const historyId = `${currentEventId}_${boutNumber}`;
-      setDoc(doc(db, 'matchHistory', historyId), {
+      const toSave: any = {
         ...historyItem,
         syncedAt: serverTimestamp()
-      }).catch(err => console.error("Error saving match history:", err));
+      };
+      if (toSave.winnerSide === undefined) delete toSave.winnerSide;
+      if (toSave.winnerClub === undefined) delete toSave.winnerClub;
+      
+      setDoc(doc(db, 'matchHistory', historyId), toSave).catch(err => console.error("Error saving match history:", err));
 
       // Check and generate next bout
       checkAndGenerateNextBout(boutNumber, winnerName || winner, winner === 'Blue' ? currentBout.blue_club : currentBout.red_club);
@@ -2933,10 +2943,14 @@ export default function App() {
               });
 
               // Firestore
-              setDoc(doc(db, 'matchHistory', historyItem.id), {
+              const toSave: any = {
                 ...historyItem,
                 syncedAt: serverTimestamp()
-              }).catch(err => console.error("Error updating history:", err));
+              };
+              if (toSave.winnerSide === undefined) delete toSave.winnerSide;
+              if (toSave.winnerClub === undefined) delete toSave.winnerClub;
+
+              setDoc(doc(db, 'matchHistory', historyItem.id), toSave).catch(err => console.error("Error updating history:", err));
 
               // Advancement
               checkAndGenerateNextBout(boutNumber, winName, winClub);
@@ -3039,10 +3053,14 @@ export default function App() {
                     setMatchHistory(prev => prev.map(h => h.id === histId ? updatedHistItem : h));
 
                     // Store to Firestore
-                    setDoc(doc(db, 'matchHistory', histId), {
+                    const toSave: any = {
                       ...updatedHistItem,
                       syncedAt: serverTimestamp()
-                    }).catch(err => console.error("Error updating history on name change:", err));
+                    };
+                    if (toSave.winnerSide === undefined) delete toSave.winnerSide;
+                    if (toSave.winnerClub === undefined) delete toSave.winnerClub;
+
+                    setDoc(doc(db, 'matchHistory', histId), toSave).catch(err => console.error("Error updating history on name change:", err));
 
                     // RE-PROPAGATE to brackets!
                     checkAndGenerateNextBout(boutNumber, newWinName, newWinClub);
