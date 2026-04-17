@@ -44,6 +44,7 @@ import { AdminMapping } from './components/AdminMapping';
 import { AIBracketSetup } from './components/AIBracketSetup';
 import { TournamentAssistant } from './components/TournamentAssistant';
 import { SearchWinner } from './components/SearchWinner';
+import { EventReport } from './components/EventReport';
 import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateTransferInGoogleSheets, updateBoutDetailsInGoogleSheets, testSync } from './services/googleSheets';
 import { cn, normalizeBoutNumber, normalizeBoutWithRing, getBoutNumber, formatBoutNumber, isBoutMatch } from './lib/utils';
 import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, getDocFromServer, where } from 'firebase/firestore';
@@ -180,7 +181,7 @@ const INITIAL_RINGS: RingStatus[] = Array.from({ length: 12 }, (_, i) => ({
 interface UserAccount {
   username: string;
   password: string;
-  role: 'admin' | 'user' | 'viewer' | 'ta';
+  role: 'admin' | 'user' | 'viewer' | 'ta' | 'report';
   assignedRing?: number;
 }
 
@@ -272,6 +273,7 @@ export default function App() {
     }
     parsed.push({ username: 'viewer', password: '123', role: 'viewer' });
     parsed.push({ username: 'TA', password: '123', role: 'ta' });
+    parsed.push({ username: 'report', password: '123', role: 'report' });
     return parsed;
   })());
 
@@ -478,11 +480,19 @@ export default function App() {
     }
   }, [setMatchHistory, isAutoUpdateNames]);
 
-  // Ensure TA account exists for returning users
+  // Ensure TA and report accounts exist for returning users
   useEffect(() => {
+    let changed = false;
+    let newAccounts = [...accounts];
     if (accounts.length > 0 && !accounts.some(a => a.username === 'TA')) {
-      setAccounts(prev => [...prev, { username: 'TA', password: '123', role: 'ta' }]);
+      newAccounts.push({ username: 'TA', password: '123', role: 'ta' });
+      changed = true;
     }
+    if (accounts.length > 0 && !accounts.some(a => a.username === 'report')) {
+      newAccounts.push({ username: 'report', password: '123', role: 'report' });
+      changed = true;
+    }
+    if (changed) setAccounts(newAccounts);
   }, [accounts, setAccounts]);
 
   // Auto-logout check interval
@@ -562,13 +572,15 @@ export default function App() {
       console.error("Error sending announcement:", error);
     }
   };
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'mats' | 'athletes' | 'settings' | 'general' | 'standby' | 'mapping' | 'ai-setup' | 'inspection-logs'>(() => {
+  const [activeTab, setActiveTab] = useState<string>(() => {
     const savedUser = localStorage.getItem('tkd_user');
     if (savedUser) {
       try {
         const parsed = JSON.parse(savedUser);
         if (parsed.role === 'viewer') return 'general';
         if (parsed.role === 'user') return 'mats';
+        if (parsed.role === 'report') return 'report';
+        if (parsed.role === 'ta') return 'ta-sheet';
       } catch (e) {
         // ignore
       }
@@ -1788,6 +1800,10 @@ export default function App() {
         setActiveTab('general');
       } else if (found.role === 'user') {
         setActiveTab('mats');
+      } else if (found.role === 'report') {
+        setActiveTab('report');
+      } else if (found.role === 'ta') {
+        setActiveTab('ta-sheet');
       } else {
         setActiveTab('dashboard');
       }
@@ -2055,8 +2071,22 @@ export default function App() {
               />
             </>
           )}
+          {user?.role === 'report' && (
+            <NavItem 
+              icon={<Trophy size={20} />} 
+              label="Tournament Report" 
+              active={activeTab === 'report'} 
+              onClick={() => setActiveTab('report')} 
+            />
+          )}
           {user?.role === 'admin' && (
             <>
+              <NavItem 
+                icon={<Trophy size={20} />} 
+                label="Tournament Report" 
+                active={activeTab === 'report'} 
+                onClick={() => setActiveTab('report')} 
+              />
               <NavItem 
                 icon={<Database size={20} />} 
                 label="Data Sync" 
@@ -2620,6 +2650,13 @@ export default function App() {
             <SearchWinner 
               matchHistory={matchHistory}
               currentEventId={currentEventId}
+            />
+          )}
+
+          {activeTab === 'report' && (
+            <EventReport
+              currentEventId={currentEventId}
+              events={events}
             />
           )}
 
