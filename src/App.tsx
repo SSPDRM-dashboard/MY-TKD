@@ -43,6 +43,7 @@ import { InspectionLogs } from './components/InspectionLogs';
 import { AdminMapping } from './components/AdminMapping';
 import { AIBracketSetup } from './components/AIBracketSetup';
 import { TournamentAssistant } from './components/TournamentAssistant';
+import { SearchWinner } from './components/SearchWinner';
 import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateTransferInGoogleSheets, updateBoutDetailsInGoogleSheets, testSync } from './services/googleSheets';
 import { cn, normalizeBoutNumber, normalizeBoutWithRing, getBoutNumber, formatBoutNumber, isBoutMatch } from './lib/utils';
 import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, getDocFromServer, where } from 'firebase/firestore';
@@ -276,6 +277,7 @@ export default function App() {
 
   const [rings, setRings] = useSyncedState<RingStatus[]>('tkd_rings', INITIAL_RINGS);
   const [autoPullRings, setAutoPullRings] = useSyncedState<Record<number, boolean>>('tkd_autopull', {});
+  const [isAutoUpdateNames, setIsAutoUpdateNames] = useSyncedState<boolean>('tkd_auto_update_names', true);
   const [boutQueue, setBoutQueue] = useSyncedState<{id: string, data: MatchData}[]>('tkd_bout_queue', []);
   const [matchHistory, setMatchHistory] = useState<MatchHistoryItem[]>([]);
   
@@ -460,18 +462,21 @@ export default function App() {
     window.addEventListener('tkd_sync_history', handleSyncHistory);
     window.addEventListener('tkd_force_propagate_winners', handleForcePropagate);
     
-    // Auto-run force propagate every 60 seconds to continuously resolve WINNER OF X
-    const autoPropagateInterval = setInterval(() => {
-      // Don't log on auto-run to avoid spamming console
-      handleForcePropagate(null, true); 
-    }, 60000);
+    // Auto-run force propagate if enabled
+    let autoPropagateInterval: number | undefined;
+    if (isAutoUpdateNames) {
+      autoPropagateInterval = window.setInterval(() => {
+        // Don't log on auto-run to avoid spamming console
+        handleForcePropagate(null, true); 
+      }, 900000); // 15 minutes
+    }
 
     return () => {
       window.removeEventListener('tkd_sync_history', handleSyncHistory);
       window.removeEventListener('tkd_force_propagate_winners', handleForcePropagate);
-      clearInterval(autoPropagateInterval);
+      if (autoPropagateInterval) clearInterval(autoPropagateInterval);
     }
-  }, [setMatchHistory]);
+  }, [setMatchHistory, isAutoUpdateNames]);
 
   // Ensure TA account exists for returning users
   useEffect(() => {
@@ -620,7 +625,7 @@ export default function App() {
   const getFilteredQueue = (ringNum?: number) => {
     return boutQueue
       .filter(item => {
-        const matchesEvent = !item.data.eventId || item.data.eventId === currentEventId;
+        const matchesEvent = item.data.eventId === currentEventId;
         const itemRing = Number(item.data.ring);
         const matchesRing = ringNum === undefined || itemRing === Number(ringNum);
         const matchesUserRing = user?.role === 'admin' || itemRing === Number(user?.assignedRing);
@@ -1352,8 +1357,8 @@ export default function App() {
       checkAndGenerateNextBout(boutNumber, winnerName || winner, winner === 'Blue' ? currentBout.blue_club : currentBout.red_club);
     }
     
-    const ringQueue = boutQueue.filter(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
-    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
+    const ringQueue = boutQueue.filter(q => q.data.ring === ringNumber && q.data.eventId === currentEventId);
+    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber && q.data.eventId === currentEventId);
     
     // Check if we need to prompt for final bouts
     // If we have a next bout, and after pulling it, the queue for this ring will be < 3
@@ -1445,8 +1450,8 @@ export default function App() {
       }).finally(() => setIsSyncing(false));
     }
     
-    const ringQueue = boutQueue.filter(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
-    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
+    const ringQueue = boutQueue.filter(q => q.data.ring === ringNumber && q.data.eventId === currentEventId);
+    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber && q.data.eventId === currentEventId);
     
     if (nextBoutIndex !== -1 && !ring?.isFinalBouts && ringQueue.length < 4) {
       setFinalBoutCheck({ ringNumber, remainingCount: ringQueue.length - 1 });
@@ -1596,9 +1601,9 @@ export default function App() {
       } else if (shouldGenerate) {
         // Check if already in rings
         const existsInRings = rings.some(r => (
-          (r.currentBout && isBoutMatch(r.currentBout.bout, nextBoutId) && (!r.currentBout.eventId || r.currentBout.eventId === currentEventId)) || 
-          (r.onDeck && isBoutMatch(r.onDeck.bout, nextBoutId) && (!r.onDeck.eventId || r.onDeck.eventId === currentEventId)) || 
-          (r.inTheHole && isBoutMatch(r.inTheHole.bout, nextBoutId) && (!r.inTheHole.eventId || r.inTheHole.eventId === currentEventId))
+          (r.currentBout && isBoutMatch(r.currentBout.bout, nextBoutId) && r.currentBout.eventId === currentEventId) || 
+          (r.onDeck && isBoutMatch(r.onDeck.bout, nextBoutId) && r.onDeck.eventId === currentEventId) || 
+          (r.inTheHole && isBoutMatch(r.inTheHole.bout, nextBoutId) && r.inTheHole.eventId === currentEventId)
         ));
 
         if (!existsInRings) {
@@ -2042,6 +2047,12 @@ export default function App() {
                 active={activeTab === 'player-signature'} 
                 onClick={() => setActiveTab('player-signature')} 
               />
+              <NavItem 
+                icon={<Search size={20} />} 
+                label="Search Winner" 
+                active={activeTab === 'search-winner'} 
+                onClick={() => setActiveTab('search-winner')} 
+              />
             </>
           )}
           {user?.role === 'admin' && (
@@ -2139,33 +2150,11 @@ export default function App() {
             </div>
             
             <div className="flex flex-wrap items-center gap-2 md:gap-4">
-              {events.length > 0 && (
-                (currentEventId && user?.role !== 'admin') ? (
-                  <div className="px-4 py-2 bg-slate-100 rounded-xl text-[10px] md:text-xs font-black text-slate-600 border border-slate-200 uppercase tracking-widest flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                    Event: {events.find(e => e.id === currentEventId)?.name}
-                  </div>
-                ) : (
-                  <select
-                    value={currentEventId || ''}
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      setCurrentEventId(id);
-                      localStorage.setItem('tkd_current_event', id);
-                      const event = events.find(ev => ev.id === id);
-                      if (event && event.sheetUrl) {
-                        setGoogleSheetUrl(event.sheetUrl);
-                        localStorage.setItem('tkd_sheet_url', event.sheetUrl);
-                      }
-                    }}
-                    className="flex-1 sm:flex-none px-3 md:px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs md:text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-red-500 shadow-sm"
-                  >
-                    <option value="" disabled>Select Event</option>
-                    {events.map(ev => (
-                      <option key={ev.id} value={ev.id}>{ev.name}</option>
-                    ))}
-                  </select>
-                )
+              {events.length > 0 && currentEventId && (
+                <div className="px-4 py-2 bg-slate-100 rounded-xl text-[10px] md:text-xs font-black text-slate-600 border border-slate-200 uppercase tracking-widest flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                  Event: {events.find(e => e.id === currentEventId)?.name || 'Unknown Event'}
+                </div>
               )}
               <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
                 <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -2582,6 +2571,8 @@ export default function App() {
                 onUpdateInspection={handleUpdateMatchInspection}
                 viewMode="print"
                 boutNumberingMode={boutNumberingMode}
+                isAutoUpdateNames={isAutoUpdateNames}
+                onToggleAutoUpdateNames={setIsAutoUpdateNames}
               />
             </div>
           )}
@@ -2600,6 +2591,8 @@ export default function App() {
                 onUpdateInspection={handleUpdateMatchInspection}
                 viewMode="signature"
                 boutNumberingMode={boutNumberingMode}
+                isAutoUpdateNames={isAutoUpdateNames}
+                onToggleAutoUpdateNames={setIsAutoUpdateNames}
               />
             </div>
           )}
@@ -2620,6 +2613,13 @@ export default function App() {
               isSyncingMatches={isImportingBouts}
               boutNumberingMode={boutNumberingMode}
               matchHistory={matchHistory}
+            />
+          )}
+
+          {activeTab === 'search-winner' && (
+            <SearchWinner 
+              matchHistory={matchHistory}
+              currentEventId={currentEventId}
             />
           )}
 
@@ -3558,7 +3558,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
     let foundAny = false;
 
     queue.forEach(q => {
-      if (q.data.ring === ringNum && (!q.data.eventId || q.data.eventId === currentEventId)) {
+      if (q.data.ring === ringNum && q.data.eventId === currentEventId) {
         const normalized = normalizeBoutWithRing(q.data.bout, ringNum);
         const boutNum = parseInt(normalized) || 0;
         if (boutNum > maxBout) {
@@ -3569,7 +3569,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
     });
 
     const ringStatus = rings.find(r => r.ringNumber === ringNum);
-    if (ringStatus?.currentBout && (!ringStatus.currentBout.eventId || ringStatus.currentBout.eventId === currentEventId)) {
+    if (ringStatus?.currentBout && ringStatus.currentBout.eventId === currentEventId) {
       const normalized = normalizeBoutWithRing(ringStatus.currentBout.bout, ringNum);
       const boutNum = parseInt(normalized) || 0;
       if (boutNum > maxBout) {
@@ -3631,14 +3631,14 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
     const inQueue = queue.find(q => 
       q.data.ring === formData.ring && 
       normalizeBoutWithRing(q.data.bout, q.data.ring) === targetBout &&
-      (currentEventId ? q.data.eventId === currentEventId : !q.data.eventId)
+      q.data.eventId === currentEventId
     );
     
     const inCurrent = rings.find(r => 
       r.ringNumber === formData.ring && 
       r.currentBout && 
       normalizeBoutWithRing(r.currentBout.bout, r.ringNumber) === targetBout &&
-      (currentEventId ? r.currentBout.eventId === currentEventId : !r.currentBout.eventId)
+      r.currentBout.eventId === currentEventId
     );
                        
     if (inQueue) {
@@ -3954,7 +3954,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
   const [showInspectionWarning, setShowInspectionWarning] = useState(false);
   
   // Only show current bout if it belongs to the current event
-  const current = ring.currentBout && (!currentEventId || ring.currentBout.eventId === currentEventId) ? ring.currentBout : null;
+  const current = ring.currentBout && ring.currentBout.eventId === currentEventId ? ring.currentBout : null;
 
   useEffect(() => {
     if (current) {
@@ -4452,7 +4452,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
           const ringQueue = boutQueue
             .filter(q => 
               q.data.ring === ring.ringNumber && 
-              (!q.data.eventId || q.data.eventId === currentEventId)
+              q.data.eventId === currentEventId
             )
             .sort((a, b) => {
               const boutA = parseInt(normalizeBoutNumber(a.data.bout)) || 0;
@@ -4664,7 +4664,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
           const ringQueue = boutQueue
             .filter(q => 
               q.data.ring === ring.ringNumber && 
-              (!q.data.eventId || q.data.eventId === currentEventId)
+              q.data.eventId === currentEventId
             )
             .sort((a, b) => {
               const boutA = parseInt(normalizeBoutNumber(a.data.bout)) || 0;

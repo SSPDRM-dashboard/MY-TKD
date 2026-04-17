@@ -239,6 +239,8 @@ interface TASheetProps {
   onSharedSelectionChange?: (ring: string, matchNo: string) => void;
   boutNumberingMode?: 'numeric' | 'alphanumeric';
   key?: string;
+  isAutoUpdateNames?: boolean;
+  onToggleAutoUpdateNames?: (val: boolean) => void;
 }
 
 export function TASheet({ 
@@ -254,7 +256,9 @@ export function TASheet({
   sharedRing, 
   sharedMatchNo, 
   onSharedSelectionChange,
-  boutNumberingMode = 'alphanumeric'
+  boutNumberingMode = 'alphanumeric',
+  isAutoUpdateNames,
+  onToggleAutoUpdateNames
 }: TASheetProps) {
   const [matches, setMatches] = useState<SheetMatch[]>([]);
   const [fallbackMatches, setFallbackMatches] = useState<SheetMatch[]>([]);
@@ -465,10 +469,35 @@ export function TASheet({
   useEffect(() => {
     const allMatches: SheetMatch[] = [];
 
+    if (!currentEventId) {
+      setMatches([]);
+      setRingAndMatch('', '');
+      return;
+    }
+
     // Add matches from rings
     rings.forEach(ring => {
       const ringMatches = [ring.currentBout, ring.onDeck, ring.inTheHole].filter(Boolean) as MatchData[];
       ringMatches.forEach(match => {
+        if (match.eventId === currentEventId) {
+          allMatches.push({
+            eventName: currentEventName || '',
+            ringNo: match.ring.toString(),
+            matchNo: match.bout.toString(),
+            category: match.category || '',
+            blueName: match.blue_name || '',
+            blueClub: match.blue_club || '',
+            redName: match.red_name || '',
+            redClub: match.red_club || ''
+          });
+        }
+      });
+    });
+
+    // Add matches from queue
+    boutQueue.forEach(item => {
+      const match = item.data;
+      if (match.eventId === currentEventId) {
         allMatches.push({
           eventName: currentEventName || '',
           ringNo: match.ring.toString(),
@@ -479,22 +508,7 @@ export function TASheet({
           redName: match.red_name || '',
           redClub: match.red_club || ''
         });
-      });
-    });
-
-    // Add matches from queue
-    boutQueue.forEach(item => {
-      const match = item.data;
-      allMatches.push({
-        eventName: currentEventName || '',
-        ringNo: match.ring.toString(),
-        matchNo: match.bout.toString(),
-        category: match.category || '',
-        blueName: match.blue_name || '',
-        blueClub: match.blue_club || '',
-        redName: match.red_name || '',
-        redClub: match.red_club || ''
-      });
+      }
     });
 
     // Merge fallback matches (only add if not already in allMatches)
@@ -722,24 +736,43 @@ export function TASheet({
               <><Edit2 size={20} className="text-slate-400" /> Player Inspection Dashboard</>
             )}
           </h2>
-          <div className="flex flex-wrap gap-2 justify-end">
+          <div className="flex flex-wrap gap-2 justify-end items-center">
             {viewMode === 'print' && (
               <button 
                 onClick={() => setShowReprintModal(true)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors flex items-center gap-2 text-sm"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors flex items-center gap-2 text-sm h-10"
                 title="Search and reprint signed TA sheets"
               >
                 <History size={16} />
                 Reprint Signed
               </button>
             )}
+            
+            {onToggleAutoUpdateNames && (
+              <div className="flex bg-slate-100 p-1 rounded-xl items-center mr-2 h-10">
+                <button
+                  onClick={() => onToggleAutoUpdateNames(false)}
+                  className={cn("px-4 py-1 text-xs font-black uppercase tracking-widest rounded-lg transition-all", !isAutoUpdateNames ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-700")}
+                >
+                  Manual
+                </button>
+                <button
+                  onClick={() => onToggleAutoUpdateNames(true)}
+                  className={cn("px-4 py-1 text-xs font-black uppercase tracking-widest rounded-lg transition-all", isAutoUpdateNames ? "bg-blue-600 shadow-sm text-white" : "text-slate-500 hover:text-slate-700")}
+                  title="Auto update every 15 minutes"
+                >
+                  Auto
+                </button>
+              </div>
+            )}
+            
             <button 
               onClick={forcePropagateWinners}
-              className="px-4 py-2 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-700 font-bold rounded-xl transition-colors flex items-center gap-2 text-sm"
+              className="px-4 py-2 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-700 font-bold rounded-xl transition-colors flex items-center gap-2 text-sm h-10"
               title="Force replacement of 'WINNER OF X' with actual winner names"
             >
               <Trophy size={16} />
-              Force Update Names
+              Update Name
             </button>
           </div>
         </div>
