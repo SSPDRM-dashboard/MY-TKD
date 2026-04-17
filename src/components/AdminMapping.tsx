@@ -55,12 +55,12 @@ export function AdminMapping({
       Papa.parse(csvText, {
         complete: (result) => {
           const rows = result.data as string[][];
-          // Column D is index 3
+          // Column E is index 4
           const cats = new Set<string>();
           for (let i = 1; i < rows.length; i++) {
             const row = rows[i];
-            if (row.length >= 4) {
-              const cat = row[3]?.trim();
+            if (row.length >= 5) {
+              const cat = row[4]?.trim();
               if (cat && cat !== 'Category' && cat !== '-') {
                 cats.add(cat);
               }

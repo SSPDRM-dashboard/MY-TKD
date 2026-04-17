@@ -236,6 +236,7 @@ interface TASheetProps {
   sharedMatchNo?: string;
   onSharedSelectionChange?: (ring: string, matchNo: string) => void;
   boutNumberingMode?: 'numeric' | 'alphanumeric';
+  key?: string;
 }
 
 export function TASheet({ 
@@ -950,34 +951,16 @@ export function TASheet({
         {matchesToRender.map((match, index) => (
           <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full page-break mb-8 print:mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
             {/* Header */}
-            <div className="flex justify-between items-center mb-2 print:mb-2">
-              <div className="w-48 flex items-center gap-3">
-                <img 
-                  src="/input_file_0.png" 
-                  alt="World Taekwondo" 
-                  className="h-12 object-contain" 
-                  referrerPolicy="no-referrer"
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = "https://upload.wikimedia.org/wikipedia/en/thumb/e/e7/World_Taekwondo_logo.svg/512px-World_Taekwondo_logo.svg.png";
-                  }}
-                />
-                <img 
-                  src="/input_file_1.png" 
-                  alt="Taekwondo Malaysia" 
-                  className="h-12 object-contain" 
-                  referrerPolicy="no-referrer"
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><circle cx='20' cy='20' r='20' fill='%23f97316'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='Arial' font-size='12' font-weight='bold' fill='white'>TM</text></svg>";
-                  }}
-                />
-              </div>
+            <div className="flex justify-between items-center mb-2 print:mb-2 text-black">
+              <div className="w-48"></div>
               <div className="text-center flex-1">
                 <h1 className="text-2xl font-black tracking-widest print:text-3xl">TA SHEET</h1>
-                <div className="text-xs font-bold mt-0.5">({match.eventName || 'Event Name'})</div>
+                <div className="text-xs font-bold mt-0.5 uppercase tracking-wider">({match.eventName || 'Event Name'})</div>
               </div>
-              <div className="text-base font-black w-48 text-right">Best of 3</div>
+              <div className="text-base font-black w-48 text-right flex flex-col items-end">
+                <span>Best of 3</span>
+                <span className="text-[10px] opacity-70">OFFICIAL MATCH RECORD</span>
+              </div>
             </div>
 
             {/* Match Info */}

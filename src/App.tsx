@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Trophy, 
   Users, 
@@ -63,6 +63,19 @@ function sanitizeForFirestore(obj: any): any {
   return sanitized;
 }
 
+// Simple deep equality check to prevent redundant writes
+function isEqual(a: any, b: any): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || a === null || typeof b !== 'object' || b === null) return false;
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  for (const key of keysA) {
+    if (!keysB.includes(key) || !isEqual(a[key], b[key])) return false;
+  }
+  return true;
+}
+
 function useSyncedState<T>(key: string, initialValue: T) {
   const [state, setState] = useState<T>(() => {
     const saved = localStorage.getItem(key);
@@ -70,55 +83,60 @@ function useSyncedState<T>(key: string, initialValue: T) {
       try {
         return JSON.parse(saved);
       } catch (e) {
-        // Fallback for legacy raw string values
         return saved as unknown as T;
       }
     }
     return initialValue;
   });
 
+  const lastRemoteValue = useRef<string>('');
+
   useEffect(() => {
     // Initial sync from Firestore
     getDocFromServer(doc(db, 'sync', key)).then(document => {
       if (document.exists()) {
-        setState(document.data().value);
-        localStorage.setItem(key, JSON.stringify(document.data().value));
+        const val = document.data().value;
+        const valStr = JSON.stringify(val);
+        lastRemoteValue.current = valStr;
+        setState(val);
+        localStorage.setItem(key, valStr);
       } else {
-        // If it doesn't exist in Firestore but we have local state, upload it
         const saved = localStorage.getItem(key);
         if (saved !== null) {
           try {
             const parsed = JSON.parse(saved);
-            setDoc(doc(db, 'sync', key), { value: sanitizeForFirestore(parsed) });
+            const sanitized = sanitizeForFirestore(parsed);
+            lastRemoteValue.current = JSON.stringify(sanitized);
+            setDoc(doc(db, 'sync', key), { value: sanitized });
           } catch (e) {
-            setDoc(doc(db, 'sync', key), { value: sanitizeForFirestore(saved) });
+            const sanitized = sanitizeForFirestore(saved);
+            lastRemoteValue.current = JSON.stringify(sanitized);
+            setDoc(doc(db, 'sync', key), { value: sanitized });
           }
-        } else {
-          setDoc(doc(db, 'sync', key), { value: sanitizeForFirestore(initialValue) });
         }
       }
     }).catch(error => {
       if (error instanceof Error && error.message.includes('the client is offline')) {
-        console.error("Firestore Configuration Error: The client is offline. Please check your Firebase project settings.");
-      }
-      // Fallback to local storage if Firestore is unavailable
-      const saved = localStorage.getItem(key);
-      if (saved !== null) {
-        try {
-          setState(JSON.parse(saved));
-        } catch (e) {
-          setState(saved as unknown as T);
-        }
+        console.error("Firestore Configuration Error: The client is offline.");
       }
     });
 
     const unsub = onSnapshot(doc(db, 'sync', key), (document) => {
       if (document.exists()) {
-        setState(document.data().value);
-        localStorage.setItem(key, JSON.stringify(document.data().value));
+        const remoteValue = document.data().value;
+        const remoteValueStr = JSON.stringify(remoteValue);
+        
+        // Only update if the remote value actually changed from what we last saw
+        if (remoteValueStr !== lastRemoteValue.current) {
+          lastRemoteValue.current = remoteValueStr;
+          setState(remoteValue);
+          localStorage.setItem(key, remoteValueStr);
+        }
       }
     }, (error) => {
-      console.error(`Firestore Sync Error (${key}):`, error);
+      if (error.code !== 'permission-denied' && !error.message.includes('quota')) {
+        console.error(`Firestore Sync Error (${key}):`, error);
+      }
     });
     return unsub;
   }, [key]);
@@ -126,8 +144,23 @@ function useSyncedState<T>(key: string, initialValue: T) {
   const setSyncedState = React.useCallback((updater: T | ((prev: T) => T)) => {
     setState(prev => {
       const newValue = typeof updater === 'function' ? (updater as any)(prev) : updater;
-      localStorage.setItem(key, JSON.stringify(newValue));
-      setDoc(doc(db, 'sync', key), { value: sanitizeForFirestore(newValue) });
+      
+      // Safety: Only write to local & remote if value actually changed
+      if (!isEqual(prev, newValue)) {
+        const valStr = JSON.stringify(newValue);
+        localStorage.setItem(key, valStr);
+        
+        // Guard against writing the same value back to Firestore
+        if (valStr !== lastRemoteValue.current) {
+          lastRemoteValue.current = valStr;
+          setDoc(doc(db, 'sync', key), { value: sanitizeForFirestore(newValue) })
+            .catch(err => {
+              if (err.code === 'resource-exhausted') {
+                console.warn("Firestore Quota Exceeded. Updates will stay local until reset.");
+              }
+            });
+        }
+      }
       return newValue;
     });
   }, [key]);
@@ -244,7 +277,7 @@ export default function App() {
   const [rings, setRings] = useSyncedState<RingStatus[]>('tkd_rings', INITIAL_RINGS);
   const [autoPullRings, setAutoPullRings] = useSyncedState<Record<number, boolean>>('tkd_autopull', {});
   const [boutQueue, setBoutQueue] = useSyncedState<{id: string, data: MatchData}[]>('tkd_bout_queue', []);
-  const [matchHistory, setMatchHistory] = useSyncedState<MatchHistoryItem[]>('tkd_match_history', []);
+  const [matchHistory, setMatchHistory] = useState<MatchHistoryItem[]>([]);
   const [mappings, setMappings] = useState<BoutMapping[]>([]);
   const [athletes, setAthletes] = useState([
     { name: "Ahmad bin Ibrahim", ic: "080512-14-5567", club: "KST", category: "Junior Male -45kg", status: "Verified" as const },
@@ -273,22 +306,15 @@ export default function App() {
     const q = query(collection(db, 'matchHistory'), where('eventId', '==', currentEventId));
     const unsub = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-      console.log('Match history updated from Firestore:', data.length);
-      setMatchHistory(prev => {
-        const updated = [...prev];
-        data.forEach(item => {
-          const index = updated.findIndex(h => h.id === item.id);
-          if (index !== -1) {
-            updated[index] = item;
-          } else {
-            updated.push(item);
-          }
-        });
-        return updated;
-      });
+      // Replace entire history with collection state to stay in sync with Firestore source of truth
+      setMatchHistory(data);
+    }, (error) => {
+      if (error.code !== 'permission-denied' && !error.message.includes('quota')) {
+        console.error("Firestore History Error:", error);
+      }
     });
     return unsub;
-  }, [currentEventId, setMatchHistory]);
+  }, [currentEventId]);
 
   useEffect(() => {
     const handleSyncHistory = (e: any) => {
