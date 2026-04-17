@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Download, AlertCircle, RefreshCw, Eraser, Check, History, X, Search, Printer, Trophy } from 'lucide-react';
 import { motion } from 'motion/react';
-import { MatchData, RingStatus } from '../types';
+import { MatchData, RingStatus, EventData, MatchHistoryItem } from '../types';
 import Papa from 'papaparse';
 import { cn, formatBoutNumber, normalizeBoutNumber } from '../lib/utils';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -230,6 +230,8 @@ interface TASheetProps {
   currentEventName: string;
   currentEventDate?: string;
   currentEventId?: string | null;
+  events?: EventData[];
+  matchHistory?: MatchHistoryItem[];
   onUpdateInspection?: (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean, signature?: string, checklist?: string[]) => void;
   viewMode?: 'print' | 'signature';
   sharedRing?: string;
@@ -245,6 +247,8 @@ export function TASheet({
   currentEventName, 
   currentEventDate, 
   currentEventId,
+  events = [],
+  matchHistory = [],
   onUpdateInspection, 
   viewMode = 'print', 
   sharedRing, 
@@ -319,7 +323,19 @@ export function TASheet({
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(SHEET_CSV_URL);
+      let activeUrl = SHEET_CSV_URL;
+      if (currentEventId && events.length > 0) {
+        const event = events.find(e => e.id === currentEventId);
+        if (event && event.sheetUrl && event.sheetUrl.includes('docs.google.com/spreadsheets')) {
+          activeUrl = event.sheetUrl;
+          if (!activeUrl.includes('/export?')) {
+            activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
+          }
+        }
+      }
+
+      console.log("Fetching results from:", activeUrl);
+      const response = await fetch(activeUrl);
       if (!response.ok) {
         throw new Error("Failed to fetch data. Please ensure the Google Sheet is accessible to 'Anyone with the link'.");
       }
@@ -339,7 +355,8 @@ export function TASheet({
           // Skip header row
           for (let i = 1; i < rows.length; i++) {
             const row = rows[i];
-            if (row.length >= 4 && row[2] && row[3]) { // Ensure Ring No and Match No exist
+            // Basic validation: row should have at least the winner column (index 9)
+            if (row.length >= 10 && row[2] && row[3]) { 
               const matchNo = row[3] || '';
               const winner = row[9] || '';
               const category = row[4] || '';
@@ -362,16 +379,26 @@ export function TASheet({
               });
 
               // If there's a winner, prepare to sync it globally
-              if (winner && winner.trim()) {
+              if (winner && winner.trim() && winner !== '-') {
                 const normalizedMatchNo = normalizeBoutNumber(matchNo);
                 const winnerTrimmed = winner.trim();
-                let winnerClub = '';
+                const normWinner = winnerTrimmed.toLowerCase();
+                const normBlue = blueName.toLowerCase();
+                const normRed = redName.toLowerCase();
                 
-                // Try to resolve winner's club
-                if (winnerTrimmed === blueName.trim()) winnerClub = blueClub;
-                else if (winnerTrimmed === redName.trim()) winnerClub = redClub;
+                let winnerClub = '';
+                if (normWinner === normBlue) winnerClub = blueClub;
+                else if (normWinner === normRed) winnerClub = redClub;
+                else if (normBlue.includes(normWinner)) winnerClub = blueClub;
+                else if (normRed.includes(normWinner)) winnerClub = redClub;
 
                 const historyId = `${currentEventId || currentEventName}_${normalizedMatchNo}`;
+                
+                const existingItem = matchHistory.find((h) => h.id === historyId);
+                const isDifferent = !existingItem || 
+                                    existingItem.winner !== winnerTrimmed || 
+                                    existingItem.winnerClub !== winnerClub;
+
                 const historyItem = {
                   id: historyId,
                   bout: normalizedMatchNo,
@@ -379,30 +406,34 @@ export function TASheet({
                   winner: winnerTrimmed,
                   winnerClub: winnerClub,
                   eventId: currentEventId || currentEventName,
-                  syncedAt: new Date().toISOString()
+                  syncedAt: existingItem ? existingItem.syncedAt : new Date().toISOString()
                 };
                 
                 historyItems.push(historyItem);
 
-                // Also attempt to write to Firestore directly if we have a DB connection
-                // This ensures all users see the update and advancement mappings trigger
-                try {
-                  setDoc(doc(db, 'matchHistory', historyId), {
-                    ...historyItem,
-                    syncedAt: serverTimestamp()
-                  });
-                } catch (err) {
-                  console.error("Error saving winner to Firestore:", err);
+                if (isDifferent) {
+                  try {
+                    setDoc(doc(db, 'matchHistory', historyId), {
+                      ...historyItem,
+                      syncedAt: serverTimestamp()
+                    });
+                  } catch (err) {
+                    console.error("Error saving winner to Firestore:", err);
+                  }
                 }
               }
             }
           }
           setFallbackMatches(parsedMatches);
           
-          // Propagate winners to global state so advancement logic triggers
           if (historyItems.length > 0) {
             console.log("Propagating fetched winners to history:", historyItems.length);
             window.dispatchEvent(new CustomEvent('tkd_sync_history', { detail: historyItems }));
+            alert(`Successfully fetched ${historyItems.length} winners from Google Sheet!`);
+          } else if (parsedMatches.length > 0) {
+            alert(`Fetched ${parsedMatches.length} matches, but no winners were found in column J.`);
+          } else {
+            alert("Found no match data in the Google Sheet.");
           }
         },
         error: (err) => {

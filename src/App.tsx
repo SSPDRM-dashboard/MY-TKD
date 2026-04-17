@@ -933,12 +933,17 @@ export default function App() {
     const targetBouts = new Map<string, { category: string, bout: string, blue?: string, red?: string, blueClub?: string, redClub?: string }>();
 
     mappings.forEach(mapping => {
-      const match = matchHistory.find(h => 
-        isBoutMatch(h.bout, mapping.sourceBout) && 
-        h.eventId === currentEventId &&
-        // Relaxed category check: only check if a non-placeholder category is provided
-        (!mapping.categoryName || mapping.categoryName === "Auto-Extracted" || normalizeStr(h.category) === normalizeStr(mapping.categoryName))
-      );
+      const match = matchHistory.find(h => {
+        const boutsMatch = isBoutMatch(h.bout, mapping.sourceBout);
+        const eventIdMatch = h.eventId === currentEventId;
+        const catMatch = !mapping.categoryName || mapping.categoryName === "Auto-Extracted" || normalizeStr(h.category) === normalizeStr(mapping.categoryName);
+        
+        if (boutsMatch && eventIdMatch && !catMatch) {
+          console.log(`Found bout match ${h.bout} but category mismatch: history=${h.category}, mapping=${mapping.categoryName}`);
+        }
+        
+        return boutsMatch && eventIdMatch && catMatch;
+      });
 
       if (match) {
         // Use normalized bout number as the key to group mappings for the same target match
@@ -961,6 +966,42 @@ export default function App() {
           target.category = mapping.categoryName;
         }
       }
+    });
+
+    // FALLBACK: Auto-detect "WINNER OF X" phrasing in matches and pull from match history
+    const applyFallbackWinner = (boutData: MatchData | null | undefined) => {
+      if (!boutData) return;
+      const checkWinnerStr = (nameStr: string, slot: 'blue' | 'red') => {
+        if (!nameStr) return;
+        const match = nameStr.toUpperCase().match(/WINNER OF ([\w-]+)/);
+        if (match && match[1]) {
+          const sourceBoutStr = match[1];
+          const historyMatch = matchHistory.find(h => isBoutMatch(h.bout, sourceBoutStr) && h.eventId === currentEventId);
+          if (historyMatch && historyMatch.winner) {
+            const key = normalizeBoutNumber(boutData.bout);
+            if (!targetBouts.has(key)) {
+              targetBouts.set(key, { category: boutData.category, bout: String(boutData.bout) });
+            }
+            const target = targetBouts.get(key)!;
+            if (slot === 'blue' && !target.blue) {
+              target.blue = historyMatch.winner;
+              target.blueClub = historyMatch.winnerClub ? historyMatch.winnerClub.toUpperCase() : '';
+            } else if (slot === 'red' && !target.red) {
+              target.red = historyMatch.winner;
+              target.redClub = historyMatch.winnerClub ? historyMatch.winnerClub.toUpperCase() : '';
+            }
+          }
+        }
+      };
+      checkWinnerStr(boutData.blue_name, 'blue');
+      checkWinnerStr(boutData.red_name, 'red');
+    };
+
+    boutQueue.forEach(item => applyFallbackWinner(item.data));
+    rings.forEach(ring => {
+      applyFallbackWinner(ring.currentBout);
+      applyFallbackWinner(ring.onDeck);
+      applyFallbackWinner(ring.inTheHole);
     });
 
     if (targetBouts.size === 0) return;
@@ -2392,6 +2433,8 @@ export default function App() {
                 currentEventName={getCurrentEventName()} 
                 currentEventDate={getCurrentEventDate()}
                 currentEventId={currentEventId}
+                events={events}
+                matchHistory={matchHistory}
                 onUpdateInspection={handleUpdateMatchInspection}
                 viewMode="print"
                 boutNumberingMode={boutNumberingMode}
@@ -2408,6 +2451,8 @@ export default function App() {
                 currentEventName={getCurrentEventName()} 
                 currentEventDate={getCurrentEventDate()}
                 currentEventId={currentEventId}
+                events={events}
+                matchHistory={matchHistory}
                 onUpdateInspection={handleUpdateMatchInspection}
                 viewMode="signature"
                 boutNumberingMode={boutNumberingMode}
@@ -2430,6 +2475,7 @@ export default function App() {
               onSyncMatches={handleAdminImportBouts}
               isSyncingMatches={isImportingBouts}
               boutNumberingMode={boutNumberingMode}
+              matchHistory={matchHistory}
             />
           )}
 

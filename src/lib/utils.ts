@@ -35,16 +35,27 @@ export function normalizeBoutNumber(bout: string | number): string {
 }
 
 export function isBoutMatch(bout1: string | number, bout2: string | number): boolean {
+  if (bout1 === bout2) return true;
+  if (!bout1 || !bout2) return false;
+
+  const normalizeLenient = (b: string | number) => b.toString().toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
+  
+  const b1 = normalizeLenient(bout1);
+  const b2 = normalizeLenient(bout2);
+  
+  if (b1 === b2) return true;
+  
   const norm1 = normalizeBoutNumber(bout1);
   const norm2 = normalizeBoutNumber(bout2);
   
   if (norm1 === norm2) return true;
   
   // Also check if one is relative (e.g. "22") and the other is absolute (e.g. "1022")
-  const num1 = parseInt(norm1);
-  const num2 = parseInt(norm2);
+  const num1 = parseInt(norm1.replace(/[^0-9]/g, ''));
+  const num2 = parseInt(norm2.replace(/[^0-9]/g, ''));
   
   if (!isNaN(num1) && !isNaN(num2)) {
+    if (num1 === num2) return true;
     // If one is < 1000 and the other is exactly (Ring * 1000) + that number
     if (num1 < 1000 && num2 >= 1000 && num2 % 1000 === num1) return true;
     if (num2 < 1000 && num1 >= 1000 && num1 % 1000 === num2) return true;

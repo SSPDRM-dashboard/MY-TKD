@@ -53,4 +53,5 @@ export interface MatchHistoryItem {
   winner: string;
   winnerClub?: string;
   eventId: string;
+  syncedAt?: string | Date | any;
 }

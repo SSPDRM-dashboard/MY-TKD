@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, deleteDoc, doc, onSnapshot, query, where, setDoc, serverTimestamp } from 'firebase/firestore';
-import { BoutMapping, EventData } from '../types';
+import { BoutMapping, EventData, MatchHistoryItem } from '../types';
 import { Trash2, Plus, Save, Hash, ArrowRight, User, Shield, RefreshCw, Trophy } from 'lucide-react';
 import { cn, normalizeBoutNumber, formatBoutNumber } from '../lib/utils';
 import Papa from 'papaparse';
@@ -14,6 +14,7 @@ interface AdminMappingProps {
   onSyncMatches?: () => void;
   isSyncingMatches?: boolean;
   boutNumberingMode?: 'numeric' | 'alphanumeric';
+  matchHistory: MatchHistoryItem[];
 }
 
 export function AdminMapping({ 
@@ -23,7 +24,8 @@ export function AdminMapping({
   events, 
   onSyncMatches, 
   isSyncingMatches,
-  boutNumberingMode = 'alphanumeric'
+  boutNumberingMode = 'alphanumeric',
+  matchHistory
 }: AdminMappingProps) {
   const [mappings, setMappings] = useState<BoutMapping[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string>(currentEventId || '');
@@ -49,7 +51,16 @@ export function AdminMapping({
   const syncCategoriesFromSheet = async () => {
     setIsSyncingCategories(true);
     try {
-      const response = await fetch(CATEGORIES_SHEET_URL);
+      let activeUrl = CATEGORIES_SHEET_URL;
+      const event = events.find(e => e.id === selectedEventId);
+      if (event && event.sheetUrl && event.sheetUrl.includes('docs.google.com/spreadsheets')) {
+        activeUrl = event.sheetUrl;
+        if (!activeUrl.includes('/export?')) {
+          activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
+        }
+      }
+
+      const response = await fetch(activeUrl);
       const csvText = await response.text();
       
       Papa.parse(csvText, {
@@ -81,7 +92,17 @@ export function AdminMapping({
     if (!selectedEventId) return;
     setIsSyncingResults(true);
     try {
-      const response = await fetch(RESULTS_SHEET_URL);
+      let activeUrl = RESULTS_SHEET_URL;
+      const event = events.find(e => e.id === selectedEventId);
+      if (event && event.sheetUrl && event.sheetUrl.includes('docs.google.com/spreadsheets')) {
+        activeUrl = event.sheetUrl;
+        if (!activeUrl.includes('/export?')) {
+          activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
+        }
+      }
+
+      console.log("Syncing results from:", activeUrl);
+      const response = await fetch(activeUrl);
       const csvText = await response.text();
       
       Papa.parse(csvText, {
@@ -107,13 +128,25 @@ export function AdminMapping({
               if (matchNo && category && winner && winner !== '-' && winner !== '') {
                 const normalizedMatchNo = normalizeBoutNumber(matchNo);
                 const winnerTrimmed = winner.trim();
-                let winnerClub = '';
+                const normWinner = winnerTrimmed.toLowerCase();
+                const normBlue = blueName.toLowerCase();
+                const normRed = redName.toLowerCase();
                 
-                if (winnerTrimmed === blueName) winnerClub = blueClub;
-                else if (winnerTrimmed === redName) winnerClub = redClub;
+                let winnerClub = '';
+                if (normWinner === normBlue) winnerClub = blueClub;
+                else if (normWinner === normRed) winnerClub = redClub;
+                // Try partial match if exact fails
+                else if (normBlue && (normBlue.includes(normWinner) || normWinner.includes(normBlue))) winnerClub = blueClub;
+                else if (normRed && (normRed.includes(normWinner) || normWinner.includes(normRed))) winnerClub = redClub;
 
                 console.log(`Processing sheet row: Ring ${ringNo}, Bout ${matchNo} (Normalized: ${normalizedMatchNo}), Category ${category}, Winner ${winner}, Club ${winnerClub}`);
                 const historyId = `${selectedEventId}_${normalizedMatchNo}`;
+                
+                const existingItem = matchHistory.find((h) => h.id === historyId);
+                const isDifferent = !existingItem || 
+                                    existingItem.winner !== winnerTrimmed || 
+                                    existingItem.winnerClub !== winnerClub;
+
                 const historyItem = {
                   id: historyId,
                   bout: normalizedMatchNo,
@@ -121,10 +154,16 @@ export function AdminMapping({
                   winner: winnerTrimmed,
                   winnerClub: winnerClub,
                   eventId: selectedEventId,
-                  syncedAt: serverTimestamp()
+                  syncedAt: isDifferent ? serverTimestamp() : (existingItem?.syncedAt || serverTimestamp())
                 };
                 
-                await setDoc(doc(db, 'matchHistory', historyId), historyItem);
+                if (isDifferent) {
+                  try {
+                    await setDoc(doc(db, 'matchHistory', historyId), historyItem);
+                  } catch (err) {
+                    console.error("Error saving match history item to Firestore:", err);
+                  }
+                }
                 newHistory.push({ id: historyId, ...historyItem });
               }
             }
@@ -268,10 +307,10 @@ export function AdminMapping({
           <button 
             onClick={syncResultsFromSheet}
             disabled={isSyncingResults}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors text-xs uppercase tracking-widest disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-xl transition-colors text-xs uppercase tracking-widest disabled:opacity-50 border border-red-100 shadow-sm"
           >
-            <RefreshCw size={14} className={cn(isSyncingResults && "animate-spin")} />
-            {isSyncingResults ? 'Syncing Results...' : 'Sync Results from Google Sheet'}
+            {isSyncingResults ? <RefreshCw size={14} className="animate-spin" /> : <Trophy size={14} />}
+            {isSyncingResults ? 'Syncing...' : 'Fetch All Winners from Sheet'}
           </button>
         </div>
         
