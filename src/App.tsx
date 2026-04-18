@@ -4713,7 +4713,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                         <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{b?.data.blue_name || "---"}</span>
                         {b?.data.blue_inspected && (
                           <div className="absolute bottom-1 right-2">
-                            <span className="text-[8px] font-black text-green-400 uppercase tracking-tighter">INSPECTION</span>
+                            <span className="text-[8px] font-black text-green-400 uppercase tracking-tighter">INSPECTED</span>
                           </div>
                         )}
                       </div>
@@ -4722,7 +4722,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                         <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{b?.data.red_name || "---"}</span>
                         {b?.data.red_inspected && (
                           <div className="absolute bottom-1 right-2">
-                            <span className="text-[8px] font-black text-green-400 uppercase tracking-tighter">INSPECTION</span>
+                            <span className="text-[8px] font-black text-green-400 uppercase tracking-tighter">INSPECTED</span>
                           </div>
                         )}
                       </div>
