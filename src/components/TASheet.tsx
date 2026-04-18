@@ -881,13 +881,6 @@ export function TASheet({
                 {!isFullySigned && currentMatch && <AlertCircle size={16} />}
                 Print Current Match
               </button>
-              <button 
-                onClick={() => handlePrint('all')}
-                disabled={ringMatches.filter(m => getMatchStatus(m).isSigned).length === 0}
-                className="px-6 py-2 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors disabled:opacity-50 disabled:bg-slate-300 text-sm"
-              >
-                Print Signed for Ring {selectedRing}
-              </button>
             </div>
             )}
             {!isFullySigned && currentMatch && viewMode === 'print' && (
@@ -1154,15 +1147,15 @@ export function TASheet({
           {/* Round Scores */}
           <table className="w-full border-collapse border border-black mb-1 print:mb-1 text-sm text-center font-bold table-fixed">
             <colgroup>
+              <col style={{ width: '13.5%' }} />
+              <col style={{ width: '11.25%' }} />
+              <col style={{ width: '11.25%' }} />
+              <col style={{ width: '10%' }} />
               <col style={{ width: '8%' }} />
-              <col style={{ width: '12%' }} />
-              <col style={{ width: '12%' }} />
-              <col style={{ width: '15%' }} />
-              <col style={{ width: '6%' }} />
-              <col style={{ width: '15%' }} />
-              <col style={{ width: '12%' }} />
-              <col style={{ width: '12%' }} />
-              <col style={{ width: '8%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '11.25%' }} />
+              <col style={{ width: '11.25%' }} />
+              <col style={{ width: '13.5%' }} />
             </colgroup>
             <thead>
               <tr className="h-[30px]">
@@ -1463,14 +1456,14 @@ export function TASheet({
             {/* Officials */}
             <table className="w-full border-collapse border border-black mb-2 print:mb-0 text-sm text-center font-bold table-fixed">
               <colgroup>
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '10%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '10%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '10%' }} />
-                <col style={{ width: '21%' }} />
-                <col style={{ width: '10%' }} />
+                <col style={{ width: '12.5%' }} />
+                <col style={{ width: '12.5%' }} />
+                <col style={{ width: '12.5%' }} />
+                <col style={{ width: '12.5%' }} />
+                <col style={{ width: '12.5%' }} />
+                <col style={{ width: '12.5%' }} />
+                <col style={{ width: '12.5%' }} />
+                <col style={{ width: '12.5%' }} />
               </colgroup>
               <tbody>
                 <tr className="h-[30px] print:h-[30px]">
