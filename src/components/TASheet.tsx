@@ -1073,7 +1073,7 @@ export function TASheet({
             </div>
 
             {/* Match Info */}
-            <table className="w-full border-collapse border border-black mb-1 print:mb-2 text-sm font-bold match-info-table table-fixed">
+            <table className="w-full border-collapse border border-black mb-[7px] print:mb-[7px] text-sm font-bold match-info-table table-fixed">
               <colgroup>
                 <col style={{ width: '22%' }} />
                 <col style={{ width: '45%' }} />
@@ -1099,7 +1099,7 @@ export function TASheet({
             </table>
 
             {/* Players */}
-            <div className="flex gap-4 mb-1 print:mb-1">
+            <div className="flex gap-4 mb-[7px] print:mb-[7px]">
               <table className="w-1/2 border-collapse border border-black text-sm font-bold text-center table-fixed">
                 <colgroup>
                   <col style={{ width: '18%' }} />
@@ -1145,7 +1145,7 @@ export function TASheet({
             </div>
 
           {/* Round Scores */}
-          <table className="w-full border-collapse border border-black mb-1 print:mb-1 text-sm text-center font-bold table-fixed">
+          <table className="w-full border-collapse border border-black mb-[7px] print:mb-[7px] text-sm text-center font-bold table-fixed">
             <colgroup>
               <col style={{ width: '13.5%' }} />
               <col style={{ width: '11.25%' }} />
@@ -1186,7 +1186,7 @@ export function TASheet({
           </table>
 
           {/* Decision of Superiority */}
-          <table className="w-full border-collapse border border-black mb-1 print:mb-1 text-[10px] text-center font-bold table-fixed">
+          <table className="w-full border-collapse border border-black mb-[7px] print:mb-[7px] text-[10px] text-center font-bold table-fixed">
             <colgroup>
               {/* Chung Superiority: 13.5% (4.5% each) */}
               <col style={{ width: '4.5%' }} />
@@ -1284,7 +1284,7 @@ export function TASheet({
           </table>
 
           {/* Win Types */}
-          <table className="w-full border-collapse border border-black mb-1 print:mb-1 text-sm text-center font-bold table-fixed">
+          <table className="w-full border-collapse border border-black mb-[7px] print:mb-[7px] text-sm text-center font-bold table-fixed">
             <colgroup>
               <col style={{ width: '20%' }} />
               <col style={{ width: '20%' }} />
@@ -1304,7 +1304,7 @@ export function TASheet({
           </table>
 
           {/* Video Replay & Match Winner */}
-          <div className="flex gap-2 mb-1 print:mb-1 w-full justify-between items-stretch">
+          <div className="flex gap-2 mb-[7px] print:mb-[7px] w-full justify-between items-stretch">
             
             {/* Chung Video Replay */}
             <table className="w-[35%] border-collapse border border-black text-xs text-center font-bold table-fixed">
@@ -1490,7 +1490,7 @@ export function TASheet({
             </table>
 
             {/* Signature */}
-            <div className="flex justify-end mb-0 mt-[60px]">
+            <div className="flex justify-end mb-0 mt-8">
               <div className="w-64 flex items-end gap-2 text-sm font-bold">
                 <span>Signature :</span>
                 <div className="flex-1 border-b border-black"></div>
