@@ -77,6 +77,18 @@ function SignaturePad({ color, onConfirm, isConfirmed, boutId }: SignaturePadPro
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+
+    // Prevent scrolling when touching the canvas on mobile
+    const preventScroll = (e: TouchEvent) => {
+      e.preventDefault();
+    };
+    canvas.addEventListener('touchstart', preventScroll, { passive: false });
+    canvas.addEventListener('touchmove', preventScroll, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('touchstart', preventScroll);
+      canvas.removeEventListener('touchmove', preventScroll);
+    };
   }, []);
 
   const bgColor = color === 'blue' ? 'bg-[#cceeff]' : 'bg-[#ffcccc]';
@@ -187,7 +199,7 @@ function PlayerChecklist({ color, checkedItems, onChange }: { color: 'blue' | 'r
               >
                 <input
                   type="checkbox"
-                  className="sr-only"
+                  className="hidden"
                   checked={checkedItems.has(item.id)}
                   onChange={() => toggleItem(item.id)}
                 />
@@ -1065,11 +1077,10 @@ export function TASheet({
               <div className="w-48"></div>
               <div className="text-center flex-1">
                 <h1 className="text-2xl font-black tracking-widest print:text-3xl">TA SHEET</h1>
-                <div className="text-xs font-bold mt-0.5 uppercase tracking-wider">({match.eventName || 'Event Name'})</div>
+                <div className="text-xs font-bold mt-0.5 uppercase tracking-wider">{match.eventName || 'Event Name'}</div>
               </div>
               <div className="text-base font-black w-48 text-right flex flex-col items-end">
                 <span>Best of 3</span>
-                <span className="text-[10px] opacity-70">OFFICIAL MATCH RECORD</span>
               </div>
             </div>
 
@@ -1085,7 +1096,7 @@ export function TASheet({
                 <tr className="h-[25px]">
                   <td className="border border-black p-1.5">Date : <span className="ml-2 font-normal">{sheetDate}</span></td>
                   <td className="border border-black p-1.5">Day No: <span className="ml-2 font-normal">{sheetDayNo}</span></td>
-                  <td colSpan={2} className="border border-black p-1.5">Court No: <span className="text-lg ml-2">{match.ringNo}</span></td>
+                  <td colSpan={2} className="border border-black p-1.5">Court No: <span className="text-lg ml-2">{isNaN(Number(match.ringNo)) ? match.ringNo : String.fromCharCode(96 + Number(match.ringNo))}</span></td>
                 </tr>
                 <tr className="h-[40px]">
                   <td className="border border-black p-1.5">Match No: <span className="text-lg ml-2">{formatBoutNumber(Number(match.ringNo), match.matchNo, boutNumberingMode)}</span></td>
@@ -1457,7 +1468,7 @@ export function TASheet({
             </table>
 
             {/* Signature */}
-            <div className="flex justify-end mb-0 mt-2">
+            <div className="flex justify-end mb-0 mt-[60px]">
               <div className="w-64 flex items-end gap-2 text-sm font-bold">
                 <span>Signature :</span>
                 <div className="flex-1 border-b border-black"></div>
