@@ -4260,7 +4260,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
       </div>
 
       {ring.totalBouts && (
-        <div className="h-1 bg-slate-800 w-full">
+        <div className="h-1 bg-slate-800 w-full relative z-10">
           <motion.div 
             initial={{ width: 0 }}
             animate={{ width: `${progress}%` }}
@@ -4269,15 +4269,17 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
         </div>
       )}
       
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-6 pt-0 mt-6">
         {current ? (
           <>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                <span className="text-[12px] font-black text-slate-400 uppercase tracking-widest border-2 border-slate-200 rounded-full px-4 py-1.5 shadow-sm">
                   Bout {formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode)} {ring.totalBouts ? `of ${ring.totalBouts}` : ''}
                 </span>
-                <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded uppercase">Live</span>
+                <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded uppercase flex items-center gap-1.5">
+                  Live <div className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse" />
+                </span>
               </div>
               
               <div className="flex items-start gap-4">
@@ -4681,11 +4683,11 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                   {/* Players */}
                   <div className="col-span-10 flex flex-col">
                     <div className="flex-1 bg-blue-600/90 flex flex-col justify-center px-4 border-b border-white/10 relative">
-                      <p className="text-[10px] font-bold text-blue-200 uppercase leading-none mb-1">{current?.blue_club || "---"}</p>
+                      <p className="text-[10px] font-bold text-black uppercase leading-none mb-1">{current?.blue_club || "---"}</p>
                       <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current?.blue_name || "---"}</h4>
                     </div>
                     <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
-                      <p className="text-[10px] font-bold text-red-200 uppercase leading-none mb-1">{current?.red_club || "---"}</p>
+                      <p className="text-[10px] font-bold text-black uppercase leading-none mb-1">{current?.red_club || "---"}</p>
                       <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current?.red_name || "---"}</h4>
                     </div>
                   </div>
@@ -4708,7 +4710,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                         {b ? formatBoutNumber(ring.ringNumber, b.data.bout, boutNumberingMode) : "---"}
                       </div>
                       <div className="col-span-5 bg-blue-600/80 flex flex-col justify-center px-3 border-r border-white/10 relative">
-                        <span className="text-[8px] font-bold text-blue-200 uppercase leading-none">{b?.data.blue_club || "---"}</span>
+                        <span className="text-[8px] font-bold text-black uppercase leading-none">{b?.data.blue_club || "---"}</span>
                         <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{b?.data.blue_name || "---"}</span>
                         {b?.data.blue_inspected && (
                           <div className="absolute bottom-1 right-2">
@@ -4717,7 +4719,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                         )}
                       </div>
                       <div className="col-span-4 bg-red-600/80 flex flex-col justify-center px-3 relative">
-                        <span className="text-[8px] font-bold text-red-200 uppercase leading-none">{b?.data.red_club || "---"}</span>
+                        <span className="text-[8px] font-bold text-black uppercase leading-none">{b?.data.red_club || "---"}</span>
                         <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{b?.data.red_name || "---"}</span>
                         {b?.data.red_inspected && (
                           <div className="absolute bottom-1 right-2">
@@ -4897,7 +4899,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                     <div className="flex-1 h-full bg-blue-600 flex flex-col justify-center px-10 relative overflow-hidden group">
                       <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/20 to-transparent pointer-events-none" />
                       <div className="absolute -right-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">BLUE</div>
-                      <p className="text-[15px] font-black text-blue-200 uppercase tracking-[0.2em] mb-1 relative z-10">{current?.blue_club || "---"}</p>
+                      <p className="text-[15px] font-black text-black uppercase tracking-[0.2em] mb-1 relative z-10">{current?.blue_club || "---"}</p>
                       <h4 className={cn(
                         "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
                         getDynamicFontSize(current?.blue_name || "")
@@ -4917,7 +4919,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                     <div className="flex-1 h-full bg-red-600 flex flex-col justify-center px-10 text-right relative overflow-hidden group">
                       <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/20 to-transparent pointer-events-none" />
                       <div className="absolute -left-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">RED</div>
-                      <p className="text-[15px] font-black text-red-200 uppercase tracking-[0.2em] mb-1 relative z-10">{current?.red_club || "---"}</p>
+                      <p className="text-[15px] font-black text-black uppercase tracking-[0.2em] mb-1 relative z-10">{current?.red_club || "---"}</p>
                       <h4 className={cn(
                         "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
                         getDynamicFontSize(current?.red_name || "")
@@ -4952,7 +4954,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                         {/* Blue Side */}
                         <div className="flex-1 self-stretch bg-blue-600/90 flex flex-col justify-center px-3 min-w-0 relative">
                           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
-                          <p className="text-[8px] font-bold text-blue-200 uppercase leading-none mb-0.5 relative z-10">
+                          <p className="text-[8px] font-bold text-black uppercase leading-none mb-0.5 relative z-10">
                             {bout ? bout.data.blue_club : "---"}
                           </p>
                           <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
@@ -4970,7 +4972,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                         {/* Red Side */}
                         <div className="flex-1 self-stretch bg-red-600/90 flex flex-col justify-center px-3 min-w-0 text-right relative">
                           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/10 to-transparent pointer-events-none" />
-                          <p className="text-[8px] font-bold text-red-200 uppercase leading-none mb-0.5 relative z-10">
+                          <p className="text-[8px] font-bold text-black uppercase leading-none mb-0.5 relative z-10">
                             {bout ? bout.data.red_club : "---"}
                           </p>
                           <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
@@ -5262,7 +5264,7 @@ function PublicFighterSide({ color, name, club, privacy }: { color: 'blue' | 're
       )}>
         {privacy ? "---" : name}
       </p>
-      <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">{club}</p>
+      <p className="text-sm font-bold text-black uppercase tracking-widest">{club}</p>
     </div>
   );
 }

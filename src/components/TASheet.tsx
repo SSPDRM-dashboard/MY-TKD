@@ -708,15 +708,11 @@ export function TASheet({
         {`
           @page { 
             size: A4 portrait; 
-            margin: 0; 
+            margin: 5mm; 
           }
           body { 
             -webkit-print-color-adjust: exact; 
             print-color-adjust: exact;
-            width: 210mm;
-            height: 297mm;
-            margin: 0;
-            padding: 0;
             background: #ffffff !important;
           }
           * { 
@@ -727,13 +723,12 @@ export function TASheet({
           .page-break { 
             page-break-after: always; 
             break-inside: avoid;
-            width: 190mm !important;
-            height: 277mm !important;
-            max-width: none !important;
-            margin: 10mm auto !important;
+            width: 100% !important;
+            max-height: 280mm !important;
+            margin: 0 !important;
             padding: 0 !important;
             box-sizing: border-box;
-            overflow: hidden;
+            overflow: hidden !important;
             display: flex;
             flex-direction: column;
             background: #ffffff !important;
@@ -1096,7 +1091,7 @@ export function TASheet({
                 <tr className="h-[25px]">
                   <td className="border border-black p-1.5">Date : <span className="ml-2 font-normal">{sheetDate}</span></td>
                   <td className="border border-black p-1.5">Day No: <span className="ml-2 font-normal">{sheetDayNo}</span></td>
-                  <td colSpan={2} className="border border-black p-1.5">Court No: <span className="text-lg ml-2">{isNaN(Number(match.ringNo)) ? match.ringNo : String.fromCharCode(96 + Number(match.ringNo))}</span></td>
+                  <td colSpan={2} className="border border-black p-1.5">Court No: <span className="text-lg ml-2">{isNaN(Number(match.ringNo)) ? String(match.ringNo).toUpperCase() : String.fromCharCode(64 + Number(match.ringNo))}</span></td>
                 </tr>
                 <tr className="h-[40px]">
                   <td className="border border-black p-1.5">Match No: <span className="text-lg ml-2">{formatBoutNumber(Number(match.ringNo), match.matchNo, boutNumberingMode)}</span></td>
@@ -1316,87 +1311,121 @@ export function TASheet({
           </table>
 
           {/* Video Replay & Match Winner */}
-          <table className="w-full border-collapse border border-black mb-1 print:mb-1 text-xs text-center font-bold table-fixed">
-            <colgroup>
-              <col style={{ width: '18%' }} />
-              <col style={{ width: '3.33%' }} />
-              <col style={{ width: '3.33%' }} />
-              <col style={{ width: '3.33%' }} />
-              <col style={{ width: '15%' }} />
-              <col style={{ width: '15%' }} />
-              <col style={{ width: '18%' }} />
-              <col style={{ width: '3.33%' }} />
-              <col style={{ width: '3.33%' }} />
-              <col style={{ width: '3.33%' }} />
-            </colgroup>
-            <thead>
-              <tr className="h-[36px]">
-                <th className="border border-black p-1 bg-[#00a2e8] text-white text-left px-2">Reason</th>
-                <th colSpan={3} className="border border-black p-1 bg-[#00a2e8] text-white">Chung Video<br/>Replay</th>
-                <th colSpan={2} className="border border-black p-1">Match Winner</th>
-                <th className="border border-black p-1 bg-[#ed1c24] text-white text-left px-2">Reason</th>
-                <th colSpan={3} className="border border-black p-1 bg-[#ed1c24] text-white">Hong Video<br/>Replay</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                "2 Points \"Technical\"",
-                "Head Requested",
-                "Gam-Jeum & Point",
-                "Technical Issue",
-                "Requested by CR",
-                "Rejected by CR"
-              ].map((reason, idx) => (
-                <tr key={idx} className="h-[20px] print:h-[20px]">
-                  <td className="border border-black p-1 text-left px-2">{reason}</td>
-                  <td className="border border-black p-1">A/R</td>
-                  <td className="border border-black p-1">A/R</td>
-                  <td className="border border-black p-1">A/R</td>
-                  
-                  {idx === 0 && (
-                    <>
-                      <td rowSpan={2} className={cn(
-                        "border border-black p-1 text-[#00a2e8] text-xl relative",
-                        match.winner && match.winner.trim().toLowerCase() === match.blueName.trim().toLowerCase() && "bg-blue-50"
-                      )}>
-                        CHUNG
-                        {match.winner && match.winner.trim().toLowerCase() === match.blueName.trim().toLowerCase() && (
-                          <div className="absolute top-1 right-1">
-                            <Check size={16} className="text-blue-600" />
-                          </div>
-                        )}
-                      </td>
-                      <td rowSpan={2} className={cn(
-                        "border border-black p-1 text-[#ed1c24] text-xl relative",
-                        match.winner && match.winner.trim().toLowerCase() === match.redName.trim().toLowerCase() && "bg-red-50"
-                      )}>
-                        HONG
-                        {match.winner && match.winner.trim().toLowerCase() === match.redName.trim().toLowerCase() && (
-                          <div className="absolute top-1 right-1">
-                            <Check size={16} className="text-red-600" />
-                          </div>
-                        )}
-                      </td>
-                    </>
-                  )}
-                  {idx === 2 && (
-                    <td colSpan={2} className="border border-black p-1 text-sm">Round Won</td>
-                  )}
-                  {idx === 3 && (
-                    <>
-                      <td rowSpan={3} className="border border-black p-1"></td>
-                      <td rowSpan={3} className="border border-black p-1"></td>
-                    </>
-                  )}
-                  
-                  <td className="border border-black p-1 text-left px-2">{reason}</td>
-                  <td className="border border-black p-1">A/R</td>
-                  <td className="border border-black p-1">A/R</td>
-                  <td className="border border-black p-1">A/R</td>
+          <div className="flex gap-2 mb-1 print:mb-1 w-full justify-between items-stretch">
+            
+            {/* Chung Video Replay */}
+            <table className="w-[35%] border-collapse border border-black text-xs text-center font-bold table-fixed">
+              <colgroup>
+                <col style={{ width: '64%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '12%' }} />
+              </colgroup>
+              <thead>
+                <tr className="h-[36px]">
+                  <th className="border border-black p-1 bg-[#00a2e8] text-white text-left px-2">Reason</th>
+                  <th colSpan={3} className="border border-black p-1 bg-[#00a2e8] text-white leading-tight">Chung Video<br/>Replay</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {[
+                  "2 Points \"Technical\"",
+                  "Head Requested",
+                  "Gam-Jeum & Point",
+                  "Technical Issue",
+                  "Requested by CR",
+                  "Rejected by CR"
+                ].map((reason, idx) => (
+                  <tr key={idx} className="h-[20px] print:h-[20px]">
+                    <td className="border border-black p-1 text-left px-2 truncate">{reason}</td>
+                    <td className="border border-black p-1">A/R</td>
+                    <td className="border border-black p-1">A/R</td>
+                    <td className="border border-black p-1">A/R</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Match Winner */}
+            <table className="w-[28%] border-collapse border border-black text-xs text-center font-bold table-fixed">
+              <colgroup>
+                <col style={{ width: '50%' }} />
+                <col style={{ width: '50%' }} />
+              </colgroup>
+              <thead>
+                <tr className="h-[36px]">
+                  <th colSpan={2} className="border border-black p-1 bg-white text-black">Match Winner</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="h-[40px] print:h-[40px]">
+                  <td className={cn(
+                    "border border-black p-1 text-[#00a2e8] text-xl relative",
+                    match.winner && match.winner.trim().toLowerCase() === match.blueName.trim().toLowerCase() && "bg-blue-50"
+                  )}>
+                    CHUNG
+                    {match.winner && match.winner.trim().toLowerCase() === match.blueName.trim().toLowerCase() && (
+                      <div className="absolute top-1 right-1">
+                        <Check size={16} className="text-blue-600" />
+                      </div>
+                    )}
+                  </td>
+                  <td className={cn(
+                    "border border-black p-1 text-[#ed1c24] text-xl relative",
+                    match.winner && match.winner.trim().toLowerCase() === match.redName.trim().toLowerCase() && "bg-red-50"
+                  )}>
+                    HONG
+                    {match.winner && match.winner.trim().toLowerCase() === match.redName.trim().toLowerCase() && (
+                      <div className="absolute top-1 right-1">
+                        <Check size={16} className="text-red-600" />
+                      </div>
+                    )}
+                  </td>
+                </tr>
+                <tr className="h-[20px] print:h-[20px]">
+                  <td colSpan={2} className="border border-black p-1 text-sm bg-gray-100">Round Won</td>
+                </tr>
+                <tr className="h-[60px] print:h-[60px]">
+                  <td className="border border-black p-1"></td>
+                  <td className="border border-black p-1"></td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Hong Video Replay */}
+            <table className="w-[35%] border-collapse border border-black text-xs text-center font-bold table-fixed">
+              <colgroup>
+                <col style={{ width: '64%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '12%' }} />
+              </colgroup>
+              <thead>
+                <tr className="h-[36px]">
+                  <th className="border border-black p-1 bg-[#ed1c24] text-white text-left px-2">Reason</th>
+                  <th colSpan={3} className="border border-black p-1 bg-[#ed1c24] text-white leading-tight">Hong Video<br/>Replay</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  "2 Points \"Technical\"",
+                  "Head Requested",
+                  "Gam-Jeum & Point",
+                  "Technical Issue",
+                  "Requested by CR",
+                  "Rejected by CR"
+                ].map((reason, idx) => (
+                  <tr key={idx} className="h-[20px] print:h-[20px]">
+                    <td className="border border-black p-1 text-left px-2 truncate">{reason}</td>
+                    <td className="border border-black p-1">A/R</td>
+                    <td className="border border-black p-1">A/R</td>
+                    <td className="border border-black p-1">A/R</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+          </div>
 
           {/* Yellow Cards */}
           <div className="flex gap-4 mb-0 print:mb-0">
