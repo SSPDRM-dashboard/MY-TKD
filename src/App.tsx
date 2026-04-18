@@ -4175,11 +4175,10 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
             {ringName}
           </div>
           <div>
-            <span className="font-bold text-sm uppercase tracking-wider block leading-none">Ring {ringName}</span>
+            <span className="font-bold text-sm uppercase tracking-wider block leading-none mt-1">Ring {ringName}</span>
             <div className="flex items-center gap-2 mt-1">
               {ring.totalBouts && (
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                  {current ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : 0} / {ring.totalBouts} Bouts
+                <span className="flex items-center gap-1">
                   {onUpdateTotalBouts && (
                     <button 
                       onClick={(e) => { e.stopPropagation(); onUpdateTotalBouts(ring.totalBouts! + 1); }}
