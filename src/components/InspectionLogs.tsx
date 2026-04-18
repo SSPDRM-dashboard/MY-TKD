@@ -1,20 +1,34 @@
 import React, { useState } from 'react';
-import { MatchData } from '../types';
+import { MatchData, RingStatus, MatchHistoryItem } from '../types';
 import { Search, CheckCircle2, XCircle } from 'lucide-react';
 import { cn, formatBoutNumber } from '../lib/utils';
 import { INSPECTION_ITEMS } from './TASheet';
 
 interface InspectionLogsProps {
   boutQueue: { id: string, data: MatchData }[];
+  rings: RingStatus[];
+  matchHistory: MatchHistoryItem[];
   boutNumberingMode?: 'numeric' | 'alphanumeric';
 }
 
-export function InspectionLogs({ boutQueue, boutNumberingMode = 'alphanumeric' }: InspectionLogsProps) {
+export function InspectionLogs({ boutQueue, rings, matchHistory, boutNumberingMode = 'alphanumeric' }: InspectionLogsProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Collect matches from queue and rings
+  const allMatchesMap = new Map<string, MatchData>();
+  
+  // 1. Queue
+  boutQueue.forEach(q => allMatchesMap.set(q.data.bout.toString(), q.data));
+  
+  // 2. Rings
+  rings.forEach(ring => {
+    if (ring.currentBout) allMatchesMap.set(ring.currentBout.bout.toString(), ring.currentBout);
+    if (ring.onDeck) allMatchesMap.set(ring.onDeck.bout.toString(), ring.onDeck);
+    if (ring.inTheHole) allMatchesMap.set(ring.inTheHole.bout.toString(), ring.inTheHole);
+  });
+
   // Filter matches that have at least one inspection
-  const inspectedMatches = boutQueue
-    .map(q => q.data)
+  const inspectedMatches = Array.from(allMatchesMap.values())
     .filter(m => m.blue_inspected || m.red_inspected)
     .filter(m => {
       if (!searchQuery) return true;

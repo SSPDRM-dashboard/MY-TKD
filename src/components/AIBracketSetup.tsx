@@ -526,34 +526,12 @@ export function AIBracketSetup({
           nextBout: normalizeBoutNumber(m.nextBout || ''),
           eventId: currentEventId,
           eventName: currentEvent.name,
-          categoryName: "Auto-Extracted",
+          categoryName: "Auto-Extracted from File",
           createdAt: serverTimestamp()
         });
       });
       
-      // 2. Add Matches to Queue
-      const sortedMatches = [...previewData.matches].sort((a, b) => {
-        const aNum = parseInt((a.bout || '').toString().replace(/[^0-9]/g, '')) || 0;
-        const bNum = parseInt((b.bout || '').toString().replace(/[^0-9]/g, '')) || 0;
-        return aNum - bNum;
-      });
-
-      const newQueueItems = sortedMatches.map(m => ({
-        id: `ai_${currentEventId}_${m.bout}_${Math.random().toString(36).substr(2, 5)}`,
-        data: { 
-          ...m, 
-          bout: normalizeBoutNumber(m.bout || ''),
-          eventId: currentEventId 
-        }
-      }));
-      
-      setBoutQueue(prev => {
-        const updated = [...prev, ...newQueueItems];
-        localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
-        return updated;
-      });
-
-      // 3. Update Ring Total Bouts
+      // 2. Update Ring Total Bouts (based on matches and mappings to keep ring sizes accurate)
       const ringTotals = new Map<number, number>();
       
       // Helper to get ring from bout prefix or number
@@ -614,13 +592,13 @@ export function AIBracketSetup({
         .map(([ring, total]) => `Ring ${ring}: ${total} bouts`)
         .join('\n');
 
-      alert(`Bracket matches and mappings successfully applied!\n\nCalculated Totals:\n${totalBoutsMsg}`);
+      alert(`Bracket mappings successfully applied!\n\nCheck the Active Advancement Logic panel to see the mapped logic.`);
       if (onSuccess) onSuccess();
       setPreviewData(null);
       setFile(null);
     } catch (err) {
       console.error("Apply Error:", err);
-      setError("Failed to save data to the system.");
+      setError("Failed to save mappings to the system.");
     } finally {
       setIsProcessing(false);
     }

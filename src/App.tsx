@@ -606,7 +606,7 @@ export default function App() {
   const [boutNumberingMode, setBoutNumberingMode] = useSyncedState<'numeric' | 'alphanumeric'>('tkd_bout_numbering_mode', 'alphanumeric');
   const [categories, setCategories] = useSyncedState<string[]>('tkd_categories', ["Junior Male -45kg", "Junior Female -42kg", "Senior Male -54kg"]);
   const [clubs, setClubs] = useSyncedState<string[]>('tkd_clubs', ["KST", "TKT", "PST", "MTA"]);
-  const [googleSheetUrl, setGoogleSheetUrl] = useSyncedState<string>('tkd_sheet_url', '');
+  const [googleSheetUrl, setGoogleSheetUrl] = useSyncedState<string>('tkd_sheet_url', 'https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/edit?usp=sharing');
   const [isSheetSaved, setIsSheetSaved] = useState(false);
   const [showTotalBoutsPublic, setShowTotalBoutsPublic] = useSyncedState<boolean>('tkd_show_total_bouts_public', true);
 
@@ -2065,6 +2065,12 @@ export default function App() {
                 badge={rings.find(r => r.ringNumber === Number(user?.assignedRing))?.totalBouts || 0}
               />
               <NavItem 
+                icon={<Search size={20} />} 
+                label="Search Winner" 
+                active={activeTab === 'search-winner'} 
+                onClick={() => setActiveTab('search-winner')} 
+              />
+              <NavItem 
                 icon={<Database size={20} />} 
                 label="Data Sync" 
                 active={activeTab === 'data-sync'} 
@@ -2672,7 +2678,7 @@ export default function App() {
 
           {activeTab === 'inspection-logs' && user?.role === 'admin' && (
             <div className="max-w-5xl mx-auto">
-              <InspectionLogs boutQueue={boutQueue} boutNumberingMode={boutNumberingMode} />
+              <InspectionLogs boutQueue={boutQueue} rings={rings} matchHistory={matchHistory} boutNumberingMode={boutNumberingMode} />
             </div>
           )}
 
@@ -3218,11 +3224,18 @@ export default function App() {
               <span className="text-[10px] font-bold">Ring {getRingName(Number(user?.assignedRing) || 1)}</span>
             </button>
             <button 
+              onClick={() => setActiveTab('search-winner')}
+              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'search-winner' ? "text-red-600" : "text-slate-400")}
+            >
+              <Search size={24} />
+              <span className="text-[10px] font-bold">Search</span>
+            </button>
+            <button 
               onClick={() => setActiveTab('general')}
               className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'general' ? "text-red-600" : "text-slate-400")}
             >
               <Monitor size={24} />
-              <span className="text-[10px] font-bold">Live View</span>
+              <span className="text-[10px] font-bold">Live</span>
             </button>
           </>
         )}
@@ -4267,9 +4280,9 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                 <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded uppercase">Live</span>
               </div>
               
-              <div className="flex items-center gap-4">
+              <div className="flex items-start gap-4">
                 <FighterSide color="blue" name={current.blue_name} club={current.blue_club} privacy={current.privacy_mode} inspected={current.blue_inspected} />
-                <div className="text-xs font-black text-slate-300 italic">VS</div>
+                <div className="text-xs font-black text-slate-300 italic mt-6">VS</div>
                 <FighterSide color="red" name={current.red_name} club={current.red_club} privacy={current.privacy_mode} inspected={current.red_inspected} />
               </div>
               
@@ -4698,8 +4711,8 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                         <span className="text-[8px] font-bold text-blue-200 uppercase leading-none">{b?.data.blue_club || "---"}</span>
                         <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{b?.data.blue_name || "---"}</span>
                         {b?.data.blue_inspected && (
-                          <div className="absolute bottom-1 right-1">
-                            <span className="text-[8px] font-black text-green-400 uppercase tracking-tighter">INSPECTED</span>
+                          <div className="absolute bottom-1 right-2">
+                            <span className="text-[8px] font-black text-green-400 uppercase tracking-tighter">INSPECTION</span>
                           </div>
                         )}
                       </div>
@@ -4707,8 +4720,8 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                         <span className="text-[8px] font-bold text-red-200 uppercase leading-none">{b?.data.red_club || "---"}</span>
                         <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{b?.data.red_name || "---"}</span>
                         {b?.data.red_inspected && (
-                          <div className="absolute bottom-1 right-1">
-                            <span className="text-[8px] font-black text-green-400 uppercase tracking-tighter">INSPECTED</span>
+                          <div className="absolute bottom-1 right-2">
+                            <span className="text-[8px] font-black text-green-400 uppercase tracking-tighter">INSPECTION</span>
                           </div>
                         )}
                       </div>
@@ -5210,9 +5223,9 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                 <span className="text-[20px] font-black text-white uppercase tracking-widest">{current.category}</span>
               </div>
               
-              <div className="flex items-center gap-6">
+              <div className="flex items-start gap-6">
                 <PublicFighterSide color="blue" name={current.blue_name} club={current.blue_club} privacy={current.privacy_mode} />
-                <div className="text-xl font-black text-white italic">VS</div>
+                <div className="text-xl font-black text-white italic mt-4">VS</div>
                 <PublicFighterSide color="red" name={current.red_name} club={current.red_club} privacy={current.privacy_mode} />
               </div>
             </div>
