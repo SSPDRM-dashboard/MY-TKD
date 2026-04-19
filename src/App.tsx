@@ -470,7 +470,7 @@ export default function App() {
       autoPropagateInterval = window.setInterval(() => {
         // Don't log on auto-run to avoid spamming console
         handleForcePropagate(null, true); 
-      }, 900000); // 15 minutes
+      }, 300000); // 5 minutes
     }
 
     return () => {
@@ -604,11 +604,12 @@ export default function App() {
   const [finalBoutCheck, setFinalBoutCheck] = useState<{ ringNumber: number; remainingCount: number } | null>(null);
   const [ringNamingMode, setRingNamingMode] = useState<'number' | 'alphabet'>('number');
   const [boutNumberingMode, setBoutNumberingMode] = useSyncedState<'numeric' | 'alphanumeric'>('tkd_bout_numbering_mode', 'alphanumeric');
-  const [categories, setCategories] = useSyncedState<string[]>('tkd_categories', ["Junior Male -45kg", "Junior Female -42kg", "Senior Male -54kg"]);
+  const [categories, setCategories] = useSyncedState<string[]>('tkd_categories', ["Junior Male -45kg", "Junior Female -42kg", "Senior Male -54kg", "POOMSAE FREESTYLE"]);
   const [clubs, setClubs] = useSyncedState<string[]>('tkd_clubs', ["KST", "TKT", "PST", "MTA"]);
   const [googleSheetUrl, setGoogleSheetUrl] = useSyncedState<string>('tkd_sheet_url', 'https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/edit?usp=sharing');
   const [isSheetSaved, setIsSheetSaved] = useState(false);
   const [showTotalBoutsPublic, setShowTotalBoutsPublic] = useSyncedState<boolean>('tkd_show_total_bouts_public', true);
+  const [showOnlyActiveRings, setShowOnlyActiveRings] = useSyncedState<boolean>('tkd_show_only_active_rings', false);
 
   // Persistence & Cross-tab Sync handled by useSyncedState
 
@@ -1354,8 +1355,8 @@ export default function App() {
         bout: normalizeBoutNumber(boutNumber),
         category: currentBout.category,
         winner: winnerName || winner,
-        winnerClub: winner === 'Blue' ? currentBout.blue_club : currentBout.red_club,
-        winnerSide: winner as 'Blue' | 'Red',
+        winnerClub: winner === 'Blue' ? currentBout.blue_club : (winner === 'Red' ? currentBout.red_club : '-'),
+        winnerSide: (winner === 'Blue' || winner === 'Red') ? (winner as 'Blue' | 'Red') : undefined,
         eventId: currentEventId
       };
       
@@ -1965,6 +1966,7 @@ export default function App() {
         isSpectator={true}
         showTotalBouts={showTotalBoutsPublic}
         boutNumberingMode={boutNumberingMode}
+        showOnlyActiveRings={showOnlyActiveRings}
       />
     );
   }
@@ -1978,6 +1980,7 @@ export default function App() {
         onBack={() => setIsPublicView(false)} 
         showTotalBouts={showTotalBoutsPublic}
         boutNumberingMode={boutNumberingMode}
+        showOnlyActiveRings={showOnlyActiveRings}
       />
     );
   }
@@ -2225,13 +2228,18 @@ export default function App() {
             </div>
             
             <div className="flex flex-wrap items-center gap-2 md:gap-4">
-              {events.length > 0 && currentEventId && user?.role === 'admin' ? (
+              {events.length > 0 && user?.role === 'admin' ? (
                 <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                  <div className={cn("w-1.5 h-1.5 rounded-full", currentEventId ? "bg-green-500 animate-pulse" : "bg-slate-300")} />
                   <select
-                    value={currentEventId}
+                    value={currentEventId || ''}
                     onChange={(e) => {
                       const id = e.target.value;
+                      if (!id) {
+                        setCurrentEventId(null);
+                        localStorage.removeItem('tkd_current_event');
+                        return;
+                      }
                       setCurrentEventId(id);
                       localStorage.setItem('tkd_current_event', id);
                       const event = events.find(ev => ev.id === id);
@@ -2242,6 +2250,7 @@ export default function App() {
                     }}
                     className="px-4 py-2 bg-slate-100 rounded-xl text-[10px] md:text-xs font-black text-slate-600 border border-slate-200 uppercase tracking-widest focus:ring-2 focus:ring-red-500 outline-none"
                   >
+                    <option value="">Select Tournament Event...</option>
                     {events.map((e) => (
                       <option key={e.id} value={e.id}>{e.name}</option>
                     ))}
@@ -2444,6 +2453,7 @@ export default function App() {
               onAnnouncementClose={handleAnnouncementClose}
               currentEventId={currentEventId}
               boutNumberingMode={boutNumberingMode}
+              showOnlyActiveRings={showOnlyActiveRings}
             />
           )}
 
@@ -2456,6 +2466,7 @@ export default function App() {
               onAnnouncementClose={handleAnnouncementClose}
               currentEventId={currentEventId}
               boutNumberingMode={boutNumberingMode}
+              showOnlyActiveRings={showOnlyActiveRings}
             />
           )}
 
@@ -2668,6 +2679,15 @@ export default function App() {
             <AIBracketSetup 
               currentEventId={currentEventId}
               events={events}
+              onSelectEvent={(id) => {
+                setCurrentEventId(id);
+                localStorage.setItem('tkd_current_event', id);
+                const event = events.find(ev => ev.id === id);
+                if (event && event.sheetUrl) {
+                  setGoogleSheetUrl(event.sheetUrl);
+                  localStorage.setItem('tkd_sheet_url', event.sheetUrl);
+                }
+              }}
               onSuccess={() => setActiveTab('mapping')}
               rings={rings}
               setRings={setRings}
@@ -2796,6 +2816,32 @@ export default function App() {
                           )}
                         >
                           Hide
+                        </button>
+                      </div>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-slate-700">Display Filters</p>
+                        <p className="text-[10px] text-slate-500">Show only rings with active bouts</p>
+                      </div>
+                      <div className="flex bg-slate-200 p-1 rounded-lg">
+                        <button 
+                          onClick={() => setShowOnlyActiveRings(false)}
+                          className={cn(
+                            "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                            !showOnlyActiveRings ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                          )}
+                        >
+                          All Rings
+                        </button>
+                        <button 
+                          onClick={() => setShowOnlyActiveRings(true)}
+                          className={cn(
+                            "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                            showOnlyActiveRings ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                          )}
+                        >
+                          Active Only
                         </button>
                       </div>
                     </div>
@@ -3799,6 +3845,15 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
     };
   });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const isFreestyle = formData.category?.toUpperCase().includes('POOMSAE FREESTYLE');
+
+  const setFreestyle = (checked: boolean) => {
+    if (checked) {
+      setFormData(prev => ({ ...prev, category: 'POOMSAE FREESTYLE' }));
+    } else if (formData.category === 'POOMSAE FREESTYLE') {
+      setFormData(prev => ({ ...prev, category: '' }));
+    }
+  };
 
   const handleRingChange = (newRing: number) => {
     setFormData(prev => ({
@@ -3963,36 +4018,57 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
               </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Category / Weight</label>
-            <input 
-              type="text" 
-              list="new-bout-cats"
-              value={formData.category}
-              onChange={(e) => setFormData({...formData, category: e.target.value})}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
-              placeholder="Select or type category (e.g. -45kg)"
-              required
-              autoComplete="off"
-            />
-            <datalist id="new-bout-cats">
-              {categories.map(cat => <option key={cat} value={cat} />)}
-            </datalist>
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl transition-all hover:border-slate-300">
+              <input 
+                type="checkbox" 
+                id="is-freestyle-modal"
+                checked={isFreestyle}
+                onChange={(e) => setFreestyle(e.target.checked)}
+                className="w-5 h-5 rounded-lg border-slate-300 text-red-600 focus:ring-red-500 transition-all cursor-pointer"
+              />
+              <label htmlFor="is-freestyle-modal" className="flex flex-col cursor-pointer select-none">
+                <span className="text-xs font-black text-slate-900 uppercase tracking-tight">Freestyle Performance</span>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Solo entry (No Red Corner)</span>
+              </label>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Category / Weight</label>
+              <input 
+                type="text" 
+                list="new-bout-cats"
+                value={formData.category}
+                onChange={(e) => setFormData({...formData, category: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+                placeholder="Select or type category (e.g. -45kg)"
+                required
+                autoComplete="off"
+              />
+              <datalist id="new-bout-cats">
+                {categories.map(cat => <option key={cat} value={cat} />)}
+              </datalist>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             {/* Blue Corner */}
-            <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100 space-y-3">
+            <div className={cn(
+              "p-4 bg-blue-50/50 rounded-2xl border border-blue-100 space-y-3 transition-all",
+              isFreestyle ? "col-span-2" : "col-span-1"
+            )}>
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-2 h-2 bg-blue-600 rounded-full" />
-                <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Blue Corner</span>
+                <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">
+                  {isFreestyle ? "Performer Details" : "Blue Corner"}
+                </span>
               </div>
               <input 
                 type="text" 
                 value={formData.blue_name}
                 onChange={(e) => setFormData({...formData, blue_name: e.target.value})}
                 className="w-full px-3 py-2 bg-white border border-blue-200 rounded-xl text-sm font-bold"
-                placeholder="Player Name"
+                placeholder={isFreestyle ? "Performer Name" : "Player Name"}
                 required
                 autoComplete="off"
               />
@@ -4009,31 +4085,33 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
             </div>
 
             {/* Red Corner */}
-            <div className="p-4 bg-red-50/50 rounded-2xl border border-red-100 space-y-3">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-2 h-2 bg-red-600 rounded-full" />
-                <span className="text-[10px] font-black text-red-600 uppercase tracking-widest">Red Corner</span>
+            {!isFreestyle && (
+              <div className="p-4 bg-red-50/50 rounded-2xl border border-red-100 space-y-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-2 h-2 bg-red-600 rounded-full" />
+                  <span className="text-[10px] font-black text-red-600 uppercase tracking-widest">Red Corner</span>
+                </div>
+                <input 
+                  type="text" 
+                  value={formData.red_name}
+                  onChange={(e) => setFormData({...formData, red_name: e.target.value})}
+                  className="w-full px-3 py-2 bg-white border border-red-200 rounded-xl text-sm font-bold"
+                  placeholder="Player Name"
+                  required={!isFreestyle}
+                  autoComplete="off"
+                />
+                <input 
+                  type="text" 
+                  list="new-bout-clubs"
+                  value={formData.red_club}
+                  onChange={(e) => setFormData({...formData, red_club: e.target.value})}
+                  className="w-full px-3 py-2 bg-white border border-red-200 rounded-xl text-sm font-bold"
+                  placeholder="Club Name"
+                  required={!isFreestyle}
+                  autoComplete="off"
+                />
               </div>
-              <input 
-                type="text" 
-                value={formData.red_name}
-                onChange={(e) => setFormData({...formData, red_name: e.target.value})}
-                className="w-full px-3 py-2 bg-white border border-red-200 rounded-xl text-sm font-bold"
-                placeholder="Player Name"
-                required
-                autoComplete="off"
-              />
-              <input 
-                type="text" 
-                list="new-bout-clubs"
-                value={formData.red_club}
-                onChange={(e) => setFormData({...formData, red_club: e.target.value})}
-                className="w-full px-3 py-2 bg-white border border-red-200 rounded-xl text-sm font-bold"
-                placeholder="Club Name"
-                required
-                autoComplete="off"
-              />
-            </div>
+            )}
           </div>
           <datalist id="new-bout-clubs">
             {clubs.map(club => <option key={club} value={club} />)}
@@ -4165,6 +4243,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
   
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
   
+  const isFreestyle = current?.category?.toUpperCase().includes('POOMSAE FREESTYLE');
   const progress = ring.totalBouts && current ? Math.min(100, (getBoutNumber(current.bout) / ring.totalBouts) * 100) : 0;
 
   return (
@@ -4283,8 +4362,12 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
               
               <div className="flex items-start gap-4">
                 <FighterSide color="blue" name={current.blue_name} club={current.blue_club} privacy={current.privacy_mode} inspected={current.blue_inspected} />
-                <div className="text-xs font-black text-slate-300 italic mt-6">VS</div>
-                <FighterSide color="red" name={current.red_name} club={current.red_club} privacy={current.privacy_mode} inspected={current.red_inspected} />
+                {!isFreestyle && (
+                  <>
+                    <div className="text-xs font-black text-slate-300 italic mt-6">VS</div>
+                    <FighterSide color="red" name={current.red_name} club={current.red_club} privacy={current.privacy_mode} inspected={current.red_inspected} />
+                  </>
+                )}
               </div>
               
               <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
@@ -4299,21 +4382,36 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
 
               {onWinnerSelect && (
                 <div className="pt-4 border-t border-slate-100">
-                  <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Select Winner</p>
-                  <div className="flex gap-3 mb-4">
-                    <button 
-                      onClick={() => onWinnerSelect('Blue')}
-                      className="flex-1 py-3 md:py-2 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl md:rounded-lg font-black md:font-bold text-xs uppercase transition-all border border-blue-200 hover:border-blue-600 active:scale-95 px-2 truncate"
-                    >
-                      {current.blue_name || 'Blue'} Wins
-                    </button>
-                    <button 
-                      onClick={() => onWinnerSelect('Red')}
-                      className="flex-1 py-3 md:py-2 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-xl md:rounded-lg font-black md:font-bold text-xs uppercase transition-all border border-red-200 hover:border-red-600 active:scale-95 px-2 truncate"
-                    >
-                      {current.red_name || 'Red'} Wins
-                    </button>
-                  </div>
+                  {isFreestyle ? (
+                    <div className="space-y-4">
+                      <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Poomsae Performance</p>
+                      <button 
+                        onClick={() => onWinnerSelect('Completed')}
+                        className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-green-200 transition-all active:scale-95 flex items-center justify-center gap-2"
+                      >
+                        <CheckCircle2 size={18} />
+                        Mark as Completed
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Select Winner</p>
+                      <div className="flex gap-3 mb-4">
+                        <button 
+                          onClick={() => onWinnerSelect('Blue')}
+                          className="flex-1 py-3 md:py-2 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl md:rounded-lg font-black md:font-bold text-xs uppercase transition-all border border-blue-200 hover:border-blue-600 active:scale-95 px-2 truncate"
+                        >
+                          {current.blue_name || 'Blue'} Wins
+                        </button>
+                        <button 
+                          onClick={() => onWinnerSelect('Red')}
+                          className="flex-1 py-3 md:py-2 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-xl md:rounded-lg font-black md:font-bold text-xs uppercase transition-all border border-red-200 hover:border-red-600 active:scale-95 px-2 truncate"
+                        >
+                          {current.red_name || 'Red'} Wins
+                        </button>
+                      </div>
+                    </>
+                  )}
                   
                   {onTransferSelect && (
                     <div className="space-y-2">
@@ -4566,12 +4664,14 @@ interface PublicRingCardProps {
   boutNumberingMode?: 'numeric' | 'alphanumeric';
 }
 
-function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric' }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric' }) {
+function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
   const ringsPerPage = 4;
-  const totalPages = Math.ceil(rings.length / ringsPerPage);
+  
+  const effectiveRings = showOnlyActiveRings ? rings.filter(r => r.currentBout) : rings;
+  const totalPages = Math.ceil(effectiveRings.length / ringsPerPage);
 
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
@@ -4607,8 +4707,8 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
   }, [isFullscreen, totalPages]);
 
   const displayedRings = isFullscreen 
-    ? rings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
-    : rings;
+    ? effectiveRings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
+    : effectiveRings;
 
   return (
     <div 
@@ -4659,6 +4759,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
           const current = ring.currentBout;
           const standby = ringQueue;
           const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
+          const isFreestyleCurrent = current?.category?.toUpperCase().includes('POOMSAE FREESTYLE');
           
           return (
             <div key={ring.ringNumber} className="flex gap-1 h-48">
@@ -4681,14 +4782,19 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                   </div>
                   {/* Players */}
                   <div className="col-span-10 flex flex-col">
-                    <div className="flex-1 bg-blue-600/90 flex flex-col justify-center px-4 border-b border-white/10 relative">
+                    <div className={cn(
+                      "flex-1 bg-blue-600/90 flex flex-col justify-center px-4 relative",
+                      !isFreestyleCurrent && "border-b border-white/10"
+                    )}>
                       <p className="text-[10px] font-bold text-black uppercase leading-none mb-1">{current?.blue_club || "---"}</p>
                       <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current?.blue_name || "---"}</h4>
                     </div>
-                    <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
-                      <p className="text-[10px] font-bold text-black uppercase leading-none mb-1">{current?.red_club || "---"}</p>
-                      <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current?.red_name || "---"}</h4>
-                    </div>
+                    {!isFreestyleCurrent && (
+                      <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
+                        <p className="text-[10px] font-bold text-black uppercase leading-none mb-1">{current?.red_club || "---"}</p>
+                        <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current?.red_name || "---"}</h4>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -4739,12 +4845,14 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
   );
 }
 
-function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric' }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric' }) {
+function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
   const ringsPerPage = 3;
-  const totalPages = Math.ceil(rings.length / ringsPerPage);
+
+  const effectiveRings = showOnlyActiveRings ? rings.filter(r => r.currentBout) : rings;
+  const totalPages = Math.ceil(effectiveRings.length / ringsPerPage);
 
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
@@ -4781,8 +4889,8 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
   }, [isFullscreen, totalPages]);
 
   const displayedRings = isFullscreen 
-    ? rings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
-    : rings;
+    ? effectiveRings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
+    : effectiveRings;
 
   const getDynamicFontSize = (name: string) => {
     const len = name.length;
@@ -4870,6 +4978,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
             .slice(0, 3);
           const current = ring.currentBout;
           const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
+          const isFreestyleCurrent = current?.category?.toUpperCase().includes('POOMSAE FREESTYLE');
           
           return (
             <div key={ring.ringNumber} className="grid grid-cols-12 gap-8 items-center">
@@ -4895,7 +5004,10 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                     isFullscreen ? "h-36" : "h-40"
                   )}>
                     {/* Blue Side */}
-                    <div className="flex-1 h-full bg-blue-600 flex flex-col justify-center px-10 relative overflow-hidden group">
+                    <div className={cn(
+                      "flex-1 h-full bg-blue-600 flex flex-col justify-center px-10 relative overflow-hidden group transition-all duration-500",
+                      isFreestyleCurrent ? "flex-[10]" : "flex-1"
+                    )}>
                       <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/20 to-transparent pointer-events-none" />
                       <div className="absolute -right-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">BLUE</div>
                       <p className="text-[15px] font-black text-black uppercase tracking-[0.2em] mb-1 relative z-10">{current?.blue_club || "---"}</p>
@@ -4908,24 +5020,29 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                     </div>
 
                     {/* Bout Number Circle */}
-                    <div className="z-20 -mx-10 w-[120px] h-[120px] bg-white rounded-full border-[10px] border-slate-800 flex items-center justify-center shadow-2xl transform hover:scale-105 transition-transform">
+                    <div className={cn(
+                      "z-20 w-[120px] h-[120px] bg-white rounded-full border-[10px] border-slate-800 flex items-center justify-center shadow-2xl transform hover:scale-105 transition-all",
+                      isFreestyleCurrent ? "ml-auto mr-10" : "-mx-10"
+                    )}>
                       <span className="text-[36px] font-black text-slate-900 leading-none">
                         {current ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
                       </span>
                     </div>
 
                     {/* Red Side */}
-                    <div className="flex-1 h-full bg-red-600 flex flex-col justify-center px-10 text-right relative overflow-hidden group">
-                      <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/20 to-transparent pointer-events-none" />
-                      <div className="absolute -left-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">RED</div>
-                      <p className="text-[15px] font-black text-black uppercase tracking-[0.2em] mb-1 relative z-10">{current?.red_club || "---"}</p>
-                      <h4 className={cn(
-                        "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
-                        getDynamicFontSize(current?.red_name || "")
-                      )}>
-                        {current?.privacy_mode ? "---" : (current?.red_name || "---")}
-                      </h4>
-                    </div>
+                    {!isFreestyleCurrent && (
+                      <div className="flex-1 h-full bg-red-600 flex flex-col justify-center px-10 text-right relative overflow-hidden group">
+                        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/20 to-transparent pointer-events-none" />
+                        <div className="absolute -left-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">RED</div>
+                        <p className="text-[15px] font-black text-black uppercase tracking-[0.2em] mb-1 relative z-10">{current?.red_club || "---"}</p>
+                        <h4 className={cn(
+                          "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
+                          getDynamicFontSize(current?.red_name || "")
+                        )}>
+                          {current?.privacy_mode ? "---" : (current?.red_name || "---")}
+                        </h4>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -5009,7 +5126,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
   );
 }
 
-function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator, showTotalBouts = true, boutNumberingMode = 'alphanumeric' }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', onBack: () => void, isSpectator?: boolean, showTotalBouts?: boolean, boutNumberingMode?: 'numeric' | 'alphanumeric' }) {
+function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator, showTotalBouts = true, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', onBack: () => void, isSpectator?: boolean, showTotalBouts?: boolean, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
@@ -5033,7 +5150,9 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
   };
 
   const ringsPerPage = 9; // Show 9 rings per page in fullscreen
-  const totalPages = Math.ceil(rings.length / ringsPerPage);
+  
+  const effectiveRings = showOnlyActiveRings ? rings.filter(r => r.currentBout) : rings;
+  const totalPages = Math.ceil(effectiveRings.length / ringsPerPage);
 
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
@@ -5069,8 +5188,8 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
   }, [isFullscreen, totalPages]);
 
   const displayedRings = isFullscreen 
-    ? rings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
-    : rings;
+    ? effectiveRings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
+    : effectiveRings;
 
   return (
     <div ref={containerRef} className="min-h-[100dvh] bg-slate-900 text-white font-sans overflow-x-hidden flex flex-col">
@@ -5226,8 +5345,12 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
               
               <div className="flex items-start gap-6">
                 <PublicFighterSide color="blue" name={current.blue_name} club={current.blue_club} privacy={current.privacy_mode} />
-                <div className="text-xl font-black text-white italic mt-4">VS</div>
-                <PublicFighterSide color="red" name={current.red_name} club={current.red_club} privacy={current.privacy_mode} />
+                {!current.category?.toUpperCase().includes('POOMSAE FREESTYLE') && (
+                  <>
+                    <div className="text-xl font-black text-white italic mt-4">VS</div>
+                    <PublicFighterSide color="red" name={current.red_name} club={current.red_club} privacy={current.privacy_mode} />
+                  </>
+                )}
               </div>
             </div>
           </>
@@ -5784,7 +5907,7 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
             <div>
               <p className="text-sm font-bold text-slate-800">{ev.name}</p>
               <p className="text-[10px] text-slate-500">
-                {ev.ringQuantity} Rings • Date: {ev.eventDate || 'Not set'} • Created: {new Date(ev.createdAt).toLocaleDateString()}
+                {ev.ringQuantity} Rings • Date: {ev.eventDate || 'Not set'}
               </p>
             </div>
             <button 

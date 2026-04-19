@@ -605,6 +605,15 @@ export function TASheet({
     const status = getMatchStatus(m);
     const isSigned = status.isSigned;
     
+    // Check if this match is currently in one of the active ring slots (Current, On Deck, In The Hole)
+    const isInActiveRing = rings.some(r => 
+      r.ringNumber.toString() === m.ringNo && (
+        (r.currentBout && r.currentBout.bout.toString() === m.matchNo) ||
+        (r.onDeck && r.onDeck.bout.toString() === m.matchNo) ||
+        (r.inTheHole && r.inTheHole.bout.toString() === m.matchNo)
+      )
+    );
+
     if (searchQuery) {
       return m.matchNo.toLowerCase().includes(searchQuery.toLowerCase());
     }
@@ -612,9 +621,14 @@ export function TASheet({
     // For TA account, hide matches based on the current view mode
     if (viewMode === 'signature') {
       // For player signature, remove match from list once both players have signed
+      // But if it's in the active ring and not both signed, it MUST be visible
       return !isSigned;
     } else {
-      // For TA sheet, remove match from list only after it has been printed
+      // For TA sheet, keep it if it's in an active ring and not fully signed/inspected,
+      // OR if it hasn't been printed yet.
+      if (isInActiveRing && !isSigned) return true;
+      
+      // Otherwise, hide if already printed
       return !isPrinted;
     }
   });
@@ -773,7 +787,7 @@ export function TASheet({
                 <button
                   onClick={() => onToggleAutoUpdateNames(true)}
                   className={cn("px-4 py-1 text-xs font-black uppercase tracking-widest rounded-lg transition-all", isAutoUpdateNames ? "bg-blue-600 shadow-sm text-white" : "text-slate-500 hover:text-slate-700")}
-                  title="Auto update every 15 minutes"
+                  title="Auto update every 5 minutes"
                 >
                   Auto
                 </button>

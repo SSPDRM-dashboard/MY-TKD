@@ -28,6 +28,7 @@ import Papa from 'papaparse';
 interface AIBracketSetupProps {
   currentEventId: string | null;
   events: EventData[];
+  onSelectEvent?: (id: string) => void;
   onSuccess?: () => void;
   rings: RingStatus[];
   setRings: (rings: RingStatus[]) => void;
@@ -38,6 +39,7 @@ interface AIBracketSetupProps {
 export function AIBracketSetup({ 
   currentEventId, 
   events, 
+  onSelectEvent,
   onSuccess, 
   rings, 
   setRings, 
@@ -586,13 +588,35 @@ export function AIBracketSetup({
         return r;
       }));
       
+      // 3. Update Bout Queue
+      setBoutQueue(prev => {
+        const newBouts = previewData.matches.map(m => ({
+          id: Math.random().toString(36).substr(2, 9),
+          data: {
+            ...m,
+            eventId: currentEventId
+          }
+        }));
+        
+        // Filter out matches that already exist (by Bout Number and Ring)
+        const uniqueNewBouts = newBouts.filter(nb => 
+          !prev.some(pb => 
+            pb.data.ring === nb.data.ring && 
+            pb.data.bout.toString() === nb.data.bout.toString() &&
+            pb.data.eventId === currentEventId
+          )
+        );
+
+        return [...prev, ...uniqueNewBouts];
+      });
+
       await Promise.all(mappingPromises);
       
       const totalBoutsMsg = Array.from(ringTotals.entries())
         .map(([ring, total]) => `Ring ${ring}: ${total} bouts`)
         .join('\n');
 
-      alert(`Bracket mappings successfully applied!\n\nCheck the Active Advancement Logic panel to see the mapped logic.`);
+      alert(`Bracket mappings and ${previewData.matches.length} matches successfully applied!\n\nCheck the Active Advancement Logic panel and the Match Queue.`);
       if (onSuccess) onSuccess();
       setPreviewData(null);
       setFile(null);
@@ -710,10 +734,35 @@ export function AIBracketSetup({
         </div>
 
         {!currentEventId ? (
-          <div className="p-12 bg-amber-50 border-2 border-dashed border-amber-200 rounded-[2rem] text-center">
-            <AlertCircle className="mx-auto text-amber-500 mb-4" size={48} />
-            <h3 className="text-lg font-bold text-amber-900">No Event Selected</h3>
-            <p className="text-sm text-amber-700 mt-2">Please select or create an event in the header before using AI Setup.</p>
+          <div className="p-12 bg-indigo-50 border-2 border-dashed border-indigo-200 rounded-[2rem] text-center space-y-6">
+            <div className="w-20 h-20 bg-indigo-100 rounded-3xl flex items-center justify-center mx-auto">
+              <RefreshCw className="text-indigo-600 animate-spin-slow" size={40} />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-2xl font-black text-indigo-900 uppercase tracking-tight italic">Select Active Event</h3>
+              <p className="text-sm text-indigo-700 font-medium">To use AI Setup, please link this session to a tournament event first.</p>
+            </div>
+            
+            <div className="flex flex-col items-center gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg mx-auto">
+                {events.map((e) => (
+                  <button
+                    key={e.id}
+                    onClick={() => onSelectEvent?.(e.id)}
+                    className="p-4 bg-white border border-indigo-100 rounded-2xl text-left hover:border-indigo-400 hover:shadow-lg transition-all group"
+                  >
+                    <p className="text-xs font-black text-indigo-600 uppercase tracking-widest mb-1 group-hover:text-indigo-700">{e.ringQuantity} Rings</p>
+                    <p className="text-sm font-bold text-slate-800">{e.name}</p>
+                  </button>
+                ))}
+              </div>
+              
+              {events.length === 0 && (
+                <div className="p-4 bg-white/50 border border-indigo-100 rounded-xl">
+                  <p className="text-xs font-bold text-indigo-500">No events found. Create one in Settings &gt; Event Management.</p>
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <div className="space-y-8">
@@ -1084,8 +1133,8 @@ export function AIBracketSetup({
 
               <div className="mt-12 flex flex-col items-center gap-4">
                 <p className="text-xs font-bold text-slate-500 text-center max-w-md">
-                  Applying will save the **Advancement Mappings** to the system database. 
-                  Initial player data should be imported via your Google Sheet.
+                  Applying will save the **Advancement Mappings** and load the **Initial Players** into the Match Queue. 
+                  You can also sync these to your Google Sheet using the button in the Results section.
                 </p>
                 <button 
                   onClick={handleApply}
