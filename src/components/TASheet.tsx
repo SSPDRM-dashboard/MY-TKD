@@ -173,7 +173,35 @@ export const INSPECTION_ITEMS = [
   }
 ];
 
-function PlayerChecklist({ color, checkedItems, onChange }: { color: 'blue' | 'red', checkedItems: Set<string>, onChange: (items: Set<string>) => void }) {
+export const POOMSAE_INSPECTION_ITEMS = [
+  {
+    category: "Uniform (Dobok) Compliance",
+    items: [
+      { id: "dobok_style", label: "Official Poomsae Dobok", desc: "Correct style for division/rank" },
+      { id: "v_neck", label: "V-Neck Color", desc: "Matches age/rank (Poom/Black/Yellow)" },
+      { id: "logos", label: "Authorized Logos", desc: "Official WT/Club logos only" },
+      { id: "belt", label: "Belt Implementation", desc: "Tied properly with equal ends" },
+    ]
+  },
+  {
+    category: "Personal Identification & Grooming",
+    items: [
+      { id: "id", label: "Accreditation Card", desc: "Photo matches player's face" },
+      { id: "jewelry", label: "Jewelry / Hard Objects", desc: "None allowed (watches, earrings, etc.)" },
+      { id: "hair", label: "Hair Accessories", desc: "Tied back with soft band" },
+      { id: "nails", label: "Fingernails & Toenails", desc: "Trimmed short" },
+    ]
+  },
+  {
+    category: "Physical Readiness",
+    items: [
+      { id: "tape", label: "Medical Tape", desc: "Skin-colored/white, properly cleared" },
+      { id: "clean", label: "Dobok Cleanliness", desc: "Neat, clean, and pressed" },
+    ]
+  }
+];
+
+function PlayerChecklist({ color, checkedItems, onChange, isPoomsae }: { color: 'blue' | 'red', checkedItems: Set<string>, onChange: (items: Set<string>) => void, isPoomsae?: boolean }) {
   const toggleItem = (id: string) => {
     const newSet = new Set(checkedItems);
     if (newSet.has(id)) newSet.delete(id);
@@ -181,9 +209,11 @@ function PlayerChecklist({ color, checkedItems, onChange }: { color: 'blue' | 'r
     onChange(newSet);
   };
 
+  const items = isPoomsae ? POOMSAE_INSPECTION_ITEMS : INSPECTION_ITEMS;
+
   return (
     <div className="mt-6 space-y-6">
-      {INSPECTION_ITEMS.map((section, sIdx) => (
+      {items.map((section, sIdx) => (
         <div key={sIdx}>
           <h4 className={cn(
             "text-xs font-black uppercase tracking-widest mb-3 pb-2 border-b",
@@ -709,8 +739,13 @@ export function TASheet({
 
   const actualMatchData = getActualMatchData();
   const matchKey = currentMatch ? `${currentMatch.ringNo}-${currentMatch.matchNo}` : '';
-  const isFullySigned = (!!actualMatchData?.blue_inspected && !!actualMatchData?.red_inspected) || 
-                       (localSignedMatches[matchKey]?.blue && localSignedMatches[matchKey]?.red);
+  
+  const isPoomsaeMode = currentMatch?.category?.toUpperCase().includes('POOMSAE SOLO') || 
+                        currentMatch?.category?.toUpperCase().includes('FREESTYLE') ||
+                        (currentMatch?.category?.toUpperCase().includes('POOMSAE') && !actualMatchData?.red_name);
+
+  const isFullySigned = (!!actualMatchData?.blue_inspected && (isPoomsaeMode || !!actualMatchData?.red_inspected)) || 
+                       (localSignedMatches[matchKey]?.blue && (isPoomsaeMode || localSignedMatches[matchKey]?.red));
 
   const matchesToRender = printMode === 'all' 
     ? ringMatches.filter(m => getMatchStatus(m).isSigned) 
@@ -1044,36 +1079,55 @@ export function TASheet({
                 if (onUpdateInspection) onUpdateInspection(currentMatch.ringNo, currentMatch.matchNo, 'blue', true, signature, Array.from(blueChecklist));
               }}
             />
-            <PlayerChecklist color="blue" checkedItems={blueChecklist} onChange={setBlueChecklist} />
-          </div>
-          <div className="w-px bg-slate-200 self-stretch"></div>
-          <div className="flex-1 flex flex-col">
-            <div className="mb-4 text-center">
-              <h3 className="text-lg font-black text-[#ed1c24] uppercase">{actualMatchData?.red_name || 'Red Player'}</h3>
-              <p className="text-sm font-bold text-slate-500 uppercase">{actualMatchData?.red_club || 'Red Club'}</p>
-            </div>
-            <SignaturePad 
-              color="red" 
-              boutId={`${currentMatch.ringNo}-${currentMatch.matchNo}`}
-              isConfirmed={!!actualMatchData?.red_inspected || localSignedMatches[matchKey]?.red}
-              onConfirm={(signature) => {
-                setLocalSignedMatches(prev => ({
-                  ...prev,
-                  [matchKey]: { ...prev[matchKey], red: true }
-                }));
-                if (onUpdateInspection) onUpdateInspection(currentMatch.ringNo, currentMatch.matchNo, 'red', true, signature, Array.from(redChecklist));
-              }}
+            <PlayerChecklist 
+              color="blue" 
+              checkedItems={blueChecklist} 
+              onChange={setBlueChecklist} 
+              isPoomsae={isPoomsaeMode}
             />
-            <PlayerChecklist color="red" checkedItems={redChecklist} onChange={setRedChecklist} />
           </div>
+          {!isPoomsaeMode && (
+            <>
+              <div className="w-px bg-slate-200 self-stretch"></div>
+              <div className="flex-1 flex flex-col">
+                <div className="mb-4 text-center">
+                  <h3 className="text-lg font-black text-[#ed1c24] uppercase">{actualMatchData?.red_name || 'Red Player'}</h3>
+                  <p className="text-sm font-bold text-slate-500 uppercase">{actualMatchData?.red_club || 'Red Club'}</p>
+                </div>
+                <SignaturePad 
+                  color="red" 
+                  boutId={`${currentMatch.ringNo}-${currentMatch.matchNo}`}
+                  isConfirmed={!!actualMatchData?.red_inspected || localSignedMatches[matchKey]?.red}
+                  onConfirm={(signature) => {
+                    setLocalSignedMatches(prev => ({
+                      ...prev,
+                      [matchKey]: { ...prev[matchKey], red: true }
+                    }));
+                    if (onUpdateInspection) onUpdateInspection(currentMatch.ringNo, currentMatch.matchNo, 'red', true, signature, Array.from(redChecklist));
+                  }}
+                />
+                <PlayerChecklist 
+                  color="red" 
+                  checkedItems={redChecklist} 
+                  onChange={setRedChecklist} 
+                  isPoomsae={isPoomsaeMode}
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
       )}
 
       {viewMode === 'print' && (
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 print:shadow-none print:border-none print:p-0 overflow-x-auto print:overflow-visible">
-        {matchesToRender.map((match, index) => (
-          <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full page-break mb-8 print:mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
+        {matchesToRender.map((match, index) => {
+          const isSoloMatch = match.category?.toUpperCase().includes('POOMSAE SOLO') || 
+                             match.category?.toUpperCase().includes('FREESTYLE') ||
+                             (match.category?.toUpperCase().includes('POOMSAE') && !match.redName);
+
+          return (
+            <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full page-break mb-8 print:mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
             {/* Header */}
             <div className="flex justify-between items-center mb-2 print:mb-2 text-black">
               <div className="w-48"></div>
@@ -1114,14 +1168,14 @@ export function TASheet({
 
             {/* Players */}
             <div className="flex gap-4 mb-[7px] print:mb-[7px]">
-              <table className="w-1/2 border-collapse border border-black text-sm font-bold text-center table-fixed">
+              <table className={cn("border-collapse border border-black text-sm font-bold text-center table-fixed", isSoloMatch ? "w-full" : "w-1/2")}>
                 <colgroup>
-                  <col style={{ width: '18%' }} />
-                  <col style={{ width: '82%' }} />
+                  <col style={{ width: isSoloMatch ? '9%' : '18%' }} />
+                  <col style={{ width: isSoloMatch ? '91%' : '82%' }} />
                 </colgroup>
                 <thead>
                   <tr className="h-[25px]">
-                    <th colSpan={2} className="bg-[#00a2e8] text-white border border-black p-1.5 text-lg tracking-widest">CHUNG</th>
+                    <th colSpan={2} className="bg-[#00a2e8] text-white border border-black p-1.5 text-lg tracking-widest">{isSoloMatch ? 'PERFORMER' : 'CHUNG'}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1135,27 +1189,29 @@ export function TASheet({
                   </tr>
                 </tbody>
               </table>
-              <table className="w-1/2 border-collapse border border-black text-sm font-bold text-center table-fixed">
-                <colgroup>
-                  <col style={{ width: '18%' }} />
-                  <col style={{ width: '82%' }} />
-                </colgroup>
-                <thead>
-                  <tr className="h-[25px]">
-                    <th colSpan={2} className="bg-[#ed1c24] text-white border border-black p-1.5 text-lg tracking-widest">HONG</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="h-[27px] print:h-[27px]">
-                    <td className="border border-black p-0 px-1.5">NAME</td>
-                    <td className="border border-black p-0 px-1.5">{match.redName}</td>
-                  </tr>
-                  <tr className="h-[27px] print:h-[27px]">
-                    <td className="border border-black p-0 px-1.5">NOC</td>
-                    <td className="border border-black p-0 px-1.5">{match.redClub}</td>
-                  </tr>
-                </tbody>
-              </table>
+              {!isSoloMatch && (
+                <table className="w-1/2 border-collapse border border-black text-sm font-bold text-center table-fixed">
+                  <colgroup>
+                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '82%' }} />
+                  </colgroup>
+                  <thead>
+                    <tr className="h-[25px]">
+                      <th colSpan={2} className="bg-[#ed1c24] text-white border border-black p-1.5 text-lg tracking-widest">HONG</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="h-[27px] print:h-[27px]">
+                      <td className="border border-black p-0 px-1.5">NAME</td>
+                      <td className="border border-black p-0 px-1.5">{match.redName}</td>
+                    </tr>
+                    <tr className="h-[27px] print:h-[27px]">
+                      <td className="border border-black p-0 px-1.5">NOC</td>
+                      <td className="border border-black p-0 px-1.5">{match.redClub}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
             </div>
 
           {/* Round Scores */}
@@ -1200,7 +1256,8 @@ export function TASheet({
           </table>
 
           {/* Decision of Superiority */}
-          <table className="w-full border-collapse border border-black mb-[7px] print:mb-[7px] text-[10px] text-center font-bold table-fixed">
+          {!isSoloMatch && (
+            <table className="w-full border-collapse border border-black mb-[7px] print:mb-[7px] text-[10px] text-center font-bold table-fixed">
             <colgroup>
               {/* Chung Superiority: 13.5% (4.5% each) */}
               <col style={{ width: '4.5%' }} />
@@ -1296,9 +1353,11 @@ export function TASheet({
               ))}
             </tbody>
           </table>
+          )}
 
           {/* Win Types */}
-          <table className="w-full border-collapse border border-black mb-[7px] print:mb-[7px] text-sm text-center font-bold table-fixed">
+          {!isSoloMatch && (
+            <table className="w-full border-collapse border border-black mb-[7px] print:mb-[7px] text-sm text-center font-bold table-fixed">
             <colgroup>
               <col style={{ width: '20%' }} />
               <col style={{ width: '20%' }} />
@@ -1316,12 +1375,14 @@ export function TASheet({
               </tr>
             </tbody>
           </table>
+          )}
 
           {/* Video Replay & Match Winner */}
           <div className="flex gap-2 mb-[7px] print:mb-[7px] w-full justify-between items-stretch">
             
             {/* Chung Video Replay */}
-            <table className="w-[35%] border-collapse border border-black text-xs text-center font-bold table-fixed">
+            {!isSoloMatch && (
+              <table className="w-[35%] border-collapse border border-black text-xs text-center font-bold table-fixed">
               <colgroup>
                 <col style={{ width: '64%' }} />
                 <col style={{ width: '12%' }} />
@@ -1352,55 +1413,70 @@ export function TASheet({
                 ))}
               </tbody>
             </table>
+            )}
 
             {/* Match Winner */}
-            <table className="w-[28%] border-collapse border border-black text-xs text-center font-bold table-fixed">
+            <table className={cn("border-collapse border border-black text-xs text-center font-bold table-fixed", isSoloMatch ? "w-full" : "w-[28%]")}>
               <colgroup>
-                <col style={{ width: '50%' }} />
-                <col style={{ width: '50%' }} />
+                <col style={{ width: isSoloMatch ? '100%' : '50%' }} />
+                {!isSoloMatch && <col style={{ width: '50%' }} />}
               </colgroup>
               <thead>
                 <tr className="h-[36px]">
-                  <th colSpan={2} className="border border-black p-1 bg-white text-black">Match Winner</th>
+                  <th colSpan={isSoloMatch ? 1 : 2} className="border border-black p-1 bg-white text-black">Match Result</th>
                 </tr>
               </thead>
               <tbody>
                 <tr className="h-[40px] print:h-[40px]">
                   <td className={cn(
                     "border border-black p-1 text-[#00a2e8] text-xl relative",
-                    match.winner && match.winner.trim().toLowerCase() === match.blueName.trim().toLowerCase() && "bg-blue-50"
+                    isSoloMatch ? "bg-green-50 text-green-700" : (match.winner && match.winner.trim().toLowerCase() === match.blueName.trim().toLowerCase() && "bg-blue-50")
                   )}>
-                    CHUNG
-                    {match.winner && match.winner.trim().toLowerCase() === match.blueName.trim().toLowerCase() && (
+                    {isSoloMatch ? 'PERFORMANCE COMPLETED' : 'CHUNG'}
+                    {(isSoloMatch || (match.winner && match.winner.trim().toLowerCase() === match.blueName.trim().toLowerCase())) && (
                       <div className="absolute top-1 right-1">
-                        <Check size={16} className="text-blue-600" />
+                        <Check size={16} className={isSoloMatch ? "text-green-600" : "text-blue-600"} />
                       </div>
                     )}
                   </td>
-                  <td className={cn(
-                    "border border-black p-1 text-[#ed1c24] text-xl relative",
-                    match.winner && match.winner.trim().toLowerCase() === match.redName.trim().toLowerCase() && "bg-red-50"
-                  )}>
-                    HONG
-                    {match.winner && match.winner.trim().toLowerCase() === match.redName.trim().toLowerCase() && (
-                      <div className="absolute top-1 right-1">
-                        <Check size={16} className="text-red-600" />
-                      </div>
-                    )}
-                  </td>
+                  {!isSoloMatch && (
+                    <td className={cn(
+                      "border border-black p-1 text-[#ed1c24] text-xl relative",
+                      match.winner && match.winner.trim().toLowerCase() === match.redName.trim().toLowerCase() && "bg-red-50"
+                    )}>
+                      HONG
+                      {match.winner && match.winner.trim().toLowerCase() === match.redName.trim().toLowerCase() && (
+                        <div className="absolute top-1 right-1">
+                          <Check size={16} className="text-red-600" />
+                        </div>
+                      )}
+                    </td>
+                  )}
                 </tr>
-                <tr className="h-[20px] print:h-[20px]">
-                  <td colSpan={2} className="border border-black p-1 text-sm bg-gray-100">Round Won</td>
-                </tr>
-                <tr className="h-[60px] print:h-[60px]">
-                  <td className="border border-black p-1"></td>
-                  <td className="border border-black p-1"></td>
-                </tr>
+                {!isSoloMatch && (
+                  <>
+                    <tr className="h-[20px] print:h-[20px]">
+                      <td colSpan={2} className="border border-black p-1 text-sm bg-gray-100">Round Won</td>
+                    </tr>
+                    <tr className="h-[60px] print:h-[60px]">
+                      <td className="border border-black p-1"></td>
+                      <td className="border border-black p-1"></td>
+                    </tr>
+                  </>
+                )}
+                {isSoloMatch && (
+                  <tr className="h-[80px] print:h-[80px]">
+                    <td className="border border-black p-1 text-left align-top font-normal p-2">
+                       <span className="font-bold uppercase text-[9px] block mb-2">Technical Controller Notes / Total Score:</span>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
 
             {/* Hong Video Replay */}
-            <table className="w-[35%] border-collapse border border-black text-xs text-center font-bold table-fixed">
+            {!isSoloMatch && (
+              <table className="w-[35%] border-collapse border border-black text-xs text-center font-bold table-fixed">
               <colgroup>
                 <col style={{ width: '64%' }} />
                 <col style={{ width: '12%' }} />
@@ -1431,40 +1507,43 @@ export function TASheet({
                 ))}
               </tbody>
             </table>
+            )}
 
           </div>
 
           {/* Yellow Cards */}
-          <div className="flex gap-4 mb-0 print:mb-0">
-            <table className="w-[48%] border-collapse border border-black text-sm font-bold table-fixed">
-              <colgroup>
-                <col style={{ width: '40%' }} />
-                <col style={{ width: '30%' }} />
-                <col style={{ width: '30%' }} />
-              </colgroup>
-              <thead>
-                <tr className="h-[25px]">
-                  <th className="border border-black p-1 text-left px-2 bg-yellow-300">Yellow Card</th>
-                  <th className="border border-black p-1 text-left px-2">Result</th>
-                  <th className="border border-black p-1 text-left px-2">Time</th>
-                </tr>
-              </thead>
-            </table>
-            <table className="w-[48%] border-collapse border border-black text-sm font-bold ml-auto table-fixed">
-              <colgroup>
-                <col style={{ width: '40%' }} />
-                <col style={{ width: '30%' }} />
-                <col style={{ width: '30%' }} />
-              </colgroup>
-              <thead>
-                <tr className="h-[25px]">
-                  <th className="border border-black p-1 text-left px-2 bg-yellow-300">Yellow Card</th>
-                  <th className="border border-black p-1 text-left px-2">Result</th>
-                  <th className="border border-black p-1 text-left px-2">Time</th>
-                </tr>
-              </thead>
-            </table>
-          </div>
+          {!isSoloMatch && (
+            <div className="flex gap-4 mb-0 print:mb-0">
+              <table className="w-[48%] border-collapse border border-black text-sm font-bold table-fixed">
+                <colgroup>
+                  <col style={{ width: '40%' }} />
+                  <col style={{ width: '30%' }} />
+                  <col style={{ width: '30%' }} />
+                </colgroup>
+                <thead>
+                  <tr className="h-[25px]">
+                    <th className="border border-black p-1 text-left px-2 bg-yellow-300">Yellow Card</th>
+                    <th className="border border-black p-1 text-left px-2">Result</th>
+                    <th className="border border-black p-1 text-left px-2">Time</th>
+                  </tr>
+                </thead>
+              </table>
+              <table className="w-[48%] border-collapse border border-black text-sm font-bold ml-auto table-fixed">
+                <colgroup>
+                  <col style={{ width: '40%' }} />
+                  <col style={{ width: '30%' }} />
+                  <col style={{ width: '30%' }} />
+                </colgroup>
+                <thead>
+                  <tr className="h-[25px]">
+                    <th className="border border-black p-1 text-left px-2 bg-yellow-300">Yellow Card</th>
+                    <th className="border border-black p-1 text-left px-2">Result</th>
+                    <th className="border border-black p-1 text-left px-2">Time</th>
+                  </tr>
+                </thead>
+              </table>
+            </div>
+          )}
 
           <div className="mt-[15px]">
             {/* Officials */}
@@ -1512,7 +1591,8 @@ export function TASheet({
             </div>
           </div>
         </div>
-        ))}
+        )
+      })}
       </div>
       )}
     </div>

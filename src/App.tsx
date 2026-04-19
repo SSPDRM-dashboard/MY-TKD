@@ -604,7 +604,7 @@ export default function App() {
   const [finalBoutCheck, setFinalBoutCheck] = useState<{ ringNumber: number; remainingCount: number } | null>(null);
   const [ringNamingMode, setRingNamingMode] = useState<'number' | 'alphabet'>('number');
   const [boutNumberingMode, setBoutNumberingMode] = useSyncedState<'numeric' | 'alphanumeric'>('tkd_bout_numbering_mode', 'alphanumeric');
-  const [categories, setCategories] = useSyncedState<string[]>('tkd_categories', ["Junior Male -45kg", "Junior Female -42kg", "Senior Male -54kg", "POOMSAE FREESTYLE"]);
+  const [categories, setCategories] = useSyncedState<string[]>('tkd_categories', ["Junior Male -45kg", "Junior Female -42kg", "Senior Male -54kg", "POOMSAE SOLO"]);
   const [clubs, setClubs] = useSyncedState<string[]>('tkd_clubs', ["KST", "TKT", "PST", "MTA"]);
   const [googleSheetUrl, setGoogleSheetUrl] = useSyncedState<string>('tkd_sheet_url', 'https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/edit?usp=sharing');
   const [isSheetSaved, setIsSheetSaved] = useState(false);
@@ -3845,12 +3845,12 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
     };
   });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const isFreestyle = formData.category?.toUpperCase().includes('POOMSAE FREESTYLE');
+  const isPoomsaeMode = formData.category?.toUpperCase().includes('POOMSAE SOLO');
 
-  const setFreestyle = (checked: boolean) => {
+  const setPoomsaeMode = (checked: boolean) => {
     if (checked) {
-      setFormData(prev => ({ ...prev, category: 'POOMSAE FREESTYLE' }));
-    } else if (formData.category === 'POOMSAE FREESTYLE') {
+      setFormData(prev => ({ ...prev, category: 'POOMSAE SOLO' }));
+    } else if (formData.category === 'POOMSAE SOLO') {
       setFormData(prev => ({ ...prev, category: '' }));
     }
   };
@@ -4022,13 +4022,13 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
             <div className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl transition-all hover:border-slate-300">
               <input 
                 type="checkbox" 
-                id="is-freestyle-modal"
-                checked={isFreestyle}
-                onChange={(e) => setFreestyle(e.target.checked)}
+                id="is-poomsae-modal"
+                checked={isPoomsaeMode}
+                onChange={(e) => setPoomsaeMode(e.target.checked)}
                 className="w-5 h-5 rounded-lg border-slate-300 text-red-600 focus:ring-red-500 transition-all cursor-pointer"
               />
-              <label htmlFor="is-freestyle-modal" className="flex flex-col cursor-pointer select-none">
-                <span className="text-xs font-black text-slate-900 uppercase tracking-tight">Freestyle Performance</span>
+              <label htmlFor="is-poomsae-modal" className="flex flex-col cursor-pointer select-none">
+                <span className="text-xs font-black text-slate-900 uppercase tracking-tight">Poomsae Solo Mode</span>
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Solo entry (No Red Corner)</span>
               </label>
             </div>
@@ -4055,12 +4055,12 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
             {/* Blue Corner */}
             <div className={cn(
               "p-4 bg-blue-50/50 rounded-2xl border border-blue-100 space-y-3 transition-all",
-              isFreestyle ? "col-span-2" : "col-span-1"
+              isPoomsaeMode ? "col-span-2" : "col-span-1"
             )}>
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-2 h-2 bg-blue-600 rounded-full" />
                 <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">
-                  {isFreestyle ? "Performer Details" : "Blue Corner"}
+                  {isPoomsaeMode ? "Performer Details" : "Blue Corner"}
                 </span>
               </div>
               <input 
@@ -4068,7 +4068,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                 value={formData.blue_name}
                 onChange={(e) => setFormData({...formData, blue_name: e.target.value})}
                 className="w-full px-3 py-2 bg-white border border-blue-200 rounded-xl text-sm font-bold"
-                placeholder={isFreestyle ? "Performer Name" : "Player Name"}
+                placeholder={isPoomsaeMode ? "Performer Name" : "Player Name"}
                 required
                 autoComplete="off"
               />
@@ -4085,7 +4085,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
             </div>
 
             {/* Red Corner */}
-            {!isFreestyle && (
+            {!isPoomsaeMode && (
               <div className="p-4 bg-red-50/50 rounded-2xl border border-red-100 space-y-3">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-2 h-2 bg-red-600 rounded-full" />
@@ -4097,7 +4097,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                   onChange={(e) => setFormData({...formData, red_name: e.target.value})}
                   className="w-full px-3 py-2 bg-white border border-red-200 rounded-xl text-sm font-bold"
                   placeholder="Player Name"
-                  required={!isFreestyle}
+                  required={!isPoomsaeMode}
                   autoComplete="off"
                 />
                 <input 
@@ -4107,7 +4107,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                   onChange={(e) => setFormData({...formData, red_club: e.target.value})}
                   className="w-full px-3 py-2 bg-white border border-red-200 rounded-xl text-sm font-bold"
                   placeholder="Club Name"
-                  required={!isFreestyle}
+                  required={!isPoomsaeMode}
                   autoComplete="off"
                 />
               </div>
@@ -4243,7 +4243,9 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
   
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
   
-  const isFreestyle = current?.category?.toUpperCase().includes('POOMSAE FREESTYLE');
+  const isPoomsaeMode = current?.category?.toUpperCase().includes('POOMSAE SOLO') || 
+                        current?.category?.toUpperCase().includes('FREESTYLE') ||
+                        (current?.category?.toUpperCase().includes('POOMSAE') && !current.red_name && current.blue_name);
   const progress = ring.totalBouts && current ? Math.min(100, (getBoutNumber(current.bout) / ring.totalBouts) * 100) : 0;
 
   return (
@@ -4362,7 +4364,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
               
               <div className="flex items-start gap-4">
                 <FighterSide color="blue" name={current.blue_name} club={current.blue_club} privacy={current.privacy_mode} inspected={current.blue_inspected} />
-                {!isFreestyle && (
+                {!isPoomsaeMode && (
                   <>
                     <div className="text-xs font-black text-slate-300 italic mt-6">VS</div>
                     <FighterSide color="red" name={current.red_name} club={current.red_club} privacy={current.privacy_mode} inspected={current.red_inspected} />
@@ -4382,7 +4384,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
 
               {onWinnerSelect && (
                 <div className="pt-4 border-t border-slate-100">
-                  {isFreestyle ? (
+                  {isPoomsaeMode ? (
                     <div className="space-y-4">
                       <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Poomsae Performance</p>
                       <button 
@@ -4759,7 +4761,9 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
           const current = ring.currentBout;
           const standby = ringQueue;
           const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
-          const isFreestyleCurrent = current?.category?.toUpperCase().includes('POOMSAE FREESTYLE');
+          const isPoomsaeModeCurrent = current?.category?.toUpperCase().includes('POOMSAE SOLO') || 
+                               current?.category?.toUpperCase().includes('FREESTYLE') ||
+                               (current?.category?.toUpperCase().includes('POOMSAE') && !current.red_name);
           
           return (
             <div key={ring.ringNumber} className="flex gap-1 h-48">
@@ -4784,12 +4788,12 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                   <div className="col-span-10 flex flex-col">
                     <div className={cn(
                       "flex-1 bg-blue-600/90 flex flex-col justify-center px-4 relative",
-                      !isFreestyleCurrent && "border-b border-white/10"
+                      !isPoomsaeModeCurrent && "border-b border-white/10"
                     )}>
                       <p className="text-[10px] font-bold text-black uppercase leading-none mb-1">{current?.blue_club || "---"}</p>
                       <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current?.blue_name || "---"}</h4>
                     </div>
-                    {!isFreestyleCurrent && (
+                    {!isPoomsaeModeCurrent && (
                       <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
                         <p className="text-[10px] font-bold text-black uppercase leading-none mb-1">{current?.red_club || "---"}</p>
                         <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current?.red_name || "---"}</h4>
@@ -4978,7 +4982,9 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
             .slice(0, 3);
           const current = ring.currentBout;
           const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
-          const isFreestyleCurrent = current?.category?.toUpperCase().includes('POOMSAE FREESTYLE');
+          const isPoomsaeModeCurrent = current?.category?.toUpperCase().includes('POOMSAE SOLO') || 
+                               current?.category?.toUpperCase().includes('FREESTYLE') ||
+                               (current?.category?.toUpperCase().includes('POOMSAE') && !current.red_name);
           
           return (
             <div key={ring.ringNumber} className="grid grid-cols-12 gap-8 items-center">
@@ -5006,7 +5012,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                     {/* Blue Side */}
                     <div className={cn(
                       "flex-1 h-full bg-blue-600 flex flex-col justify-center px-10 relative overflow-hidden group transition-all duration-500",
-                      isFreestyleCurrent ? "flex-[10]" : "flex-1"
+                      isPoomsaeModeCurrent ? "flex-[10]" : "flex-1"
                     )}>
                       <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/20 to-transparent pointer-events-none" />
                       <div className="absolute -right-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">BLUE</div>
@@ -5022,7 +5028,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                     {/* Bout Number Circle */}
                     <div className={cn(
                       "z-20 w-[120px] h-[120px] bg-white rounded-full border-[10px] border-slate-800 flex items-center justify-center shadow-2xl transform hover:scale-105 transition-all",
-                      isFreestyleCurrent ? "ml-auto mr-10" : "-mx-10"
+                      isPoomsaeModeCurrent ? "ml-auto mr-10" : "-mx-10"
                     )}>
                       <span className="text-[36px] font-black text-slate-900 leading-none">
                         {current ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
@@ -5030,7 +5036,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                     </div>
 
                     {/* Red Side */}
-                    {!isFreestyleCurrent && (
+                    {!isPoomsaeModeCurrent && (
                       <div className="flex-1 h-full bg-red-600 flex flex-col justify-center px-10 text-right relative overflow-hidden group">
                         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/20 to-transparent pointer-events-none" />
                         <div className="absolute -left-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">RED</div>
@@ -5345,7 +5351,8 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
               
               <div className="flex items-start gap-6">
                 <PublicFighterSide color="blue" name={current.blue_name} club={current.blue_club} privacy={current.privacy_mode} />
-                {!current.category?.toUpperCase().includes('POOMSAE FREESTYLE') && (
+                {!current.category?.toUpperCase().includes('POOMSAE SOLO') && 
+                  !current.category?.toUpperCase().includes('FREESTYLE') && (
                   <>
                     <div className="text-xl font-black text-white italic mt-4">VS</div>
                     <PublicFighterSide color="red" name={current.red_name} club={current.red_club} privacy={current.privacy_mode} />

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Edit2, X } from 'lucide-react';
 import { RingStatus, MatchData } from '../types';
-import { normalizeBoutNumber, formatBoutNumber } from '../lib/utils';
+import { cn, normalizeBoutNumber, formatBoutNumber } from '../lib/utils';
 
 interface EditBoutDetailsModalProps {
   onClose: () => void;
@@ -23,6 +23,8 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
     blue_club: '',
     red_name: '',
     red_club: '',
+    category: '',
+    is_poomsae_solo: false
   });
 
   const availableRings = user?.role === 'admin' 
@@ -42,12 +44,15 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
     // Check active bout
     const ring = rings.find(r => r.ringNumber === formData.ring);
     if (ring?.currentBout && normalizeBoutNumber(ring.currentBout.bout) === normalizedBout) {
+      const isSolo = ring.currentBout.category?.toUpperCase().includes('POOMSAE SOLO') || false;
       setFormData(prev => ({
         ...prev,
         blue_name: ring.currentBout!.blue_name,
         blue_club: ring.currentBout!.blue_club,
         red_name: ring.currentBout!.red_name,
         red_club: ring.currentBout!.red_club,
+        category: ring.currentBout!.category,
+        is_poomsae_solo: isSolo
       }));
       return;
     }
@@ -55,12 +60,15 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
     // Check queue
     const queuedBout = queue.find(q => q.data.ring === formData.ring && normalizeBoutNumber(q.data.bout) === normalizedBout);
     if (queuedBout) {
+      const isSolo = queuedBout.data.category?.toUpperCase().includes('POOMSAE SOLO') || false;
       setFormData(prev => ({
         ...prev,
         blue_name: queuedBout.data.blue_name,
         blue_club: queuedBout.data.blue_club,
         red_name: queuedBout.data.red_name,
         red_club: queuedBout.data.red_club,
+        category: queuedBout.data.category,
+        is_poomsae_solo: isSolo
       }));
     }
   }, [formData.ring, formData.bout, rings, queue]);
@@ -68,11 +76,20 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.bout) return;
+    
+    let updatedCategory = formData.category;
+    if (formData.is_poomsae_solo && !updatedCategory.toUpperCase().includes('POOMSAE SOLO')) {
+      updatedCategory = updatedCategory ? `${updatedCategory} (POOMSAE SOLO)` : 'POOMSAE SOLO';
+    } else if (!formData.is_poomsae_solo && updatedCategory.toUpperCase().includes('POOMSAE SOLO')) {
+      updatedCategory = updatedCategory.replace(/\s*\(POOMSAE SOLO\)/gi, '').replace(/POOMSAE SOLO/gi, '').trim();
+    }
+
     onSubmit(formData.ring, formData.bout, {
       blue_name: formData.blue_name,
       blue_club: formData.blue_club,
-      red_name: formData.red_name,
-      red_club: formData.red_club,
+      red_name: formData.is_poomsae_solo ? '' : formData.red_name,
+      red_club: formData.is_poomsae_solo ? '' : formData.red_club,
+      category: updatedCategory
     });
     onClose();
   };
@@ -115,30 +132,61 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
                 ))}
               </select>
             </div>
-    <div className="space-y-2">
-      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Bout Number</label>
-      <input 
-        type="text" 
-        value={formData.bout}
-        onChange={(e) => setFormData({...formData, bout: e.target.value.toUpperCase()})}
-        onBlur={() => {
-          if (formData.bout) {
-            setFormData(prev => ({
-              ...prev,
-              bout: formatBoutNumber(formData.ring, formData.bout, boutNumberingMode)
-            }));
-          }
-        }}
-        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
-        placeholder={boutNumberingMode === 'alphanumeric' ? "e.g. A01" : "e.g. 1001"}
-        required
-      />
-    </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Bout Number</label>
+              <input 
+                type="text" 
+                value={formData.bout}
+                onChange={(e) => setFormData({...formData, bout: e.target.value.toUpperCase()})}
+                onBlur={() => {
+                  if (formData.bout) {
+                    setFormData(prev => ({
+                      ...prev,
+                      bout: formatBoutNumber(formData.ring, formData.bout, boutNumberingMode)
+                    }));
+                  }
+                }}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+                placeholder={boutNumberingMode === 'alphanumeric' ? "e.g. A01" : "e.g. 1001"}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Category</label>
+            <input 
+              type="text" 
+              value={formData.category}
+              onChange={(e) => setFormData({...formData, category: e.target.value})}
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+              placeholder="e.g. U30 Female Individual"
+            />
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-xl">
+            <div>
+              <p className="text-xs font-black text-slate-700 uppercase tracking-widest leading-none mb-1">Poomsae Solo Mode</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">One player per performance</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFormData(prev => ({ ...prev, is_poomsae_solo: !prev.is_poomsae_solo }))}
+              className={cn(
+                "w-12 h-6 rounded-full transition-all relative",
+                formData.is_poomsae_solo ? "bg-blue-600" : "bg-slate-300"
+              )}
+            >
+              <div className={cn(
+                "w-4 h-4 bg-white rounded-full absolute top-1 transition-all",
+                formData.is_poomsae_solo ? "left-7" : "left-1"
+              )} />
+            </button>
           </div>
 
           <div className="space-y-4">
             <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl space-y-4">
-              <h3 className="text-xs font-black text-blue-800 uppercase tracking-widest">Blue Corner</h3>
+              <h3 className="text-xs font-black text-blue-800 uppercase tracking-widest">{formData.is_poomsae_solo ? 'Performer' : 'Blue Corner'}</h3>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest ml-1">Name</label>
                 <input 
@@ -161,29 +209,31 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
               </div>
             </div>
 
-            <div className="p-4 bg-red-50 border border-red-100 rounded-xl space-y-4">
-              <h3 className="text-xs font-black text-red-800 uppercase tracking-widest">Red Corner</h3>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-red-600 uppercase tracking-widest ml-1">Name</label>
-                <input 
-                  type="text" 
-                  value={formData.red_name}
-                  onChange={(e) => setFormData({...formData, red_name: e.target.value})}
-                  className="w-full px-4 py-2 bg-white border border-red-200 rounded-lg text-sm font-bold"
-                  required
-                />
+            {!formData.is_poomsae_solo && (
+              <div className="p-4 bg-red-50 border border-red-100 rounded-xl space-y-4">
+                <h3 className="text-xs font-black text-red-800 uppercase tracking-widest">Red Corner</h3>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-red-600 uppercase tracking-widest ml-1">Name</label>
+                  <input 
+                    type="text" 
+                    value={formData.red_name}
+                    onChange={(e) => setFormData({...formData, red_name: e.target.value})}
+                    className="w-full px-4 py-2 bg-white border border-red-200 rounded-lg text-sm font-bold"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-red-600 uppercase tracking-widest ml-1">Club</label>
+                  <input 
+                    type="text" 
+                    value={formData.red_club}
+                    onChange={(e) => setFormData({...formData, red_club: e.target.value})}
+                    className="w-full px-4 py-2 bg-white border border-red-200 rounded-lg text-sm font-bold"
+                    required
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-red-600 uppercase tracking-widest ml-1">Club</label>
-                <input 
-                  type="text" 
-                  value={formData.red_club}
-                  onChange={(e) => setFormData({...formData, red_club: e.target.value})}
-                  className="w-full px-4 py-2 bg-white border border-red-200 rounded-lg text-sm font-bold"
-                  required
-                />
-              </div>
-            </div>
+            )}
           </div>
 
           <button 

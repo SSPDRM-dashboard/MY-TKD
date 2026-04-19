@@ -14,7 +14,8 @@ import {
   File as FileIcon,
   X,
   Send,
-  Sparkles
+  Sparkles,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
@@ -74,6 +75,10 @@ export function AIBracketSetup({
   });
   const [isDragging, setIsDragging] = useState(false);
   const [isThinkingMode, setIsThinkingMode] = useState(false);
+  const [isPoomsaeMode, setIsPoomsaeMode] = useState(() => {
+    const key = currentEventId ? `tkd_ai_poomsae_mode_${currentEventId}` : 'tkd_ai_poomsae_mode';
+    return localStorage.getItem(key) === 'true';
+  });
   const [processedFiles, setProcessedFiles] = useState<Set<string>>(() => {
     const saved = localStorage.getItem('tkd_ai_processed_files');
     if (saved) {
@@ -101,8 +106,9 @@ export function AIBracketSetup({
   React.useEffect(() => {
     if (currentEventId) {
       localStorage.setItem(`tkd_ai_admin_note_${currentEventId}`, adminNote);
+      localStorage.setItem(`tkd_ai_poomsae_mode_${currentEventId}`, String(isPoomsaeMode));
     }
-  }, [adminNote, currentEventId]);
+  }, [adminNote, isPoomsaeMode, currentEventId]);
 
   // Load data when event changes
   React.useEffect(() => {
@@ -120,6 +126,9 @@ export function AIBracketSetup({
 
       const savedNote = localStorage.getItem(`tkd_ai_admin_note_${currentEventId}`);
       setAdminNote(savedNote || '');
+
+      const savedPoomsae = localStorage.getItem(`tkd_ai_poomsae_mode_${currentEventId}`);
+      setIsPoomsaeMode(savedPoomsae === 'true');
     }
   }, [currentEventId]);
 
@@ -159,6 +168,15 @@ export function AIBracketSetup({
         3. Mappings where sourceBout and nextBout are the same.
         4. Inconsistent capitalization (everything should be UPPERCASE).
         5. Missing categories or club names if they can be inferred from context.
+        
+        ${isPoomsaeMode ? `
+        POOMSAE MODE ACTIVE:
+        - This event is Poomsae/Freestyle.
+        - Ensure solo performers are correctly placed (Blue slot active, Red slot empty).
+        - Explicitly include "POOMSAE" in categories.
+        ` : ''}
+
+        ${adminNote ? `ADMIN NOTE: ${adminNote}` : ''}
         
         CURRENT DATA:
         ${JSON.stringify(previewData, null, 2)}
@@ -352,6 +370,16 @@ export function AIBracketSetup({
           - 1000s=Ring 1, 2000s=Ring 2, 3000s=Ring 3, 4000s=Ring 4, 5000s=Ring 5, 6000s=Ring 6, 
           - 7000s=Ring 7, 8000s=Ring 8, 9000s=Ring 9, 10000s=Ring 10, 11000s=Ring 11, 12000s=Ring 12.
           - If alphanumeric (e.g. A01), A=1, B=2, C=3, D=4, E=5, F=6, G=7, H=8, I=9, J=10, K=11, L=12.
+
+        ${isPoomsaeMode ? `
+        POOMSAE SOLO MODE ACTIVE:
+        - This document contains Poomsae performances that should be treated as individual solo entries.
+        - Map EACH player as their own separate SOLO entry (put player in "blue_name", leave "red_name" and "red_club" EMPTY).
+        - Use sequential bout numbers (e.g., 1, 2, 3, 4, 5...) based on the performance order in the document.
+        - Every single participant in the category must get an individual match record.
+        - The category name MUST include the suffix "POOMSAE SOLO" (e.g., "Junior Female POOMSAE SOLO").
+        - If the document is a bracket, treat every individual player slot in that bracket as a unique solo bout.
+        ` : 'STRICT RULE: Do NOT treat as Poomsae Solo. Every match MUST have a Blue and Red corner if data is available.'}
 
         ${adminNote ? `ADMIN NOTE: ${adminNote}` : ''}
 
@@ -853,6 +881,35 @@ export function AIBracketSetup({
                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
                     {isThinkingMode ? "Using Pro Model + Reasoning (Slower, More Accurate)" : "Using Flash Model (Faster, Standard Accuracy)"}
                   </p>
+                </div>
+              </div>
+
+              <div className="h-8 w-px bg-slate-100 hidden md:block" />
+
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                  isPoomsaeMode ? "bg-purple-600 text-white shadow-lg shadow-purple-200" : "bg-slate-100 text-slate-400"
+                )}>
+                  <Zap size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-900">Poomsae Solo Mode</span>
+                    <button 
+                      onClick={() => setIsPoomsaeMode(!isPoomsaeMode)}
+                      className={cn(
+                        "w-10 h-5 rounded-full relative transition-all",
+                        isPoomsaeMode ? "bg-purple-600" : "bg-slate-200"
+                      )}
+                    >
+                      <div className={cn(
+                        "absolute top-1 w-3 h-3 bg-white rounded-full transition-all",
+                        isPoomsaeMode ? "left-6" : "left-1"
+                      )} />
+                    </button>
+                  </div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Map every player as a sequential performance (e.g. 1, 2, 3...)</p>
                 </div>
               </div>
             </div>
