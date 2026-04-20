@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { EventData, MatchHistoryItem } from '../types';
 import { Download, RefreshCw, Trophy, Medal, Building2, Search } from 'lucide-react';
 import Papa from 'papaparse';
-import { getBoutNumber, cn } from '../lib/utils';
+import { getBoutNumber, isBoutMatch, cn } from '../lib/utils';
 
 interface EventReportProps {
   currentEventId: string | null;
@@ -47,9 +47,10 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
   const fetchMatches = async () => {
     // Determine the URL to parse: primarily winnerSheetUrl, fallback to sheetUrl if it matches docs format
     const getValidUrl = (e: EventData) => {
+      const defaultUrl = 'https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/edit?usp=sharing';
       if (e.winnerSheetUrl && e.winnerSheetUrl.includes('docs.google.com/spreadsheets')) return e.winnerSheetUrl;
       if (e.sheetUrl && e.sheetUrl.includes('docs.google.com/spreadsheets')) return e.sheetUrl;
-      return null;
+      return defaultUrl;
     };
 
     const targetEvents = includeAllEvents 
@@ -147,12 +148,99 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
   }, [currentEventId, includeAllEvents]);
 
   const categoryResults = useMemo(() => {
-    const categories = Array.from(new Set(matches.map(m => m.category))).filter((c): c is string => !!c);
+    // Helper to recursively unwrap "WINNER OF X" into the actual player name
+    const resolveParticipant = (name: string, fallbackClub: string, category: string, currentMatchNoStr: string, visited: Set<string> = new Set()): { name: string, club: string } => {
+      const trimmed = name.trim();
+      const winMatch = trimmed.match(/^winner of\s+(.+)$/i);
+      
+      if (!winMatch) return { name: trimmed, club: fallbackClub };
+      
+      const sourceBoutStr = winMatch[1].trim();
+      
+      if (visited.has(sourceBoutStr)) return { name: trimmed, club: fallbackClub }; // prevent infinite loops
+      visited.add(sourceBoutStr);
+
+      // Attempt 1: Exact match with Ring Prefix injected
+      let preferredSourceBoutStr = sourceBoutStr;
+      const isPureNumeric = /^\d+$/.test(sourceBoutStr);
+      const ringPrefixMatch = currentMatchNoStr.match(/^[A-Z]+/i);
+
+      if (isPureNumeric && ringPrefixMatch) {
+         const pref = ringPrefixMatch[0];
+         const numAsInt = parseInt(sourceBoutStr, 10);
+         const paddedNum = numAsInt < 10 ? `0${numAsInt}` : numAsInt.toString();
+         preferredSourceBoutStr = `${pref.toUpperCase()}${paddedNum}`;
+      }
+
+      // First criteria: Exact match with intelligent Ring prefix applied
+      let sourceMatch = matches.find(m => m.category === category && m.matchNoStr.toUpperCase() === preferredSourceBoutStr.toUpperCase());
+      
+      // Fallback criteria: Use our lenient boolean check across the category
+      if (!sourceMatch) {
+         sourceMatch = matches.find(m => m.category === category && isBoutMatch(m.matchNoStr, sourceBoutStr));
+      }
+
+      if (!sourceMatch || !sourceMatch.winner || sourceMatch.winner === '-') {
+        return { name: trimmed, club: fallbackClub };
+      }
+
+      // Find who won the source match
+      const sWinnerLower = sourceMatch.winner.trim().toLowerCase();
+      const isSBlue = sWinnerLower === sourceMatch.blueName.toLowerCase() || 
+                      sWinnerLower === 'winner blue' || sWinnerLower === 'blue' || sWinnerLower === 'completed';
+      const isSRed = sWinnerLower === sourceMatch.redName.toLowerCase() || 
+                     sWinnerLower === 'winner red' || sWinnerLower === 'red';
+
+      if (isSBlue) {
+        return resolveParticipant(sourceMatch.blueName, sourceMatch.blueClub, category, sourceMatch.matchNoStr, visited);
+      } else if (isSRed) {
+        return resolveParticipant(sourceMatch.redName, sourceMatch.redClub, category, sourceMatch.matchNoStr, visited);
+      } else {
+        if (sourceMatch.blueName.toLowerCase().includes(sWinnerLower)) {
+           return resolveParticipant(sourceMatch.blueName, sourceMatch.blueClub, category, sourceMatch.matchNoStr, visited);
+        }
+        if (sourceMatch.redName.toLowerCase().includes(sWinnerLower)) {
+           return resolveParticipant(sourceMatch.redName, sourceMatch.redClub, category, sourceMatch.matchNoStr, visited);
+        }
+        // If we can't figure out who it maps to, just use the raw winner string
+        return { name: sourceMatch.winner, club: fallbackClub };
+      }
+    };
+
+    // Create a copy of matches with all "WINNER OF X" placeholders fully populated
+    const resolvedMatches = matches.map(m => {
+       const blueResolved = resolveParticipant(m.blueName, m.blueClub, m.category, m.matchNoStr, new Set());
+       const redResolved = resolveParticipant(m.redName, m.redClub, m.category, m.matchNoStr, new Set());
+       // Also attempt to resolve if the actual 'winner' field was typed as 'winner of X' (rare, but just in case)
+       const winnerResolved = resolveParticipant(m.winner, '', m.category, m.matchNoStr, new Set());
+
+       // If the system parsed 'winner' as blue or red, ensure it maps to the newly resolved name correctly for downstream logic
+       let newWinner = m.winner;
+       const rawWinnerL = m.winner.trim().toLowerCase();
+       if (rawWinnerL === m.blueName.trim().toLowerCase() || rawWinnerL === 'winner blue' || rawWinnerL === 'blue') {
+         newWinner = blueResolved.name;
+       } else if (rawWinnerL === m.redName.trim().toLowerCase() || rawWinnerL === 'winner red' || rawWinnerL === 'red') {
+         newWinner = redResolved.name;
+       } else if (winnerResolved.name !== m.winner) {
+         newWinner = winnerResolved.name;
+       }
+
+       return {
+         ...m,
+         blueName: blueResolved.name,
+         blueClub: blueResolved.club || m.blueClub,
+         redName: redResolved.name,
+         redClub: redResolved.club || m.redClub,
+         winner: newWinner
+       };
+    });
+
+    const categories = Array.from(new Set(resolvedMatches.map(m => m.category))).filter((c): c is string => !!c);
     const results: CategoryResult[] = [];
 
     categories.forEach((cat: string) => {
       // Find all matches for this category
-      const catMatches = matches.filter(m => m.category === cat);
+      const catMatches = resolvedMatches.filter(m => m.category === cat);
       if (catMatches.length === 0) return;
 
       // Sort by match number descending to find the final
@@ -166,29 +254,44 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
       }
 
       // Determine Gold and Silver
-      const goldName = finalMatch.winner;
+      let goldName = finalMatch.winner;
       let goldClub = '';
       let silverName = '';
       let silverClub = '';
 
-      if (goldName.toLowerCase() === finalMatch.blueName.toLowerCase()) {
+      const winnerLower = goldName.trim().toLowerCase();
+      
+      const isWinnerBlue = winnerLower === finalMatch.blueName.toLowerCase() || 
+                           winnerLower === 'winner blue' || 
+                           winnerLower === 'blue' ||
+                           winnerLower === 'completed';
+
+      const isWinnerRed = winnerLower === finalMatch.redName.toLowerCase() || 
+                          winnerLower === 'winner red' || 
+                          winnerLower === 'red';
+
+      if (isWinnerBlue) {
+        goldName = finalMatch.blueName;
         goldClub = finalMatch.blueClub;
-        silverName = finalMatch.redName;
-        silverClub = finalMatch.redClub;
-      } else if (goldName.toLowerCase() === finalMatch.redName.toLowerCase()) {
+        silverName = finalMatch.redName || '-';
+        silverClub = finalMatch.redClub || '-';
+      } else if (isWinnerRed) {
+        goldName = finalMatch.redName;
         goldClub = finalMatch.redClub;
-        silverName = finalMatch.blueName;
-        silverClub = finalMatch.blueClub;
+        silverName = finalMatch.blueName || '-';
+        silverClub = finalMatch.blueClub || '-';
       } else {
         // Fallback fuzzy match
-        if (finalMatch.blueName.toLowerCase().includes(goldName.toLowerCase())) {
+        if (finalMatch.blueName.toLowerCase().includes(winnerLower)) {
+          goldName = finalMatch.blueName;
           goldClub = finalMatch.blueClub;
-          silverName = finalMatch.redName;
-          silverClub = finalMatch.redClub;
+          silverName = finalMatch.redName || '-';
+          silverClub = finalMatch.redClub || '-';
         } else {
+          goldName = finalMatch.redName || finalMatch.winner; // fallback if we can't find it
           goldClub = finalMatch.redClub;
-          silverName = finalMatch.blueName;
-          silverClub = finalMatch.blueClub;
+          silverName = finalMatch.blueName || '-';
+          silverClub = finalMatch.blueClub || '-';
         }
       }
 
@@ -198,10 +301,13 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
       const bronzes: WinnerResult[] = [];
 
       // Find Gold's previous match
-      const goldPrevMatch = catMatches.find(m => 
-        m.matchNo < finalMatch.matchNo &&
-        (m.blueName.toLowerCase() === goldName.toLowerCase() || m.redName.toLowerCase() === goldName.toLowerCase())
-      );
+      let goldPrevMatch;
+      if (goldName && goldName !== '-' && goldName.toLowerCase() !== 'bye') {
+        goldPrevMatch = catMatches.find(m => 
+          m.matchNo < finalMatch.matchNo &&
+          (m.blueName.toLowerCase() === goldName.toLowerCase() || m.redName.toLowerCase() === goldName.toLowerCase())
+        );
+      }
 
       if (goldPrevMatch) {
          let loserName = '';
@@ -214,17 +320,20 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
            loserClub = goldPrevMatch.blueClub;
          }
          // Ensure it wasn't a bye
-         if (loserName && loserName.toLowerCase() !== 'bye') {
+         if (loserName && loserName !== '-' && loserName.toLowerCase() !== 'bye') {
            bronzes.push({ place: '3rd', name: loserName, club: loserClub });
          }
       }
 
       // Find Silver's previous match
       // Note: Silver lost the final, but we need the match they *won* to get to the final.
-      const silverPrevMatch = catMatches.find(m => 
-        m.matchNo < finalMatch.matchNo &&
-        (m.blueName.toLowerCase() === silverName.toLowerCase() || m.redName.toLowerCase() === silverName.toLowerCase())
-      );
+      let silverPrevMatch;
+      if (silverName && silverName !== '-' && silverName.toLowerCase() !== 'bye') {
+        silverPrevMatch = catMatches.find(m => 
+          m.matchNo < finalMatch.matchNo &&
+          (m.blueName.toLowerCase() === silverName.toLowerCase() || m.redName.toLowerCase() === silverName.toLowerCase())
+        );
+      }
 
       if (silverPrevMatch) {
          let loserName = '';
@@ -236,7 +345,7 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
            loserName = silverPrevMatch.blueName;
            loserClub = silverPrevMatch.blueClub;
          }
-         if (loserName && loserName.toLowerCase() !== 'bye') {
+         if (loserName && loserName !== '-' && loserName.toLowerCase() !== 'bye') {
            bronzes.push({ place: '3rd', name: loserName, club: loserClub });
          }
       }

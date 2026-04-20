@@ -40,6 +40,10 @@ export function InspectionLogs({ boutQueue, rings, matchHistory, boutNumberingMo
       );
     })
     .sort((a, b) => {
+      if (a.inspectedAt && b.inspectedAt) return b.inspectedAt - a.inspectedAt;
+      if (a.inspectedAt) return -1;
+      if (b.inspectedAt) return 1;
+
       const numA = parseInt(a.bout.toString().replace(/[^0-9]/g, '')) || 0;
       const numB = parseInt(b.bout.toString().replace(/[^0-9]/g, '')) || 0;
       return numB - numA; // Newest first

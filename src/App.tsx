@@ -1030,7 +1030,11 @@ export default function App() {
 
   const handleUpdateMatchInspection = async (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean, signature?: string, checklist?: string[]) => {
     const updateData = (match: MatchData) => {
-      const updated = { ...match, [`${color}_inspected`]: inspected };
+      const updated = { 
+        ...match, 
+        [`${color}_inspected`]: inspected,
+        inspectedAt: Date.now()
+      };
       if (signature) updated[`${color}_signature`] = signature;
       if (checklist) updated[`${color}_checklist`] = checklist;
       return updated;
@@ -1042,15 +1046,15 @@ export default function App() {
         if (ring.ringNumber.toString() === ringNo) {
           let r = { ...ring };
           let ringChanged = false;
-          if (r.currentBout && r.currentBout.bout.toString() === matchNo) {
+          if (r.currentBout && isBoutMatch(r.currentBout.bout, matchNo)) {
             r.currentBout = updateData(r.currentBout);
             ringChanged = true;
           }
-          if (r.onDeck && r.onDeck.bout.toString() === matchNo) {
+          if (r.onDeck && isBoutMatch(r.onDeck.bout, matchNo)) {
             r.onDeck = updateData(r.onDeck);
             ringChanged = true;
           }
-          if (r.inTheHole && r.inTheHole.bout.toString() === matchNo) {
+          if (r.inTheHole && isBoutMatch(r.inTheHole.bout, matchNo)) {
             r.inTheHole = updateData(r.inTheHole);
             ringChanged = true;
           }
@@ -1067,7 +1071,7 @@ export default function App() {
     setBoutQueue(prev => {
       let changed = false;
       const updated = prev.map(item => {
-        if (item.data.ring.toString() === ringNo && item.data.bout.toString() === matchNo) {
+        if (item.data.ring.toString() === ringNo && isBoutMatch(item.data.bout, matchNo)) {
           changed = true;
           return { ...item, data: updateData(item.data) };
         }
@@ -2112,6 +2116,12 @@ export default function App() {
                 onClick={() => setActiveTab('player-signature')} 
               />
               <NavItem 
+                icon={<ClipboardCheck size={20} />} 
+                label="Inspection Logs" 
+                active={activeTab === 'inspection-logs'} 
+                onClick={() => setActiveTab('inspection-logs')} 
+              />
+              <NavItem 
                 icon={<Search size={20} />} 
                 label="Search Winner" 
                 active={activeTab === 'search-winner'} 
@@ -2696,7 +2706,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'inspection-logs' && user?.role === 'admin' && (
+          {activeTab === 'inspection-logs' && (user?.role === 'admin' || user?.role === 'ta') && (
             <div className="max-w-5xl mx-auto">
               <InspectionLogs boutQueue={boutQueue} rings={rings} matchHistory={matchHistory} boutNumberingMode={boutNumberingMode} />
             </div>
@@ -4664,6 +4674,7 @@ interface PublicRingCardProps {
   queueCount?: number;
   showTotalBouts?: boolean;
   boutNumberingMode?: 'numeric' | 'alphanumeric';
+  ringQueue?: {id: string, data: MatchData}[];
 }
 
 function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean }) {
@@ -4813,12 +4824,18 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
               <div className="flex-[2] flex flex-col gap-1">
                 {[0, 1, 2].map((idx) => {
                   const b = standby[idx];
+                  const isPoomsaeItem = b?.data?.category?.toUpperCase().includes('POOMSAE SOLO') || 
+                                        b?.data?.category?.toUpperCase().includes('FREESTYLE') ||
+                                        (b?.data?.category?.toUpperCase().includes('POOMSAE') && !b?.data?.red_name);
                   return (
                     <div key={idx} className="flex-1 grid grid-cols-12 bg-[#0d1526] border border-white/10 rounded overflow-hidden">
                       <div className="col-span-3 flex items-center justify-center text-xl font-black text-white bg-[#161f33] border-r border-white/10">
                         {b ? formatBoutNumber(ring.ringNumber, b.data.bout, boutNumberingMode) : "---"}
                       </div>
-                      <div className="col-span-5 bg-blue-600/80 flex flex-col justify-center px-3 border-r border-white/10 relative">
+                      <div className={cn(
+                        "bg-blue-600/80 flex flex-col justify-center px-3 relative",
+                        isPoomsaeItem ? "col-span-9" : "col-span-5 border-r border-white/10"
+                      )}>
                         <span className="text-[8px] font-bold text-black uppercase leading-none">{b?.data.blue_club || "---"}</span>
                         <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{b?.data.blue_name || "---"}</span>
                         {b?.data.blue_inspected && (
@@ -4827,15 +4844,17 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                           </div>
                         )}
                       </div>
-                      <div className="col-span-4 bg-red-600/80 flex flex-col justify-center px-3 relative">
-                        <span className="text-[8px] font-bold text-black uppercase leading-none">{b?.data.red_club || "---"}</span>
-                        <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{b?.data.red_name || "---"}</span>
-                        {b?.data.red_inspected && (
-                          <div className="absolute bottom-1 right-2">
-                            <span className="text-[8px] font-black text-green-400 uppercase tracking-tighter">INSPECTED</span>
-                          </div>
-                        )}
-                      </div>
+                      {!isPoomsaeItem && (
+                        <div className="col-span-4 bg-red-600/80 flex flex-col justify-center px-3 relative">
+                          <span className="text-[8px] font-bold text-black uppercase leading-none">{b?.data.red_club || "---"}</span>
+                          <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{b?.data.red_name || "---"}</span>
+                          {b?.data.red_inspected && (
+                            <div className="absolute bottom-1 right-2">
+                              <span className="text-[8px] font-black text-green-400 uppercase tracking-tighter">INSPECTED</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -5071,10 +5090,16 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                 )}>
                   {[0, 1, 2].map((idx) => {
                     const bout = ringQueue[idx];
+                    const isPoomsaeItem = bout?.data?.category?.toUpperCase().includes('POOMSAE SOLO') || 
+                                          bout?.data?.category?.toUpperCase().includes('FREESTYLE') ||
+                                          (bout?.data?.category?.toUpperCase().includes('POOMSAE') && !bout?.data?.red_name);
                     return (
                       <div key={idx} className="flex items-center bg-slate-900 rounded-full border border-slate-800 overflow-hidden min-h-[2.5rem] py-1 shadow-lg group hover:border-slate-600 transition-colors">
                         {/* Blue Side */}
-                        <div className="flex-1 self-stretch bg-blue-600/90 flex flex-col justify-center px-3 min-w-0 relative">
+                        <div className={cn(
+                          "self-stretch bg-blue-600/90 flex flex-col justify-center px-3 min-w-0 relative transition-all duration-500",
+                          isPoomsaeItem ? "flex-[10]" : "flex-1"
+                        )}>
                           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
                           <p className="text-[8px] font-bold text-black uppercase leading-none mb-0.5 relative z-10">
                             {bout ? bout.data.blue_club : "---"}
@@ -5085,22 +5110,27 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                         </div>
                         
                         {/* Bout Number */}
-                        <div className="z-10 -mx-4 w-10 h-10 bg-white rounded-full border-4 border-slate-900 flex items-center justify-center flex-shrink-0 shadow-xl group-hover:scale-110 transition-transform">
+                        <div className={cn(
+                           "z-10 w-10 h-10 bg-white rounded-full border-4 border-slate-900 flex items-center justify-center flex-shrink-0 shadow-xl group-hover:scale-110 transition-transform",
+                           isPoomsaeItem ? "ml-auto mr-1" : "-mx-4"
+                        )}>
                           <span className="text-[10px] font-black text-slate-900">
                             {bout ? formatBoutNumber(ring.ringNumber, bout.data.bout, boutNumberingMode) : "---"}
                           </span>
                         </div>
 
                         {/* Red Side */}
-                        <div className="flex-1 self-stretch bg-red-600/90 flex flex-col justify-center px-3 min-w-0 text-right relative">
-                          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/10 to-transparent pointer-events-none" />
-                          <p className="text-[8px] font-bold text-black uppercase leading-none mb-0.5 relative z-10">
-                            {bout ? bout.data.red_club : "---"}
-                          </p>
-                          <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
-                            {bout ? (bout.data.privacy_mode ? "---" : bout.data.red_name) : "---"}
-                          </p>
-                        </div>
+                        {!isPoomsaeItem && (
+                          <div className="flex-1 self-stretch bg-red-600/90 flex flex-col justify-center px-3 min-w-0 text-right relative">
+                            <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/10 to-transparent pointer-events-none" />
+                            <p className="text-[8px] font-bold text-black uppercase leading-none mb-0.5 relative z-10">
+                              {bout ? bout.data.red_club : "---"}
+                            </p>
+                            <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
+                              {bout ? (bout.data.privacy_mode ? "---" : bout.data.red_name) : "---"}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -5244,15 +5274,27 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
               "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6",
               isFullscreen && "lg:grid-cols-3 gap-8"
             )}>
-              {displayedRings.map((ring) => (
-                <PublicRingCard 
-                  key={ring.ringNumber} 
-                  ring={ring} 
-                  namingMode={namingMode} 
-                  queueCount={boutQueue.filter(q => q.data.ring === ring.ringNumber).length}
-                  showTotalBouts={showTotalBouts}
-                />
-              ))}
+              {displayedRings.map((ring) => {
+                const rQueue = boutQueue
+                  .filter(q => q.data.ring === ring.ringNumber)
+                  .sort((a, b) => {
+                    const boutA = parseInt(normalizeBoutNumber(a.data.bout)) || 0;
+                    const boutB = parseInt(normalizeBoutNumber(b.data.bout)) || 0;
+                    return boutA - boutB;
+                  })
+                  .slice(0, 3);
+                
+                return (
+                  <PublicRingCard 
+                    key={ring.ringNumber} 
+                    ring={ring} 
+                    namingMode={namingMode} 
+                    queueCount={boutQueue.filter(q => q.data.ring === ring.ringNumber).length}
+                    showTotalBouts={showTotalBouts}
+                    ringQueue={rQueue}
+                  />
+                );
+              })}
             </div>
           </div>
         </div>
@@ -5307,7 +5349,7 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
   );
 }
 
-function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, boutNumberingMode = 'alphanumeric' }: PublicRingCardProps) {
+function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, boutNumberingMode = 'alphanumeric', ringQueue }: PublicRingCardProps) {
   const current = ring.currentBout;
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
   
@@ -5352,7 +5394,8 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
               <div className="flex items-start gap-6">
                 <PublicFighterSide color="blue" name={current.blue_name} club={current.blue_club} privacy={current.privacy_mode} />
                 {!current.category?.toUpperCase().includes('POOMSAE SOLO') && 
-                  !current.category?.toUpperCase().includes('FREESTYLE') && (
+                  !current.category?.toUpperCase().includes('FREESTYLE') && 
+                  !(current.category?.toUpperCase().includes('POOMSAE') && !current.red_name) && (
                   <>
                     <div className="text-xl font-black text-white italic mt-4">VS</div>
                     <PublicFighterSide color="red" name={current.red_name} club={current.red_club} privacy={current.privacy_mode} />
@@ -5365,6 +5408,63 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
           <div className="py-8 flex flex-col items-center justify-center text-slate-600 space-y-4">
             <AlertCircle size={48} />
             <p className="text-sm font-black uppercase tracking-widest">Ring Inactive</p>
+          </div>
+        )}
+
+        {/* Public Standby Queue */}
+        {ringQueue && ringQueue.length > 0 && (
+          <div className="mt-6 border-t border-slate-700 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full" />
+                Standby Queue
+              </span>
+              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Next {ringQueue.length} Bouts</span>
+            </div>
+            <div className="space-y-2">
+              {ringQueue.map((bout, idx) => {
+                const isPoomsaeItem = bout?.data?.category?.toUpperCase().includes('POOMSAE SOLO') || 
+                                      bout?.data?.category?.toUpperCase().includes('FREESTYLE') ||
+                                      (bout?.data?.category?.toUpperCase().includes('POOMSAE') && !bout?.data?.red_name);
+                return (
+                  <div key={idx} className="flex items-center bg-slate-900 rounded-xl border border-slate-700 overflow-hidden min-h-[3rem] shadow-sm">
+                    {/* Bout Num */}
+                    <div className="w-12 h-full bg-slate-800 flex items-center justify-center border-r border-slate-700 flex-shrink-0">
+                      <span className="text-[12px] font-black text-white">
+                        {bout ? formatBoutNumber(ring.ringNumber, bout.data.bout, boutNumberingMode) : "---"}
+                      </span>
+                    </div>
+
+                    {/* Blue Side */}
+                    <div className={cn(
+                      "self-stretch flex flex-col justify-center px-4 relative transition-all duration-500 border-l-[4px] border-[#00a2e8] min-w-0 overflow-hidden",
+                      isPoomsaeItem ? "flex-[10]" : "flex-1 basis-1/2 border-r border-slate-700/50"
+                    )}>
+                      <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-blue-900/10 to-transparent pointer-events-none" />
+                      <p className="text-[8px] font-bold text-[#00a2e8] uppercase leading-none mb-0.5 truncate">
+                        {bout ? bout.data.blue_club : "---"}
+                      </p>
+                      <p className="text-[12px] font-black text-slate-200 uppercase tracking-[0.5px] leading-tight truncate w-full">
+                        {bout ? (bout.data.privacy_mode ? "---" : bout.data.blue_name) : "---"}
+                      </p>
+                    </div>
+
+                    {/* Red Side */}
+                    {!isPoomsaeItem && (
+                      <div className="flex-1 basis-1/2 self-stretch flex flex-col justify-center px-4 relative border-l-[4px] border-[#ed1c24] min-w-0 overflow-hidden">
+                        <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-red-900/10 to-transparent pointer-events-none" />
+                        <p className="text-[8px] font-bold text-[#ed1c24] uppercase leading-none mb-0.5 truncate">
+                          {bout ? bout.data.red_club : "---"}
+                        </p>
+                        <p className="text-[12px] font-black text-slate-200 uppercase tracking-[0.5px] leading-tight truncate w-full">
+                          {bout ? (bout.data.privacy_mode ? "---" : bout.data.red_name) : "---"}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -5393,7 +5493,12 @@ function PublicFighterSide({ color, name, club, privacy }: { color: 'blue' | 're
       )}>
         {privacy ? "---" : name}
       </p>
-      <p className="text-sm font-bold text-black uppercase tracking-widest">{club}</p>
+      <p className={cn(
+        "text-sm font-bold uppercase tracking-widest",
+        color === 'blue' ? "text-[#00a2e8]" : "text-[#ed1c24]"
+      )}>
+        {club}
+      </p>
     </div>
   );
 }

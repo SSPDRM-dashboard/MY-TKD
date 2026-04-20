@@ -34,6 +34,7 @@ export interface MatchData {
   red_signature?: string;
   blue_checklist?: string[];
   red_checklist?: string[];
+  inspectedAt?: number;
 }
 
 export interface RingStatus {
