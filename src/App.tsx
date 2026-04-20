@@ -610,6 +610,7 @@ export default function App() {
   const [isSheetSaved, setIsSheetSaved] = useState(false);
   const [showTotalBoutsPublic, setShowTotalBoutsPublic] = useSyncedState<boolean>('tkd_show_total_bouts_public', true);
   const [showOnlyActiveRings, setShowOnlyActiveRings] = useSyncedState<boolean>('tkd_show_only_active_rings', false);
+  const [showPublicStandbyQueue, setShowPublicStandbyQueue] = useSyncedState<boolean>('tkd_show_public_standby_queue', true);
 
   // Persistence & Cross-tab Sync handled by useSyncedState
 
@@ -1971,6 +1972,7 @@ export default function App() {
         showTotalBouts={showTotalBoutsPublic}
         boutNumberingMode={boutNumberingMode}
         showOnlyActiveRings={showOnlyActiveRings}
+        showPublicStandbyQueue={showPublicStandbyQueue}
       />
     );
   }
@@ -1985,6 +1987,7 @@ export default function App() {
         showTotalBouts={showTotalBoutsPublic}
         boutNumberingMode={boutNumberingMode}
         showOnlyActiveRings={showOnlyActiveRings}
+        showPublicStandbyQueue={showPublicStandbyQueue}
       />
     );
   }
@@ -2852,6 +2855,32 @@ export default function App() {
                           )}
                         >
                           Active Only
+                        </button>
+                      </div>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-slate-700">Public View Standby Queue</p>
+                        <p className="text-[10px] text-slate-500">Show next bouts in public dashboard</p>
+                      </div>
+                      <div className="flex bg-slate-200 p-1 rounded-lg">
+                        <button 
+                          onClick={() => setShowPublicStandbyQueue(true)}
+                          className={cn(
+                            "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                            showPublicStandbyQueue ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                          )}
+                        >
+                          Show
+                        </button>
+                        <button 
+                          onClick={() => setShowPublicStandbyQueue(false)}
+                          className={cn(
+                            "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                            !showPublicStandbyQueue ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                          )}
+                        >
+                          Hide
                         </button>
                       </div>
                     </div>
@@ -4675,6 +4704,7 @@ interface PublicRingCardProps {
   showTotalBouts?: boolean;
   boutNumberingMode?: 'numeric' | 'alphanumeric';
   ringQueue?: {id: string, data: MatchData}[];
+  showPublicStandbyQueue?: boolean;
 }
 
 function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean }) {
@@ -5162,7 +5192,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
   );
 }
 
-function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator, showTotalBouts = true, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', onBack: () => void, isSpectator?: boolean, showTotalBouts?: boolean, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean }) {
+function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator, showTotalBouts = true, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showPublicStandbyQueue = true }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', onBack: () => void, isSpectator?: boolean, showTotalBouts?: boolean, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showPublicStandbyQueue?: boolean }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
@@ -5275,14 +5305,23 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
               isFullscreen && "lg:grid-cols-3 gap-8"
             )}>
               {displayedRings.map((ring) => {
-                const rQueue = boutQueue
+                const ringQueueAll = boutQueue
                   .filter(q => q.data.ring === ring.ringNumber)
                   .sort((a, b) => {
                     const boutA = parseInt(normalizeBoutNumber(a.data.bout)) || 0;
                     const boutB = parseInt(normalizeBoutNumber(b.data.bout)) || 0;
                     return boutA - boutB;
-                  })
-                  .slice(0, 3);
+                  });
+
+                const isPoomsaeRing = ring.currentBout?.category?.toUpperCase().includes('POOMSAE') || 
+                                      ring.currentBout?.category?.toUpperCase().includes('FREESTYLE') ||
+                                      (ringQueueAll.length > 0 && (
+                                        ringQueueAll[0].data.category?.toUpperCase().includes('POOMSAE') ||
+                                        ringQueueAll[0].data.category?.toUpperCase().includes('FREESTYLE')
+                                      ));
+
+                const queueLimit = isPoomsaeRing ? 8 : 3;
+                const rQueue = ringQueueAll.slice(0, queueLimit);
                 
                 return (
                   <PublicRingCard 
@@ -5292,6 +5331,7 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
                     queueCount={boutQueue.filter(q => q.data.ring === ring.ringNumber).length}
                     showTotalBouts={showTotalBouts}
                     ringQueue={rQueue}
+                    showPublicStandbyQueue={showPublicStandbyQueue}
                   />
                 );
               })}
@@ -5349,7 +5389,7 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
   );
 }
 
-function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, boutNumberingMode = 'alphanumeric', ringQueue }: PublicRingCardProps) {
+function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, boutNumberingMode = 'alphanumeric', ringQueue, showPublicStandbyQueue = true }: PublicRingCardProps) {
   const current = ring.currentBout;
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
   
@@ -5412,7 +5452,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
         )}
 
         {/* Public Standby Queue */}
-        {ringQueue && ringQueue.length > 0 && (
+        {showPublicStandbyQueue && ringQueue && ringQueue.length > 0 && (
           <div className="mt-6 border-t border-slate-700 pt-4">
             <div className="flex items-center justify-between mb-3">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
