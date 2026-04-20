@@ -2080,12 +2080,6 @@ export default function App() {
                 active={activeTab === 'search-winner'} 
                 onClick={() => setActiveTab('search-winner')} 
               />
-              <NavItem 
-                icon={<Database size={20} />} 
-                label="Data Sync" 
-                active={activeTab === 'data-sync'} 
-                onClick={() => setActiveTab('data-sync')} 
-              />
             </>
           )}
           {user?.role === 'viewer' && (
@@ -2147,12 +2141,6 @@ export default function App() {
                 label="Tournament Report" 
                 active={activeTab === 'report'} 
                 onClick={() => setActiveTab('report')} 
-              />
-              <NavItem 
-                icon={<Database size={20} />} 
-                label="Data Sync" 
-                active={activeTab === 'data-sync'} 
-                onClick={() => setActiveTab('data-sync')} 
               />
               <NavItem 
                 icon={<ClipboardCheck size={20} />} 
@@ -2652,12 +2640,6 @@ export default function App() {
                 isAutoUpdateNames={isAutoUpdateNames}
                 onToggleAutoUpdateNames={setIsAutoUpdateNames}
               />
-            </div>
-          )}
-
-          {activeTab === 'data-sync' && (
-            <div className="max-w-4xl mx-auto">
-              <DataUpdater setCategories={setCategories} setClubs={setClubs} />
             </div>
           )}
 
@@ -4268,23 +4250,32 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
   // Only show current bout if it belongs to the current event
   const current = ring.currentBout && ring.currentBout.eventId === currentEventId ? ring.currentBout : null;
 
+  const isPoomsaeMode = current?.category?.toUpperCase().includes('POOMSAE SOLO') || 
+                        current?.category?.toUpperCase().includes('FREESTYLE') ||
+                        (current?.category?.toUpperCase().includes('POOMSAE') && !current.red_name && current.blue_name);
+
   useEffect(() => {
     if (current) {
-      if (!current.blue_inspected || !current.red_inspected) {
-        setShowInspectionWarning(true);
+      if (isPoomsaeMode) {
+        if (!current.blue_inspected) {
+          setShowInspectionWarning(true);
+        } else {
+          setShowInspectionWarning(false);
+        }
       } else {
-        setShowInspectionWarning(false);
+        if (!current.blue_inspected || !current.red_inspected) {
+          setShowInspectionWarning(true);
+        } else {
+          setShowInspectionWarning(false);
+        }
       }
     } else {
       setShowInspectionWarning(false);
     }
-  }, [current?.bout, current?.blue_inspected, current?.red_inspected]);
+  }, [current?.bout, current?.blue_inspected, current?.red_inspected, isPoomsaeMode]);
   
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
   
-  const isPoomsaeMode = current?.category?.toUpperCase().includes('POOMSAE SOLO') || 
-                        current?.category?.toUpperCase().includes('FREESTYLE') ||
-                        (current?.category?.toUpperCase().includes('POOMSAE') && !current.red_name && current.blue_name);
   const progress = ring.totalBouts && current ? Math.min(100, (getBoutNumber(current.bout) / ring.totalBouts) * 100) : 0;
 
   return (
@@ -4295,8 +4286,15 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
             {ringName}
           </div>
           <div>
-            <span className="font-bold text-sm uppercase tracking-wider block leading-none mt-1">Ring {ringName}</span>
             <div className="flex items-center gap-2 mt-1">
+              <span className="font-bold text-sm uppercase tracking-wider block leading-none">Ring {ringName}</span>
+              {current && (
+                <span className="text-[18px] font-black text-slate-300 uppercase tracking-widest border border-slate-700 bg-slate-800 rounded px-2 py-0.5 leading-none">
+                  Bout {formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode)} {ring.totalBouts ? `/ ${ring.totalBouts}` : ''}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-1.5">
               {ring.totalBouts && (
                 <span className="flex items-center gap-1">
                   {onUpdateTotalBouts && (
@@ -4392,11 +4390,17 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
         {current ? (
           <>
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[12px] font-black text-slate-400 uppercase tracking-widest border-2 border-slate-200 rounded-full px-4 py-1.5 shadow-sm">
-                  Bout {formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode)} {ring.totalBouts ? `of ${ring.totalBouts}` : ''}
-                </span>
-                <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded uppercase flex items-center gap-1.5">
+              <div className="flex items-start justify-between pb-2">
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <Shield size={18} className={current.privacy_mode ? "text-red-500" : "text-green-500"} />
+                    <span className="text-[16px] font-bold text-slate-500 uppercase">{current.category}</span>
+                  </div>
+                  {current.privacy_mode && (
+                    <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded w-fit inline-block">PDPA ACTIVE</span>
+                  )}
+                </div>
+                <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 px-2 py-0.5 rounded uppercase flex items-center gap-1.5 shadow-sm">
                   Live <div className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse" />
                 </span>
               </div>
@@ -4411,18 +4415,10 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                 )}
               </div>
               
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Shield size={14} className={current.privacy_mode ? "text-red-500" : "text-green-500"} />
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">{current.category}</span>
-                </div>
-                {current.privacy_mode && (
-                  <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded">PDPA ACTIVE</span>
-                )}
-              </div>
+              {/* Category section migrated above */}
 
               {onWinnerSelect && (
-                <div className="pt-4 border-t border-slate-100">
+                <div className="pt-6 border-t border-slate-100">
                   {isPoomsaeMode ? (
                     <div className="space-y-4">
                       <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Poomsae Performance</p>
@@ -4440,13 +4436,13 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                       <div className="flex gap-3 mb-4">
                         <button 
                           onClick={() => onWinnerSelect('Blue')}
-                          className="flex-1 py-3 md:py-2 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl md:rounded-lg font-black md:font-bold text-xs uppercase transition-all border border-blue-200 hover:border-blue-600 active:scale-95 px-2 truncate"
+                          className="flex-1 py-4 md:py-3 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl md:rounded-lg font-black md:font-bold text-[20px] uppercase transition-all border border-blue-200 hover:border-blue-600 active:scale-95 px-2 truncate"
                         >
                           {current.blue_name || 'Blue'} Wins
                         </button>
                         <button 
                           onClick={() => onWinnerSelect('Red')}
-                          className="flex-1 py-3 md:py-2 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-xl md:rounded-lg font-black md:font-bold text-xs uppercase transition-all border border-red-200 hover:border-red-600 active:scale-95 px-2 truncate"
+                          className="flex-1 py-4 md:py-3 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-xl md:rounded-lg font-black md:font-bold text-[20px] uppercase transition-all border border-red-200 hover:border-red-600 active:scale-95 px-2 truncate"
                         >
                           {current.red_name || 'Red'} Wins
                         </button>
@@ -4572,7 +4568,9 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
               <div>
                 <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">Inspection Required</h3>
                 <p className="text-[10px] font-bold text-slate-500 mt-1 leading-relaxed">
-                  One or both players have not passed inspection. Please ensure they are inspected before starting the bout.
+                  {isPoomsaeMode 
+                    ? "The competitor has not passed inspection. Please ensure they are inspected before starting the bout."
+                    : "One or both players have not passed inspection. Please ensure they are inspected before starting the bout."}
                 </p>
               </div>
               <button
@@ -5393,6 +5391,29 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
   const current = ring.currentBout;
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
   
+  const formatCategoryName = (cat?: string) => {
+    if (!cat) return "---";
+    // Specifically remove "(POOMSAE SOLO)" or "(POOMSAE SOLO)-" as requested
+    return cat.replace(/\s*\(POOMSAE SOLO\)\s*-?/gi, '').trim();
+  };
+
+  const groupedQueue = React.useMemo(() => {
+    if (!ringQueue) return [];
+    
+    const result: { category: string; bouts: typeof ringQueue }[] = [];
+    ringQueue.forEach(bout => {
+      const cat = bout.data.category || 'Unknown Category';
+      const existingGroup = result.find(g => g.category === cat);
+      if (existingGroup) {
+        existingGroup.bouts.push(bout);
+      } else {
+        result.push({ category: cat, bouts: [bout] });
+      }
+    });
+    
+    return result;
+  }, [ringQueue]);
+  
   return (
     <div className="bg-slate-800 border border-slate-700 rounded-3xl overflow-hidden shadow-2xl">
       <div className="p-4 bg-slate-700/50 flex items-center justify-between">
@@ -5428,7 +5449,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
           <>
             <div className="space-y-4">
               <div className="flex items-center justify-center">
-                <span className="text-[20px] font-black text-white uppercase tracking-widest">{current.category}</span>
+                <span className="text-[20px] font-black text-white uppercase tracking-widest text-center leading-tight">{formatCategoryName(current.category)}</span>
               </div>
               
               <div className="flex items-start gap-6">
@@ -5461,49 +5482,58 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
               </span>
               <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Next {ringQueue.length} Bouts</span>
             </div>
-            <div className="space-y-2">
-              {ringQueue.map((bout, idx) => {
-                const isPoomsaeItem = bout?.data?.category?.toUpperCase().includes('POOMSAE SOLO') || 
-                                      bout?.data?.category?.toUpperCase().includes('FREESTYLE') ||
-                                      (bout?.data?.category?.toUpperCase().includes('POOMSAE') && !bout?.data?.red_name);
-                return (
-                  <div key={idx} className="flex items-center bg-slate-900 rounded-xl border border-slate-700 overflow-hidden min-h-[3rem] shadow-sm">
-                    {/* Bout Num */}
-                    <div className="w-12 h-full bg-slate-800 flex items-center justify-center border-r border-slate-700 flex-shrink-0">
-                      <span className="text-[12px] font-black text-white">
-                        {bout ? formatBoutNumber(ring.ringNumber, bout.data.bout, boutNumberingMode) : "---"}
-                      </span>
-                    </div>
-
-                    {/* Blue Side */}
-                    <div className={cn(
-                      "self-stretch flex flex-col justify-center px-4 relative transition-all duration-500 border-l-[4px] border-[#00a2e8] min-w-0 overflow-hidden",
-                      isPoomsaeItem ? "flex-[10]" : "flex-1 basis-1/2 border-r border-slate-700/50"
-                    )}>
-                      <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-blue-900/10 to-transparent pointer-events-none" />
-                      <p className="text-[8px] font-bold text-[#00a2e8] uppercase leading-none mb-0.5 truncate">
-                        {bout ? bout.data.blue_club : "---"}
-                      </p>
-                      <p className="text-[12px] font-black text-slate-200 uppercase tracking-[0.5px] leading-tight truncate w-full">
-                        {bout ? (bout.data.privacy_mode ? "---" : bout.data.blue_name) : "---"}
-                      </p>
-                    </div>
-
-                    {/* Red Side */}
-                    {!isPoomsaeItem && (
-                      <div className="flex-1 basis-1/2 self-stretch flex flex-col justify-center px-4 relative border-l-[4px] border-[#ed1c24] min-w-0 overflow-hidden">
-                        <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-red-900/10 to-transparent pointer-events-none" />
-                        <p className="text-[8px] font-bold text-[#ed1c24] uppercase leading-none mb-0.5 truncate">
-                          {bout ? bout.data.red_club : "---"}
-                        </p>
-                        <p className="text-[12px] font-black text-slate-200 uppercase tracking-[0.5px] leading-tight truncate w-full">
-                          {bout ? (bout.data.privacy_mode ? "---" : bout.data.red_name) : "---"}
-                        </p>
-                      </div>
-                    )}
+            <div className="space-y-4">
+              {groupedQueue.map((group, groupIdx) => (
+                <div key={groupIdx} className="space-y-1">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2 py-0.5 bg-slate-800 rounded-md border border-slate-700 w-fit mb-2">
+                    {formatCategoryName(group.category)}
                   </div>
-                );
-              })}
+                  <div className="space-y-2">
+                    {group.bouts.map((bout, idx) => {
+                      const isPoomsaeItem = bout?.data?.category?.toUpperCase().includes('POOMSAE SOLO') || 
+                                            bout?.data?.category?.toUpperCase().includes('FREESTYLE') ||
+                                            (bout?.data?.category?.toUpperCase().includes('POOMSAE') && !bout?.data?.red_name);
+                      return (
+                        <div key={idx} className="flex items-center bg-slate-900 rounded-xl border border-slate-700 overflow-hidden min-h-[3rem] shadow-sm">
+                          {/* Bout Num */}
+                          <div className="w-12 h-full bg-slate-800 flex items-center justify-center border-r border-slate-700 flex-shrink-0">
+                            <span className="text-[12px] font-black text-white">
+                              {bout ? formatBoutNumber(ring.ringNumber, bout.data.bout, boutNumberingMode) : "---"}
+                            </span>
+                          </div>
+
+                          {/* Blue Side */}
+                          <div className={cn(
+                            "self-stretch flex flex-col justify-center px-4 relative transition-all duration-500 border-l-[4px] border-[#00a2e8] min-w-0 overflow-hidden",
+                            isPoomsaeItem ? "flex-[10]" : "flex-1 basis-1/2 border-r border-slate-700/50"
+                          )}>
+                            <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-blue-900/10 to-transparent pointer-events-none" />
+                            <p className="text-[8px] font-bold text-[#00a2e8] uppercase leading-none mb-0.5 truncate">
+                              {bout ? bout.data.blue_club : "---"}
+                            </p>
+                            <p className="text-[12px] font-black text-slate-200 uppercase tracking-[0.5px] leading-tight truncate w-full">
+                              {bout ? (bout.data.privacy_mode ? "---" : bout.data.blue_name) : "---"}
+                            </p>
+                          </div>
+
+                          {/* Red Side */}
+                          {!isPoomsaeItem && (
+                            <div className="flex-1 basis-1/2 self-stretch flex flex-col justify-center px-4 relative border-l-[4px] border-[#ed1c24] min-w-0 overflow-hidden">
+                              <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-red-900/10 to-transparent pointer-events-none" />
+                              <p className="text-[8px] font-bold text-[#ed1c24] uppercase leading-none mb-0.5 truncate">
+                                {bout ? bout.data.red_club : "---"}
+                              </p>
+                              <p className="text-[12px] font-black text-slate-200 uppercase tracking-[0.5px] leading-tight truncate w-full">
+                                {bout ? (bout.data.privacy_mode ? "---" : bout.data.red_name) : "---"}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}

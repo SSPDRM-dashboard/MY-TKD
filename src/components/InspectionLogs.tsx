@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { MatchData, RingStatus, MatchHistoryItem } from '../types';
 import { Search, CheckCircle2, XCircle } from 'lucide-react';
 import { cn, formatBoutNumber } from '../lib/utils';
-import { INSPECTION_ITEMS } from './TASheet';
+import { INSPECTION_ITEMS, POOMSAE_INSPECTION_ITEMS } from './TASheet';
 
 interface InspectionLogsProps {
   boutQueue: { id: string, data: MatchData }[];
@@ -49,25 +49,32 @@ export function InspectionLogs({ boutQueue, rings, matchHistory, boutNumberingMo
       return numB - numA; // Newest first
     });
 
-  const renderChecklist = (checklist?: string[]) => {
+  const renderChecklist = (checklist?: string[], isPoomsae?: boolean) => {
     if (!checklist || checklist.length === 0) return <p className="text-xs text-slate-400 italic">No checklist data</p>;
+    
+    // Fallback to standard if we don't know it's poomsae, or use specific list if passed
+    const itemsList = isPoomsae ? POOMSAE_INSPECTION_ITEMS : INSPECTION_ITEMS;
     
     return (
       <div className="space-y-4 mt-4">
-        {INSPECTION_ITEMS.map((section, idx) => {
-          const sectionItems = section.items.filter(item => checklist.includes(item.id));
-          if (sectionItems.length === 0) return null;
-          
+        {itemsList.map((section, idx) => {
           return (
             <div key={idx}>
               <h5 className="text-[10px] font-black uppercase text-slate-500 mb-2">{section.category}</h5>
               <ul className="space-y-1">
-                {sectionItems.map(item => (
-                  <li key={item.id} className="flex items-start gap-2 text-xs text-slate-700">
-                    <CheckCircle2 size={14} className="text-green-500 shrink-0 mt-0.5" />
-                    <span>{item.label}</span>
-                  </li>
-                ))}
+                {section.items.map(item => {
+                  const isChecked = checklist.includes(item.id);
+                  return (
+                    <li key={item.id} className={cn("flex items-start gap-2 text-xs", isChecked ? "text-slate-700" : "text-slate-400 opacity-60")}>
+                      {isChecked ? (
+                        <CheckCircle2 size={14} className="text-green-500 shrink-0 mt-0.5" />
+                      ) : (
+                        <XCircle size={14} className="text-slate-300 shrink-0 mt-0.5" />
+                      )}
+                      <span>{item.label}</span>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           );
@@ -113,7 +120,10 @@ export function InspectionLogs({ boutQueue, rings, matchHistory, boutNumberingMo
                 <span className="text-sm font-bold text-slate-500 uppercase">{match.category}</span>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-200">
+              <div className={cn(
+                "grid divide-y md:divide-y-0 divide-slate-200",
+                match.red_name ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1"
+              )}>
                 {/* Blue Player */}
                 <div className="p-6">
                   <div className="flex items-center justify-between mb-4">
@@ -143,42 +153,44 @@ export function InspectionLogs({ boutQueue, rings, matchHistory, boutNumberingMo
                   
                   <div>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Checklist Items</p>
-                    {renderChecklist(match.blue_checklist)}
+                    {renderChecklist(match.blue_checklist, match.category?.toUpperCase().includes('POOMSAE') || match.category?.toUpperCase().includes('FREESTYLE'))}
                   </div>
                 </div>
 
-                {/* Red Player */}
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h4 className="text-lg font-black text-[#ed1c24] uppercase">{match.red_name}</h4>
-                      <p className="text-xs font-bold text-slate-500 uppercase">{match.red_club}</p>
-                    </div>
-                    {match.red_inspected ? (
-                      <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-[10px] font-black uppercase tracking-widest flex items-center gap-1">
-                        <CheckCircle2 size={12} /> Inspected
-                      </span>
-                    ) : (
-                      <span className="px-2 py-1 bg-slate-100 text-slate-500 rounded text-[10px] font-black uppercase tracking-widest flex items-center gap-1">
-                        <XCircle size={12} /> Pending
-                      </span>
-                    )}
-                  </div>
-                  
-                  {match.red_signature && (
-                    <div className="mb-6">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Signature</p>
-                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 h-32 flex items-center justify-center">
-                        <img src={match.red_signature} alt="Red Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+                {/* Red Player - Only shown if there is a red player (not a solo poomsae) */}
+                {match.red_name && (
+                  <div className="p-6 border-t md:border-t-0 md:border-l border-slate-200">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h4 className="text-lg font-black text-[#ed1c24] uppercase">{match.red_name}</h4>
+                        <p className="text-xs font-bold text-slate-500 uppercase">{match.red_club}</p>
                       </div>
+                      {match.red_inspected ? (
+                        <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-[10px] font-black uppercase tracking-widest flex items-center gap-1">
+                          <CheckCircle2 size={12} /> Inspected
+                        </span>
+                      ) : (
+                        <span className="px-2 py-1 bg-slate-100 text-slate-500 rounded text-[10px] font-black uppercase tracking-widest flex items-center gap-1">
+                          <XCircle size={12} /> Pending
+                        </span>
+                      )}
                     </div>
-                  )}
-                  
-                  <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Checklist Items</p>
-                    {renderChecklist(match.red_checklist)}
+                    
+                    {match.red_signature && (
+                      <div className="mb-6">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Signature</p>
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 h-32 flex items-center justify-center">
+                          <img src={match.red_signature} alt="Red Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Checklist Items</p>
+                      {renderChecklist(match.red_checklist, match.category?.toUpperCase().includes('POOMSAE') || match.category?.toUpperCase().includes('FREESTYLE'))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           ))}
