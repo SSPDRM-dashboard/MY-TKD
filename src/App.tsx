@@ -78,6 +78,14 @@ function isEqual(a: any, b: any): boolean {
   return true;
 }
 
+function cleanPlaceholder(text?: string): string {
+  if (!text) return "---";
+  const t = text.trim().toUpperCase();
+  const placeholders = ["NEW COMPETITOR", "CLUB A", "CLUB B", "OPEN CATEGORY", "---", "-"];
+  if (placeholders.includes(t)) return "---";
+  return text;
+}
+
 function useSyncedState<T>(key: string, initialValue: T) {
   const [state, setState] = useState<T>(() => {
     const saved = localStorage.getItem(key);
@@ -1783,11 +1791,11 @@ export default function App() {
       const defaultMatch: MatchData = {
         ring: ringNumber,
         bout: ring?.nextBoutNumber || 1,
-        blue_name: "New Competitor",
-        blue_club: "Club A",
-        red_name: "New Competitor",
-        red_club: "Club B",
-        category: "Open Category",
+        blue_name: "",
+        blue_club: "",
+        red_name: "",
+        red_club: "",
+        category: "",
         privacy_mode: false
       };
       handleBoutUpdate(ringNumber, defaultMatch);
@@ -2414,8 +2422,8 @@ export default function App() {
                                     <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-md">Ring {item.data.ring}</span>
                                     <span className="text-[11px] font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">Bout {formatBoutNumber(item.data.ring, item.data.bout, boutNumberingMode)}</span>
                                   </div>
-                                  <p className="text-sm font-bold text-slate-800">{item.data.blue_name} vs {item.data.red_name}</p>
-                                  <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{item.data.category}</p>
+                                  <p className="text-sm font-bold text-slate-800">{cleanPlaceholder(item.data.blue_name)} vs {cleanPlaceholder(item.data.red_name)}</p>
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{cleanPlaceholder(item.data.category)}</p>
                                 </div>
                                 <div className="flex flex-col items-end gap-2">
                                   <button 
@@ -2571,8 +2579,8 @@ export default function App() {
                                       <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-md">Ring {item.data.ring}</span>
                                       <span className="text-[11px] font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">Bout {formatBoutNumber(item.data.ring, item.data.bout, boutNumberingMode)}</span>
                                     </div>
-                                    <p className="text-sm font-bold text-slate-800">{item.data.blue_name} vs {item.data.red_name}</p>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{item.data.category}</p>
+                                    <p className="text-sm font-bold text-slate-800">{cleanPlaceholder(item.data.blue_name)} vs {cleanPlaceholder(item.data.red_name)}</p>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{cleanPlaceholder(item.data.category)}</p>
                                   </div>
                                   <div className="flex flex-col items-end gap-2">
                                     <button 
@@ -4394,7 +4402,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center gap-2">
                     <Shield size={18} className={current.privacy_mode ? "text-red-500" : "text-green-500"} />
-                    <span className="text-[16px] font-bold text-slate-500 uppercase">{current.category}</span>
+                    <span className="text-[16px] font-bold text-slate-500 uppercase">{cleanPlaceholder(current.category)}</span>
                   </div>
                   {current.privacy_mode && (
                     <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded w-fit inline-block">PDPA ACTIVE</span>
@@ -4406,11 +4414,11 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
               </div>
               
               <div className="flex items-start gap-4">
-                <FighterSide color="blue" name={current.blue_name} club={current.blue_club} privacy={current.privacy_mode} inspected={current.blue_inspected} />
+                <FighterSide color="blue" name={cleanPlaceholder(current.blue_name)} club={cleanPlaceholder(current.blue_club)} privacy={current.privacy_mode} inspected={current.blue_inspected} />
                 {!isPoomsaeMode && (
                   <>
                     <div className="text-xs font-black text-slate-300 italic mt-6">VS</div>
-                    <FighterSide color="red" name={current.red_name} club={current.red_club} privacy={current.privacy_mode} inspected={current.red_inspected} />
+                    <FighterSide color="red" name={cleanPlaceholder(current.red_name)} club={cleanPlaceholder(current.red_club)} privacy={current.privacy_mode} inspected={current.red_inspected} />
                   </>
                 )}
               </div>
@@ -4438,13 +4446,13 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                           onClick={() => onWinnerSelect('Blue')}
                           className="flex-1 py-4 md:py-3 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl md:rounded-lg font-black md:font-bold text-[20px] uppercase transition-all border border-blue-200 hover:border-blue-600 active:scale-95 px-2 truncate"
                         >
-                          {current.blue_name || 'Blue'} Wins
+                          {cleanPlaceholder(current.blue_name) || 'Blue'} Wins
                         </button>
                         <button 
                           onClick={() => onWinnerSelect('Red')}
                           className="flex-1 py-4 md:py-3 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-xl md:rounded-lg font-black md:font-bold text-[20px] uppercase transition-all border border-red-200 hover:border-red-600 active:scale-95 px-2 truncate"
                         >
-                          {current.red_name || 'Red'} Wins
+                          {cleanPlaceholder(current.red_name) || 'Red'} Wins
                         </button>
                       </div>
                     </>
@@ -4599,7 +4607,7 @@ function FighterSide({ color, name, club, privacy, inspected }: { color: 'blue' 
   return (
     <div className="flex-1 space-y-1">
       <div className={cn(
-        "flex items-center gap-1 text-[9px] font-black uppercase tracking-widest mb-1",
+        "flex items-center gap-1 text-[11px] font-black uppercase tracking-widest mb-1",
         inspected 
           ? (color === 'blue' ? "text-[#00a2e8]" : "text-[#ed1c24]")
           : "text-slate-400"
@@ -4612,11 +4620,11 @@ function FighterSide({ color, name, club, privacy, inspected }: { color: 'blue' 
       )} />
       <p className={cn(
         "font-black text-slate-800 leading-tight line-clamp-3",
-        getDynamicFontSize(privacy ? "---" : name)
+        getDynamicFontSize(privacy ? "---" : cleanPlaceholder(name))
       )}>
-        {privacy ? "---" : name}
+        {privacy ? "---" : cleanPlaceholder(name)}
       </p>
-      <p className="text-[10px] font-bold text-slate-400 uppercase">{club}</p>
+      <p className="text-[15px] font-bold text-slate-400 uppercase">{cleanPlaceholder(club)}</p>
     </div>
   );
 }
@@ -4811,17 +4819,17 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                 {/* Header */}
                 <div className="grid grid-cols-12 bg-[#1a2235] border-b border-white/10 py-2 px-4">
                   <div className="col-span-2 bg-lime-500 text-slate-950 text-[16px] font-black px-3 py-1 rounded flex items-center justify-center mr-4">
-                    {current?.category.split(' ')[0] || "---"}
+                    {cleanPlaceholder(current?.category?.split(' ')[0] || "")}
                   </div>
                   <div className="col-span-10 text-white text-[18px] font-bold flex items-center">
-                    {current?.category || "---"}
+                    {cleanPlaceholder(current?.category || "")}
                   </div>
                 </div>
                 {/* Content */}
                 <div className="flex-1 grid grid-cols-12">
                   {/* Bout Num */}
                   <div className="col-span-2 flex items-center justify-center text-3xl font-black text-white border-r border-white/10 bg-[#161f33]">
-                    {current ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
+                    {current ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : ""}
                   </div>
                   {/* Players */}
                   <div className="col-span-10 flex flex-col">
@@ -4829,13 +4837,13 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                       "flex-1 bg-blue-600/90 flex flex-col justify-center px-4 relative",
                       !isPoomsaeModeCurrent && "border-b border-white/10"
                     )}>
-                      <p className="text-[10px] font-bold text-black uppercase leading-none mb-1">{current?.blue_club || "---"}</p>
-                      <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current?.blue_name || "---"}</h4>
+                      <p className="text-[15px] font-bold text-black uppercase leading-none mb-1">{cleanPlaceholder(current?.blue_club || "")}</p>
+                      <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{cleanPlaceholder(current?.blue_name || "")}</h4>
                     </div>
                     {!isPoomsaeModeCurrent && (
                       <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
-                        <p className="text-[10px] font-bold text-black uppercase leading-none mb-1">{current?.red_club || "---"}</p>
-                        <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current?.red_name || "---"}</h4>
+                        <p className="text-[15px] font-bold text-black uppercase leading-none mb-1">{cleanPlaceholder(current?.red_club || "")}</p>
+                        <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{cleanPlaceholder(current?.red_name || "")}</h4>
                       </div>
                     )}
                   </div>
@@ -4858,27 +4866,27 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                   return (
                     <div key={idx} className="flex-1 grid grid-cols-12 bg-[#0d1526] border border-white/10 rounded overflow-hidden">
                       <div className="col-span-3 flex items-center justify-center text-xl font-black text-white bg-[#161f33] border-r border-white/10">
-                        {b ? formatBoutNumber(ring.ringNumber, b.data.bout, boutNumberingMode) : "---"}
+                        {b ? formatBoutNumber(ring.ringNumber, b.data.bout, boutNumberingMode) : ""}
                       </div>
                       <div className={cn(
                         "bg-blue-600/80 flex flex-col justify-center px-3 relative",
                         isPoomsaeItem ? "col-span-9" : "col-span-5 border-r border-white/10"
                       )}>
-                        <span className="text-[8px] font-bold text-black uppercase leading-none">{b?.data.blue_club || "---"}</span>
-                        <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{b?.data.blue_name || "---"}</span>
+                        <span className="text-[13px] font-bold text-black uppercase leading-none">{cleanPlaceholder(b?.data.blue_club || "")}</span>
+                        <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{cleanPlaceholder(b?.data.blue_name || "")}</span>
                         {b?.data.blue_inspected && (
                           <div className="absolute bottom-1 right-2">
-                            <span className="text-[8px] font-black text-green-400 uppercase tracking-tighter">INSPECTED</span>
+                            <span className="text-[10px] font-black text-green-400 uppercase tracking-tighter">INSPECTED</span>
                           </div>
                         )}
                       </div>
                       {!isPoomsaeItem && (
                         <div className="col-span-4 bg-red-600/80 flex flex-col justify-center px-3 relative">
-                          <span className="text-[8px] font-bold text-black uppercase leading-none">{b?.data.red_club || "---"}</span>
-                          <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{b?.data.red_name || "---"}</span>
+                          <span className="text-[13px] font-bold text-black uppercase leading-none">{cleanPlaceholder(b?.data.red_club || "")}</span>
+                          <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{cleanPlaceholder(b?.data.red_name || "")}</span>
                           {b?.data.red_inspected && (
                             <div className="absolute bottom-1 right-2">
-                              <span className="text-[8px] font-black text-green-400 uppercase tracking-tighter">INSPECTED</span>
+                              <span className="text-[10px] font-black text-green-400 uppercase tracking-tighter">INSPECTED</span>
                             </div>
                           )}
                         </div>
@@ -5047,7 +5055,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                   <div className="absolute -top-8 left-1/2 -translate-x-1/2 flex items-center gap-3">
                     <div className="h-[1px] w-12 bg-slate-800" />
                     <div className="bg-yellow-400 text-slate-950 px-6 py-1 rounded-full text-[13px] font-black uppercase tracking-[0.2em] whitespace-nowrap shadow-lg shadow-yellow-900/20">
-                      {current?.category || "Waiting for Session"}
+                      {cleanPlaceholder(current?.category || "")}
                     </div>
                     <div className="h-[1px] w-12 bg-slate-800" />
                   </div>
@@ -5063,12 +5071,12 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                     )}>
                       <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/20 to-transparent pointer-events-none" />
                       <div className="absolute -right-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">BLUE</div>
-                      <p className="text-[15px] font-black text-black uppercase tracking-[0.2em] mb-1 relative z-10">{current?.blue_club || "---"}</p>
+                      <p className="text-[15px] font-black text-black uppercase tracking-[0.2em] mb-1 relative z-10">{cleanPlaceholder(current?.blue_club || "")}</p>
                       <h4 className={cn(
                         "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
                         getDynamicFontSize(current?.blue_name || "")
                       )}>
-                        {current?.privacy_mode ? "---" : (current?.blue_name || "---")}
+                        {current?.privacy_mode ? "---" : cleanPlaceholder(current?.blue_name || "")}
                       </h4>
                     </div>
 
@@ -5078,7 +5086,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                       isPoomsaeModeCurrent ? "ml-auto mr-10" : "-mx-10"
                     )}>
                       <span className="text-[36px] font-black text-slate-900 leading-none">
-                        {current ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
+                        {current ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : ""}
                       </span>
                     </div>
 
@@ -5087,12 +5095,12 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                       <div className="flex-1 h-full bg-red-600 flex flex-col justify-center px-10 text-right relative overflow-hidden group">
                         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/20 to-transparent pointer-events-none" />
                         <div className="absolute -left-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">RED</div>
-                        <p className="text-[15px] font-black text-black uppercase tracking-[0.2em] mb-1 relative z-10">{current?.red_club || "---"}</p>
+                        <p className="text-[15px] font-black text-black uppercase tracking-[0.2em] mb-1 relative z-10">{cleanPlaceholder(current?.red_club || "")}</p>
                         <h4 className={cn(
                           "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
                           getDynamicFontSize(current?.red_name || "")
                         )}>
-                          {current?.privacy_mode ? "---" : (current?.red_name || "---")}
+                          {current?.privacy_mode ? "---" : cleanPlaceholder(current?.red_name || "")}
                         </h4>
                       </div>
                     )}
@@ -5129,11 +5137,11 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                           isPoomsaeItem ? "flex-[10]" : "flex-1"
                         )}>
                           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
-                          <p className="text-[8px] font-bold text-black uppercase leading-none mb-0.5 relative z-10">
-                            {bout ? bout.data.blue_club : "---"}
+                          <p className="text-[13px] font-bold text-black uppercase leading-none mb-0.5 relative z-10">
+                            {bout ? cleanPlaceholder(bout.data.blue_club) : ""}
                           </p>
-                          <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
-                            {bout ? (bout.data.privacy_mode ? "---" : bout.data.blue_name) : "---"}
+                          <p className="text-[17px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
+                            {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.blue_name)) : ""}
                           </p>
                         </div>
                         
@@ -5143,7 +5151,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                            isPoomsaeItem ? "ml-auto mr-1" : "-mx-4"
                         )}>
                           <span className="text-[10px] font-black text-slate-900">
-                            {bout ? formatBoutNumber(ring.ringNumber, bout.data.bout, boutNumberingMode) : "---"}
+                            {bout ? formatBoutNumber(ring.ringNumber, bout.data.bout, boutNumberingMode) : ""}
                           </span>
                         </div>
 
@@ -5151,11 +5159,11 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                         {!isPoomsaeItem && (
                           <div className="flex-1 self-stretch bg-red-600/90 flex flex-col justify-center px-3 min-w-0 text-right relative">
                             <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/10 to-transparent pointer-events-none" />
-                            <p className="text-[8px] font-bold text-black uppercase leading-none mb-0.5 relative z-10">
-                              {bout ? bout.data.red_club : "---"}
+                            <p className="text-[13px] font-bold text-black uppercase leading-none mb-0.5 relative z-10">
+                              {bout ? cleanPlaceholder(bout.data.red_club) : ""}
                             </p>
-                            <p className="text-[12px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
-                              {bout ? (bout.data.privacy_mode ? "---" : bout.data.red_name) : "---"}
+                            <p className="text-[17px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
+                              {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.red_name)) : ""}
                             </p>
                           </div>
                         )}
@@ -5392,7 +5400,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
   
   const formatCategoryName = (cat?: string) => {
-    if (!cat) return "---";
+    if (!cat) return "";
     // Specifically remove "(POOMSAE SOLO)" or "(POOMSAE SOLO)-" as requested
     return cat.replace(/\s*\(POOMSAE SOLO\)\s*-?/gi, '').trim();
   };
@@ -5402,7 +5410,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
     
     const result: { category: string; bouts: typeof ringQueue }[] = [];
     ringQueue.forEach(bout => {
-      const cat = bout.data.category || 'Unknown Category';
+      const cat = cleanPlaceholder(bout.data.category) || 'Regular Category';
       const existingGroup = result.find(g => g.category === cat);
       if (existingGroup) {
         existingGroup.bouts.push(bout);
@@ -5449,17 +5457,17 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
           <>
             <div className="space-y-4">
               <div className="flex items-center justify-center">
-                <span className="text-[20px] font-black text-white uppercase tracking-widest text-center leading-tight">{formatCategoryName(current.category)}</span>
+                <span className="text-[20px] font-black text-white uppercase tracking-widest text-center leading-tight">{cleanPlaceholder(formatCategoryName(current.category))}</span>
               </div>
               
               <div className="flex items-start gap-6">
-                <PublicFighterSide color="blue" name={current.blue_name} club={current.blue_club} privacy={current.privacy_mode} />
+                <PublicFighterSide color="blue" name={cleanPlaceholder(current.blue_name)} club={cleanPlaceholder(current.blue_club)} privacy={current.privacy_mode} />
                 {!current.category?.toUpperCase().includes('POOMSAE SOLO') && 
                   !current.category?.toUpperCase().includes('FREESTYLE') && 
                   !(current.category?.toUpperCase().includes('POOMSAE') && !current.red_name) && (
                   <>
                     <div className="text-xl font-black text-white italic mt-4">VS</div>
-                    <PublicFighterSide color="red" name={current.red_name} club={current.red_club} privacy={current.privacy_mode} />
+                    <PublicFighterSide color="red" name={cleanPlaceholder(current.red_name)} club={cleanPlaceholder(current.red_club)} privacy={current.privacy_mode} />
                   </>
                 )}
               </div>
@@ -5498,7 +5506,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                           {/* Bout Num */}
                           <div className="w-12 h-full bg-slate-800 flex items-center justify-center border-r border-slate-700 flex-shrink-0">
                             <span className="text-[12px] font-black text-white">
-                              {bout ? formatBoutNumber(ring.ringNumber, bout.data.bout, boutNumberingMode) : "---"}
+                              {bout ? formatBoutNumber(ring.ringNumber, bout.data.bout, boutNumberingMode) : ""}
                             </span>
                           </div>
 
@@ -5508,11 +5516,11 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                             isPoomsaeItem ? "flex-[10]" : "flex-1 basis-1/2 border-r border-slate-700/50"
                           )}>
                             <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-blue-900/10 to-transparent pointer-events-none" />
-                            <p className="text-[8px] font-bold text-[#00a2e8] uppercase leading-none mb-0.5 truncate">
-                              {bout ? bout.data.blue_club : "---"}
+                            <p className="text-[13px] font-bold text-[#00a2e8] uppercase leading-none mb-0.5 truncate">
+                              {bout ? cleanPlaceholder(bout.data.blue_club) : ""}
                             </p>
-                            <p className="text-[12px] font-black text-slate-200 uppercase tracking-[0.5px] leading-tight truncate w-full">
-                              {bout ? (bout.data.privacy_mode ? "---" : bout.data.blue_name) : "---"}
+                            <p className="text-[17px] font-black text-slate-200 uppercase tracking-[0.5px] leading-tight truncate w-full">
+                              {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.blue_name)) : ""}
                             </p>
                           </div>
 
@@ -5520,11 +5528,11 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                           {!isPoomsaeItem && (
                             <div className="flex-1 basis-1/2 self-stretch flex flex-col justify-center px-4 relative border-l-[4px] border-[#ed1c24] min-w-0 overflow-hidden">
                               <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-red-900/10 to-transparent pointer-events-none" />
-                              <p className="text-[8px] font-bold text-[#ed1c24] uppercase leading-none mb-0.5 truncate">
-                                {bout ? bout.data.red_club : "---"}
+                              <p className="text-[13px] font-bold text-[#ed1c24] uppercase leading-none mb-0.5 truncate">
+                                {bout ? cleanPlaceholder(bout.data.red_club) : ""}
                               </p>
-                              <p className="text-[12px] font-black text-slate-200 uppercase tracking-[0.5px] leading-tight truncate w-full">
-                                {bout ? (bout.data.privacy_mode ? "---" : bout.data.red_name) : "---"}
+                              <p className="text-[17px] font-black text-slate-200 uppercase tracking-[0.5px] leading-tight truncate w-full">
+                                {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.red_name)) : ""}
                               </p>
                             </div>
                           )}
@@ -5559,15 +5567,15 @@ function PublicFighterSide({ color, name, club, privacy }: { color: 'blue' | 're
       )} />
       <p className={cn(
         "font-black text-white tracking-tight leading-tight line-clamp-3",
-        getDynamicFontSize(privacy ? "---" : name)
+        getDynamicFontSize(privacy ? "---" : cleanPlaceholder(name))
       )}>
-        {privacy ? "---" : name}
+        {privacy ? "---" : cleanPlaceholder(name)}
       </p>
       <p className={cn(
         "text-sm font-bold uppercase tracking-widest",
         color === 'blue' ? "text-[#00a2e8]" : "text-[#ed1c24]"
       )}>
-        {club}
+        {cleanPlaceholder(club)}
       </p>
     </div>
   );
