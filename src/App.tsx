@@ -45,7 +45,7 @@ import { AIBracketSetup } from './components/AIBracketSetup';
 import { TournamentAssistant } from './components/TournamentAssistant';
 import { SearchWinner } from './components/SearchWinner';
 import { EventReport } from './components/EventReport';
-import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateTransferInGoogleSheets, updateBoutDetailsInGoogleSheets, testSync } from './services/googleSheets';
+import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateBoutDetailsInGoogleSheets, testSync } from './services/googleSheets';
 import { cn, normalizeBoutNumber, normalizeBoutWithRing, getBoutNumber, formatBoutNumber, isBoutMatch } from './lib/utils';
 import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, getDocFromServer, where } from 'firebase/firestore';
 import { db } from './firebase';
@@ -1458,96 +1458,6 @@ export default function App() {
     }
   };
 
-  const handleTransferSelect = async (ringNumber: number, boutNumber: string | number, reason: string) => {
-    const ring = rings.find(r => r.ringNumber === ringNumber);
-    let activeUrl = googleSheetUrl;
-    if (!activeUrl && currentEventId && events.length > 0) {
-      const event = events.find(e => e.id === currentEventId);
-      if (event && event.sheetUrl) {
-        activeUrl = event.sheetUrl;
-        setGoogleSheetUrl(activeUrl);
-      }
-    }
-
-    if (activeUrl) {
-      setIsSyncing(true);
-      setLastSyncError(null);
-      updateTransferInGoogleSheets(
-        activeUrl,
-        ringNumber,
-        boutNumber,
-        reason,
-        getCurrentEventName()
-      ).then(() => {
-        addToSyncLog('Transfer', 'success', `Transfer for Bout ${boutNumber} sent`);
-      }).catch(e => {
-        const msg = e instanceof Error ? e.message : String(e);
-        setLastSyncError(`Transfer sync failed: ${msg}`);
-        addToSyncLog('Transfer', 'error', msg);
-      }).finally(() => setIsSyncing(false));
-    }
-    
-    const ringQueue = boutQueue.filter(q => q.data.ring === ringNumber && q.data.eventId === currentEventId);
-    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber && q.data.eventId === currentEventId);
-    
-    if (nextBoutIndex !== -1 && !ring?.isFinalBouts && ringQueue.length < 4) {
-      setFinalBoutCheck({ ringNumber, remainingCount: ringQueue.length - 1 });
-    }
-
-    // Auto-advance ring: Move onDeck to current, inTheHole to onDeck
-    let pulledFromQueue = false;
-    let nextItemToPull: {id: string, data: MatchData} | null = null;
-
-    if (autoPullRings[ringNumber] && !ring?.onDeck) {
-      if (ringQueue.length > 0) {
-        nextItemToPull = ringQueue[0];
-        pulledFromQueue = true;
-      }
-    }
-
-    setRings(prev => {
-      const updated = prev.map(r => {
-        if (r.ringNumber === ringNumber) {
-          let nextBout = r.onDeck;
-          let nextNextBout = r.inTheHole;
-          
-          if (!nextBout && pulledFromQueue && nextItemToPull) {
-            nextBout = nextItemToPull.data;
-          }
-
-          return {
-            ...r,
-            currentBout: nextBout,
-            onDeck: nextNextBout,
-            inTheHole: null,
-            nextBoutNumber: nextBout ? getBoutNumber(nextBout.bout) + 1 : (r.currentBout ? getBoutNumber(r.currentBout.bout) + 1 : r.nextBoutNumber)
-          };
-        }
-        return r;
-      });
-      localStorage.setItem('tkd_rings', JSON.stringify(updated));
-      return updated;
-    });
-
-    if (pulledFromQueue && nextItemToPull) {
-      setBoutQueue(prev => {
-        const updated = prev.filter(q => q.id !== nextItemToPull!.id);
-        localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
-        return updated;
-      });
-    }
-
-    // Sync the new current bout to Google Sheets if it exists
-    const nextBoutToSyncTrans = ring?.onDeck || (pulledFromQueue && nextItemToPull ? nextItemToPull.data : null);
-    if (nextBoutToSyncTrans && activeUrl) {
-      syncToGoogleSheets(activeUrl, nextBoutToSyncTrans, getCurrentEventName());
-    }
-
-    // If queue is empty but we haven't reached total bouts, show the missing bout prompt
-    if (ring && ring.totalBouts && !ring.onDeck && !ring.inTheHole && ringQueue.length === (pulledFromQueue ? 1 : 0) && getBoutNumber(ring.currentBout?.bout || 0) < ring.totalBouts) {
-      setMissingBoutPrompt({ ringNumber, expectedBout: getBoutNumber(ring.currentBout?.bout || 0) + 1, totalBouts: ring.totalBouts });
-    }
-  };
 
   const getRingFromBout = (bout: string | number): number => {
     const boutStr = bout.toString().toUpperCase();
@@ -2384,7 +2294,6 @@ export default function App() {
                             onStart={() => startRing(ring.ringNumber)}
                             onDelete={user?.role === 'admin' ? () => deleteRing(ring.ringNumber) : undefined}
                             onWinnerSelect={(winner) => handleWinnerSelect(ring.ringNumber, ring.currentBout?.bout || 0, winner)}
-                            onTransferSelect={(reason) => handleTransferSelect(ring.ringNumber, ring.currentBout?.bout || 0, reason)}
                             currentEventId={currentEventId}
                             onForceSync={handleForceSync}
                             isAutoPull={autoPullRings[ring.ringNumber] || false}
@@ -2522,7 +2431,6 @@ export default function App() {
                       onStart={() => startRing(ring.ringNumber)}
                       onDelete={() => deleteRing(ring.ringNumber)}
                       onWinnerSelect={(winner) => handleWinnerSelect(ring.ringNumber, ring.currentBout?.bout || 0, winner)}
-                      onTransferSelect={(reason) => handleTransferSelect(ring.ringNumber, ring.currentBout?.bout || 0, reason)}
                       currentEventId={currentEventId}
                       onForceSync={handleForceSync}
                       isAutoPull={autoPullRings[ring.ringNumber] || false}
@@ -2546,7 +2454,6 @@ export default function App() {
                           onUpdateTotalBouts={(total) => handleUpdateTotalBouts(ring.ringNumber, total)}
                           onStart={() => startRing(ring.ringNumber)}
                           onWinnerSelect={(winner) => handleWinnerSelect(ring.ringNumber, ring.currentBout?.bout || 0, winner)}
-                          onTransferSelect={(reason) => handleTransferSelect(ring.ringNumber, ring.currentBout?.bout || 0, reason)}
                           currentEventId={currentEventId}
                           onForceSync={handleForceSync}
                           isAutoPull={autoPullRings[ring.ringNumber] || false}
@@ -3601,7 +3508,6 @@ interface RingCardProps {
   onStart?: () => void;
   onDelete?: () => void;
   onWinnerSelect?: (winner: string) => void;
-  onTransferSelect?: (reason: string) => void;
   isAutoPull?: boolean;
   onToggleAutoPull?: () => void;
   user?: UserAccount | null;
@@ -4248,10 +4154,9 @@ function AddRingModal({ onClose, onAdd, existingRings, namingMode }: AddRingModa
   );
 }
 
-function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, onTransferSelect, currentEventId, onForceSync, isAutoPull, onToggleAutoPull, user, boutNumberingMode = 'alphanumeric' }: RingCardProps & { currentEventId?: string | null, onForceSync?: (data: MatchData) => void }) {
+function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, currentEventId, onForceSync, isAutoPull, onToggleAutoPull, user, boutNumberingMode = 'alphanumeric' }: RingCardProps & { currentEventId?: string | null, onForceSync?: (data: MatchData) => void }) {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isFinalBoutSelection, setIsFinalBoutSelection] = useState(false);
-  const [transferReason, setTransferReason] = useState('');
   const [isSyncingLocal, setIsSyncingLocal] = useState(false);
   const [showInspectionWarning, setShowInspectionWarning] = useState(false);
   
@@ -4287,10 +4192,10 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
   const progress = ring.totalBouts && current ? Math.min(100, (getBoutNumber(current.bout) / ring.totalBouts) * 100) : 0;
 
   return (
-    <div className="relative bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:border-red-200 transition-colors">
-      <div className="p-4 bg-slate-900 flex items-center justify-between text-white">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center font-black text-sm">
+    <div className="relative bg-white border border-slate-200 rounded-[2.5rem] overflow-hidden shadow-sm hover:border-red-200 transition-colors">
+      <div className="p-5 bg-slate-900 flex items-center justify-between text-white border-b border-white/5">
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center font-black text-lg shadow-lg shadow-red-900/40">
             {ringName}
           </div>
           <div>
@@ -4394,10 +4299,10 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
         </div>
       )}
       
-      <div className="p-6 space-y-6 pt-0 mt-6">
+      <div className="p-8 space-y-8 pt-0 mt-8">
         {current ? (
           <>
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div className="flex items-start justify-between pb-2">
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center gap-2">
@@ -4441,48 +4346,21 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                   ) : (
                     <>
                       <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Select Winner</p>
-                      <div className="flex gap-3 mb-4">
+                      <div className="flex gap-4 mb-4">
                         <button 
                           onClick={() => onWinnerSelect('Blue')}
-                          className="flex-1 py-4 md:py-3 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl md:rounded-lg font-black md:font-bold text-[20px] uppercase transition-all border border-blue-200 hover:border-blue-600 active:scale-95 px-2 truncate"
+                          className="flex-[1.2] py-8 md:py-6 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-[1.5rem] font-black text-[26px] md:text-[22px] uppercase transition-all border-2 border-blue-200 hover:border-blue-600 active:scale-95 px-4 truncate shadow-sm hover:shadow-xl hover:shadow-blue-200/50"
                         >
                           {cleanPlaceholder(current.blue_name) || 'Blue'} Wins
                         </button>
                         <button 
                           onClick={() => onWinnerSelect('Red')}
-                          className="flex-1 py-4 md:py-3 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-xl md:rounded-lg font-black md:font-bold text-[20px] uppercase transition-all border border-red-200 hover:border-red-600 active:scale-95 px-2 truncate"
+                          className="flex-[1.2] py-8 md:py-6 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-[1.5rem] font-black text-[26px] md:text-[22px] uppercase transition-all border-2 border-red-200 hover:border-red-600 active:scale-95 px-4 truncate shadow-sm hover:shadow-xl hover:shadow-red-200/50"
                         >
                           {cleanPlaceholder(current.red_name) || 'Red'} Wins
                         </button>
                       </div>
                     </>
-                  )}
-                  
-                  {onTransferSelect && (
-                    <div className="space-y-2">
-                      <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Transfer Bout</p>
-                      <div className="flex gap-2">
-                        <input 
-                          type="text"
-                          value={transferReason}
-                          onChange={(e) => setTransferReason(e.target.value)}
-                          placeholder="Reason (e.g. Ring 2)"
-                          className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-red-500"
-                        />
-                        <button 
-                          onClick={() => {
-                            if (transferReason.trim()) {
-                              onTransferSelect(transferReason);
-                              setTransferReason('');
-                            }
-                          }}
-                          disabled={!transferReason.trim()}
-                          className="px-6 py-3 md:px-4 md:py-2 bg-slate-800 text-white rounded-xl md:rounded-lg text-xs font-black md:font-bold uppercase tracking-widest hover:bg-slate-900 disabled:bg-slate-200 disabled:text-slate-400 transition-all active:scale-95"
-                        >
-                          Send
-                        </button>
-                      </div>
-                    </div>
                   )}
                 </div>
               )}
