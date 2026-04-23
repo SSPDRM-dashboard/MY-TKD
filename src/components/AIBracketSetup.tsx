@@ -154,7 +154,7 @@ export function AIBracketSetup({
     setError(null);
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = process.env.GEMINI_API_KEY?.trim();
       if (!apiKey || apiKey === "undefined") throw new Error("API Key missing or undefined");
 
       const ai = new GoogleGenAI({ apiKey });
@@ -347,7 +347,7 @@ export function AIBracketSetup({
     }
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = process.env.GEMINI_API_KEY?.trim();
       
       if (!apiKey || apiKey === "undefined") {
         throw new Error("Gemini API Key is not configured. To process images/PDFs, please add your GEMINI_API_KEY to the environment. Alternatively, upload a CSV file which does not require an API key.");
@@ -526,8 +526,9 @@ export function AIBracketSetup({
           errorMessage = "The request timed out. The image might be too complex or the connection is slow.";
         } else if (msg.includes("not configured") || msg.includes("missing or undefined")) {
           errorMessage = "Gemini API Key is missing. Please add your GEMINI_API_KEY in the app settings.";
-        } else if (msg.includes("api_key_invalid") || msg.includes("api key")) {
-          errorMessage = "Invalid API Key. Please check your configuration.";
+        } else if (msg.includes("api_key_invalid") || msg.includes("api key") || msg.includes("400")) {
+          const debugKey = process.env.GEMINI_API_KEY ? `(Key starts with: ${process.env.GEMINI_API_KEY.substring(0, 4)}...)` : "(Key is blank)";
+          errorMessage = `Invalid API Key. ${debugKey} Please make sure you fully copied the key without extra spaces or quotes. Full error: ${err.message}`;
         } else if (msg.includes("quota") || msg.includes("rate limit")) {
           errorMessage = "API quota exceeded. Please try again in a few minutes.";
         } else if (msg.includes("model not found") || msg.includes("404")) {
