@@ -537,8 +537,12 @@ export function AIBracketSetup({
         } else if (msg.includes("api_key_invalid") || msg.includes("api key") || msg.includes("400")) {
           const debugKey = import.meta.env.VITE_GEMINI_API_KEY ? `(Key starts with: ${import.meta.env.VITE_GEMINI_API_KEY.substring(0, 4)}...)` : "(Key is blank)";
           errorMessage = `Invalid API Key. ${debugKey} Please make sure you fully copied the key without extra spaces or quotes. Full error: ${err.message}`;
-        } else if (msg.includes("quota") || msg.includes("rate limit")) {
-          errorMessage = "API quota exceeded. Please try again in a few minutes.";
+        } else if (msg.includes("quota") || msg.includes("rate limit") || msg.includes("429")) {
+          if (msg.includes("credits are depleted") || msg.includes("billing")) {
+             errorMessage = "Your Google Cloud billing credits are depleted. Please check your billing settings at aistudio.google.com.";
+          } else {
+             errorMessage = "API quota exceeded. Please try again in a few minutes.";
+          }
         } else if (msg.includes("model not found") || msg.includes("404")) {
           errorMessage = "The AI model is currently unavailable. Please contact support.";
         } else if (msg.includes("safety")) {
