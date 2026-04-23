@@ -196,7 +196,7 @@ export function AIBracketSetup({
       `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "models/gemini-1.5-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -401,8 +401,9 @@ export function AIBracketSetup({
         }
       `;
 
+      const modelName = isThinkingMode ? "models/gemini-2.0-flash-thinking-exp-01-21" : "models/gemini-1.5-flash";
       const response = await ai.models.generateContent({
-        model: isThinkingMode ? "gemini-2.0-flash-thinking-exp-01-21" : "gemini-1.5-flash",
+        model: modelName,
         contents: [
           {
             parts: [
@@ -554,7 +555,7 @@ export function AIBracketSetup({
              errorMessage = "API quota exceeded. Please try again in a few minutes.";
           }
         } else if (msg.includes("model not found") || msg.includes("404")) {
-          errorMessage = "The AI model is currently unavailable. Please contact support.";
+          errorMessage = `The AI model (${isThinkingMode ? "Pro/Thinking" : "Flash"}) was not found in your region with this API key. Error: ${err.message}`;
         } else if (msg.includes("safety")) {
           errorMessage = "The file was flagged by safety filters. Please ensure it contains only tournament data.";
         } else {
