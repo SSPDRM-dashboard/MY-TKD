@@ -154,7 +154,8 @@ export function AIBracketSetup({
     const cleanedManual = manualKey.replace(/[\s\u200B-\u200D\uFEFF\u00A0\n\r"']/g, '');
     if (cleanedManual && cleanedManual.length > 5) return cleanedManual;
     
-    const envKey = import.meta.env.VITE_GEMINI_API_KEY;
+    // Check both standard Vite env and the platform-injected process.env (as per SDK skill)
+    const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || (window as any).process?.env?.GEMINI_API_KEY;
     return envKey ? String(envKey).replace(/[\s\u200B-\u200D\uFEFF\u00A0\n\r"']/g, '') : undefined;
   };
 
@@ -554,11 +555,11 @@ export function AIBracketSetup({
           if (msg.includes("expired")) {
             errorMessage = "Your Gemini API Key has expired. Please go to aistudio.google.com and generate a new key.";
           } else {
-            const currentKey = import.meta.env.VITE_GEMINI_API_KEY || "";
-            const debugInfo = currentKey 
-              ? `(Your key starts with: ${currentKey.substring(0, 6)} and is ${currentKey.length} chars long)` 
-              : "(The app says the key is BLANK)";
-            errorMessage = `Invalid API Key. ${debugInfo} Please make sure you fully copied the key without extra spaces or quotes. Full error: ${err.message}`;
+            const activeKey = getActiveKey() || "";
+            const debugInfo = activeKey 
+              ? `(Used key: ${activeKey.substring(0, 6)}...${activeKey.substring(activeKey.length-4)}, length: ${activeKey.length})` 
+              : "(Key is BLANK)";
+            errorMessage = `Invalid API Key. ${debugInfo} Please ensure you are using a key from aistudio.google.com that has 'Generative Language API' enabled. Full error: ${err.message}`;
           }
         } else if (msg.includes("quota") || msg.includes("rate limit") || msg.includes("429")) {
           if (msg.includes("credits are depleted") || msg.includes("billing")) {
@@ -908,11 +909,11 @@ export function AIBracketSetup({
                           </p>
                           <div className="flex gap-2">
                             <input 
-                              type="password"
+                              type="text"
                               value={manualKey}
                               onChange={(e) => setManualKey(e.target.value)}
                               placeholder="AIzaSy..."
-                              className="flex-1 p-2 bg-white border border-red-200 rounded-xl text-xs font-mono outline-none focus:ring-1 focus:ring-red-400"
+                              className="flex-1 p-2 bg-white border border-red-200 rounded-xl text-[10px] font-mono outline-none focus:ring-1 focus:ring-red-400"
                             />
                             <button 
                               onClick={processFile}
@@ -930,64 +931,119 @@ export function AIBracketSetup({
             )}
 
             {/* AI Settings */}
-            <div className="flex flex-wrap items-center gap-6 p-6 bg-white rounded-3xl border border-slate-200 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className={cn(
-                  "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
-                  isThinkingMode ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-100 text-slate-400"
-                )}>
-                  <Sparkles size={20} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-black uppercase tracking-widest text-slate-900">Deep Thinking Mode</span>
-                    <button 
-                      onClick={() => setIsThinkingMode(!isThinkingMode)}
-                      className={cn(
-                        "w-10 h-5 rounded-full relative transition-all",
-                        isThinkingMode ? "bg-indigo-600" : "bg-slate-200"
-                      )}
-                    >
-                      <div className={cn(
-                        "absolute top-1 w-3 h-3 bg-white rounded-full transition-all",
-                        isThinkingMode ? "left-6" : "left-1"
-                      )} />
-                    </button>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-6 p-6 bg-white rounded-3xl border border-slate-200 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                    isThinkingMode ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-100 text-slate-400"
+                  )}>
+                    <Sparkles size={20} />
                   </div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                    {isThinkingMode ? "Using Pro Model + Reasoning (Slower, More Accurate)" : "Using Flash Model (Faster, Standard Accuracy)"}
-                  </p>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black uppercase tracking-widest text-slate-900">Deep Thinking Mode</span>
+                      <button 
+                        onClick={() => setIsThinkingMode(!isThinkingMode)}
+                        className={cn(
+                          "w-10 h-5 rounded-full relative transition-all",
+                          isThinkingMode ? "bg-indigo-600" : "bg-slate-200"
+                        )}
+                      >
+                        <div className={cn(
+                          "absolute top-1 w-3 h-3 bg-white rounded-full transition-all",
+                          isThinkingMode ? "left-6" : "left-1"
+                        )} />
+                      </button>
+                    </div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                      {isThinkingMode ? "Using Pro Model + Reasoning (Slower, More Accurate)" : "Using Flash Model (Faster, Standard Accuracy)"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="h-8 w-px bg-slate-100 hidden md:block" />
+
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                    isPoomsaeMode ? "bg-purple-600 text-white shadow-lg shadow-purple-200" : "bg-slate-100 text-slate-400"
+                  )}>
+                    <Zap size={20} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black uppercase tracking-widest text-slate-900">Poomsae Solo Mode</span>
+                      <button 
+                        onClick={() => setIsPoomsaeMode(!isPoomsaeMode)}
+                        className={cn(
+                          "w-10 h-5 rounded-full relative transition-all",
+                          isPoomsaeMode ? "bg-purple-600" : "bg-slate-200"
+                        )}
+                      >
+                        <div className={cn(
+                          "absolute top-1 w-3 h-3 bg-white rounded-full transition-all",
+                          isPoomsaeMode ? "left-6" : "left-1"
+                        )} />
+                      </button>
+                    </div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Map every player as a sequential performance (e.g. 1, 2, 3...)</p>
+                  </div>
+                </div>
+
+                <div className="h-8 w-px bg-slate-100 hidden md:block ml-auto" />
+
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => setShowKeyOverride(!showKeyOverride)}
+                    className={cn(
+                      "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                      manualKey ? "bg-green-600 text-white shadow-lg shadow-green-200" : "bg-slate-100 text-slate-400"
+                    )}
+                  >
+                    <Key size={20} />
+                  </button>
+                  <div onClick={() => setShowKeyOverride(!showKeyOverride)} className="cursor-pointer">
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-900">AI API Settings</p>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                      {manualKey ? "Active: Manual Override Key" : "Active: System Environment Key"}
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              <div className="h-8 w-px bg-slate-100 hidden md:block" />
-
-              <div className="flex items-center gap-3">
-                <div className={cn(
-                  "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
-                  isPoomsaeMode ? "bg-purple-600 text-white shadow-lg shadow-purple-200" : "bg-slate-100 text-slate-400"
-                )}>
-                  <Zap size={20} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-black uppercase tracking-widest text-slate-900">Poomsae Solo Mode</span>
-                    <button 
-                      onClick={() => setIsPoomsaeMode(!isPoomsaeMode)}
-                      className={cn(
-                        "w-10 h-5 rounded-full relative transition-all",
-                        isPoomsaeMode ? "bg-purple-600" : "bg-slate-200"
-                      )}
-                    >
-                      <div className={cn(
-                        "absolute top-1 w-3 h-3 bg-white rounded-full transition-all",
-                        isPoomsaeMode ? "left-6" : "left-1"
-                      )} />
+              {showKeyOverride && (
+                <motion.div 
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  className="p-6 bg-slate-900 rounded-3xl space-y-4 border border-indigo-500/20 shadow-2xl"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-black text-white uppercase tracking-widest">Manual API Key Configuration</h4>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">This key is saved only in your browser and used if correctly formatted.</p>
+                    </div>
+                    <button onClick={() => setShowKeyOverride(false)} className="text-slate-400 hover:text-white">
+                      <X size={16} />
                     </button>
                   </div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Map every player as a sequential performance (e.g. 1, 2, 3...)</p>
-                </div>
-              </div>
+                  <div className="flex gap-3">
+                    <input 
+                      type="text"
+                      value={manualKey}
+                      onChange={(e) => setManualKey(e.target.value)}
+                      placeholder="Paste your AIzaSy... key here"
+                      className="flex-1 p-4 bg-white/5 border border-white/10 rounded-2xl text-xs font-mono text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                    <button 
+                      onClick={() => { setManualKey(''); localStorage.removeItem('tkd_manual_gemini_key'); }}
+                      className="px-4 py-2 bg-red-500/10 text-red-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500/20 transition-colors"
+                    >
+                      Reset to System
+                    </button>
+                  </div>
+                </motion.div>
+              )}
             </div>
 
             {/* Admin Note Section */}
