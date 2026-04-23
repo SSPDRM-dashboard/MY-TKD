@@ -86,6 +86,11 @@ function cleanPlaceholder(text?: string): string {
   return text;
 }
 
+function hasPlayers(bout: MatchData | null | undefined): boolean {
+  if (!bout) return false;
+  return cleanPlaceholder(bout.blue_name) !== "---" || cleanPlaceholder(bout.red_name) !== "---";
+}
+
 function useSyncedState<T>(key: string, initialValue: T) {
   const [state, setState] = useState<T>(() => {
     const saved = localStorage.getItem(key);
@@ -4707,7 +4712,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                 <div className="flex-1 grid grid-cols-12">
                   {/* Bout Num */}
                   <div className="col-span-2 flex items-center justify-center text-3xl font-black text-white border-r border-white/10 bg-[#161f33]">
-                    {current ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : ""}
+                    {hasPlayers(current) ? formatBoutNumber(ring.ringNumber, current!.bout, boutNumberingMode) : "---"}
                   </div>
                   {/* Players */}
                   <div className="col-span-10 flex flex-col">
@@ -4744,7 +4749,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                   return (
                     <div key={idx} className="flex-1 grid grid-cols-12 bg-[#0d1526] border border-white/10 rounded overflow-hidden">
                       <div className="col-span-3 flex items-center justify-center text-xl font-black text-white bg-[#161f33] border-r border-white/10">
-                        {b ? formatBoutNumber(ring.ringNumber, b.data.bout, boutNumberingMode) : ""}
+                        {hasPlayers(b?.data) ? formatBoutNumber(ring.ringNumber, b!.data.bout, boutNumberingMode) : "---"}
                       </div>
                       <div className={cn(
                         "bg-blue-600/80 flex flex-col justify-center px-3 relative",
@@ -4964,7 +4969,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                       isPoomsaeModeCurrent ? "ml-auto mr-10" : "-mx-10"
                     )}>
                       <span className="text-[36px] font-black text-slate-900 leading-none">
-                        {current ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : ""}
+                        {hasPlayers(current) ? formatBoutNumber(ring.ringNumber, current!.bout, boutNumberingMode) : "---"}
                       </span>
                     </div>
 
@@ -5029,7 +5034,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                            isPoomsaeItem ? "ml-auto mr-1" : "-mx-4"
                         )}>
                           <span className="text-[10px] font-black text-slate-900">
-                            {bout ? formatBoutNumber(ring.ringNumber, bout.data.bout, boutNumberingMode) : ""}
+                            {hasPlayers(bout?.data) ? formatBoutNumber(ring.ringNumber, bout!.data.bout, boutNumberingMode) : "---"}
                           </span>
                         </div>
 
@@ -5318,7 +5323,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
         {current && (
           <div className="text-right">
             <p className="text-[40px] font-black text-white leading-none">
-              {formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode)}
+              {hasPlayers(current) ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
               {showTotalBouts && (
                 <>
                   <span className="mx-2 text-white/40">/</span>
@@ -5384,7 +5389,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                           {/* Bout Num */}
                           <div className="w-12 h-full bg-slate-800 flex items-center justify-center border-r border-slate-700 flex-shrink-0">
                             <span className="text-[12px] font-black text-white">
-                              {bout ? formatBoutNumber(ring.ringNumber, bout.data.bout, boutNumberingMode) : ""}
+                              {hasPlayers(bout?.data) ? formatBoutNumber(ring.ringNumber, bout!.data.bout, boutNumberingMode) : "---"}
                             </span>
                           </div>
 
