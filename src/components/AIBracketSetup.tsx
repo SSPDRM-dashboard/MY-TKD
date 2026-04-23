@@ -138,6 +138,17 @@ export function AIBracketSetup({
 
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [showKeyOverride, setShowKeyOverride] = useState(false);
+  const [manualKey, setManualKey] = useState('');
+
+  const getActiveKey = () => {
+    const cleanedManual = manualKey.replace(/[\s\u200B-\u200D\uFEFF\u00A0\n\r"']/g, '');
+    if (cleanedManual && cleanedManual.length > 5) return cleanedManual;
+    
+    const envKey = import.meta.env.VITE_GEMINI_API_KEY;
+    return envKey ? String(envKey).replace(/[\s\u200B-\u200D\uFEFF\u00A0\n\r"']/g, '') : undefined;
+  };
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentEvent = events.find(e => e.id === currentEventId);
@@ -154,12 +165,7 @@ export function AIBracketSetup({
     setError(null);
 
     try {
-      const rawApiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      // Strip ALL whitespace, invisible unicode characters (zero-width spaces), newlines, and surrounding quotes
-      const apiKey = rawApiKey 
-        ? String(rawApiKey).replace(/[\s\u200B-\u200D\uFEFF\u00A0\n\r"']/g, '') 
-        : undefined;
-        
+      const apiKey = getActiveKey();
       if (!apiKey || apiKey === "undefined") throw new Error("API Key missing or undefined");
 
       const ai = new GoogleGenAI({ apiKey });
@@ -352,10 +358,7 @@ export function AIBracketSetup({
     }
 
     try {
-      const rawApiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      const apiKey = rawApiKey 
-        ? String(rawApiKey).replace(/[\s\u200B-\u200D\uFEFF\u00A0\n\r"']/g, '') 
-        : undefined;
+      const apiKey = getActiveKey();
       
       if (!apiKey || apiKey === "undefined") {
         throw new Error("Gemini API Key is not configured. To process images/PDFs, please add your VITE_GEMINI_API_KEY to the environment. Alternatively, upload a CSV file which does not require an API key.");
@@ -869,9 +872,47 @@ export function AIBracketSetup({
             </div>
 
             {error && (
-              <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 text-sm font-bold">
-                <AlertCircle size={20} />
-                {error}
+              <div className="space-y-4">
+                <div className="p-4 bg-red-50 border border-red-100 rounded-2xl space-y-3">
+                  <div className="flex items-center gap-3 text-red-600 text-sm font-bold">
+                    <AlertCircle size={20} className="shrink-0" />
+                    <p>{error}</p>
+                  </div>
+                  
+                  {(error.includes("Invalid API Key") || error.includes("missing")) && (
+                    <div className="pt-2 border-t border-red-100">
+                      <button 
+                        onClick={() => setShowKeyOverride(!showKeyOverride)}
+                        className="text-[10px] font-black text-red-500 uppercase tracking-widest hover:text-red-700 underline"
+                      >
+                        {showKeyOverride ? "Close Manual Input" : "Try Manual Key Paste (Bypasses System Settings)"}
+                      </button>
+                      
+                      {showKeyOverride && (
+                        <div className="mt-3 space-y-2">
+                          <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+                            Paste your key from aistudio.google.com here to bypass environment variables:
+                          </p>
+                          <div className="flex gap-2">
+                            <input 
+                              type="password"
+                              value={manualKey}
+                              onChange={(e) => setManualKey(e.target.value)}
+                              placeholder="AIzaSy..."
+                              className="flex-1 p-2 bg-white border border-red-200 rounded-xl text-xs font-mono outline-none focus:ring-1 focus:ring-red-400"
+                            />
+                            <button 
+                              onClick={processFile}
+                              className="px-4 py-2 bg-red-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors"
+                            >
+                              Retry Now
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
