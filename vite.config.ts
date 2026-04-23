@@ -6,8 +6,14 @@ import {defineConfig, loadEnv} from 'vite';
 /* Migration note: Reverted process.env injection for GEMINI_API_KEY as it caused deployment stripping in the public sandbox. Moving to standard VITE_ prefix. */
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
+  // Prioritize the container's process.env (where Secrets are stored) over local .env files
+  const apiKey = process.env.VITE_GEMINI_API_KEY || env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || env.GEMINI_API_KEY;
+
   return {
     plugins: [react(), tailwindcss()],
+    define: {
+      'import.meta.env.VITE_GEMINI_API_KEY': JSON.stringify(apiKey),
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
