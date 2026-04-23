@@ -143,13 +143,9 @@ export function TournamentAssistant({
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error: any) {
       console.error("Assistant Error:", error);
-      const isApiError = error.message?.toLowerCase().includes('api key') || error.message?.toLowerCase().includes('invalid_argument');
-      
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: isApiError 
-          ? "🤖 Demo Mode: I couldn't reach the AI because a valid API key isn't configured, but I am still here! Provide a valid Gemini API Key in the settings for full assistance." 
-          : `Error: ${error.message || "Something went wrong."}`,
+        content: `Error: ${error.message || "Something went wrong. Please check your API key."}`,
         timestamp: new Date()
       }]);
     } finally {

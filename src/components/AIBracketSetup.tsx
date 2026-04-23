@@ -154,7 +154,7 @@ export function AIBracketSetup({
     setError(null);
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined;
       if (!apiKey) throw new Error("API Key missing");
 
       const ai = new GoogleGenAI({ apiKey });
@@ -347,7 +347,7 @@ export function AIBracketSetup({
     }
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined;
       
       if (!apiKey) {
         throw new Error("Gemini API Key is not configured. To process images/PDFs, please add your GEMINI_API_KEY to the environment. Alternatively, upload a CSV file which does not require an API key.");
@@ -518,61 +518,14 @@ export function AIBracketSetup({
     } catch (err: any) {
       console.error("AI Processing Error:", err);
       
-      const errorString = err instanceof Error ? err.message : (typeof err === 'object' ? JSON.stringify(err) : String(err));
-      
-      const isApiError = 
-        errorString.toLowerCase().includes("api_key_invalid") || 
-        errorString.toLowerCase().includes("api key") || 
-        errorString.toLowerCase().includes("invalid_argument") ||
-        errorString.toLowerCase().includes("key expired");
-
-      if (isApiError) {
-        console.warn("Demo Mode: Injecting mock bracket data.");
-        
-        const demoMatches: MatchData[] = [
-          { ring: 1, bout: "A01", category: "SENIOR MENS -68KG", blue_name: "JOHN DOE", blue_club: "TIGERS", red_name: "JAMES SMITH", red_club: "DRAGONS", privacy_mode: false, eventId: currentEventId },
-          { ring: 1, bout: "A02", category: "SENIOR MENS -68KG", blue_name: "MIKE TYSON", blue_club: "BOXING", red_name: "JACK LEE", red_club: "KICKS", privacy_mode: false, eventId: currentEventId },
-          { ring: 1, bout: "A03", category: "SENIOR MENS -68KG", blue_name: "BRUCE WAYNE", blue_club: "BATS", red_name: "CLARK KENT", red_club: "CAPES", privacy_mode: false, eventId: currentEventId },
-          { ring: 1, bout: "A04", category: "SENIOR MENS -68KG", blue_name: "PETER PARKER", blue_club: "WEBS", red_name: "TONY STARK", red_club: "IRON", privacy_mode: false, eventId: currentEventId },
-          { ring: 1, bout: "A05", category: "SENIOR MENS -68KG", blue_name: "", blue_club: "", red_name: "", red_club: "", privacy_mode: false, eventId: currentEventId },
-          { ring: 1, bout: "A06", category: "SENIOR MENS -68KG", blue_name: "", blue_club: "", red_name: "", red_club: "", privacy_mode: false, eventId: currentEventId },
-          { ring: 1, bout: "A07", category: "SENIOR MENS -68KG", blue_name: "", blue_club: "", red_name: "", red_club: "", privacy_mode: false, eventId: currentEventId }
-        ];
-        
-        const demoMappings: Partial<BoutMapping>[] = [
-          { sourceBout: "A01", nextBout: "A05", slot: "Chung" },
-          { sourceBout: "A02", nextBout: "A05", slot: "Hong" },
-          { sourceBout: "A03", nextBout: "A06", slot: "Chung" },
-          { sourceBout: "A04", nextBout: "A06", slot: "Hong" },
-          { sourceBout: "A05", nextBout: "A07", slot: "Chung" },
-          { sourceBout: "A06", nextBout: "A07", slot: "Hong" }
-        ];
-
-        setPreviewData({
-          matches: demoMatches,
-          mappings: demoMappings as any,
-          fileName: file.name,
-          fileType: file.type
-        });
-        
-        setProcessedFiles(prev => {
-          const newSet = new Set(prev);
-          newSet.add(`${file.name}-${file.size}`);
-          return newSet;
-        });
-        
-        setError(null);
-        alert("Demo Mode Active: We couldn't validate the Gemini API Key, so a sample demo bracket has been loaded for demonstration purposes.");
-        setIsProcessing(false);
-        return;
-      }
-      
       let errorMessage = "Failed to process the file. Please try again with a smaller file or a clearer image.";
       
-      if (err instanceof Error || errorString) {
-        const msg = errorString.toLowerCase();
+      if (err instanceof Error) {
+        const msg = err.message.toLowerCase();
         if (msg.includes("timed out")) {
           errorMessage = "The request timed out. The image might be too complex or the connection is slow.";
+        } else if (msg.includes("api_key_invalid") || msg.includes("api key")) {
+          errorMessage = "Invalid API Key. Please check your configuration.";
         } else if (msg.includes("quota") || msg.includes("rate limit")) {
           errorMessage = "API quota exceeded. Please try again in a few minutes.";
         } else if (msg.includes("model not found") || msg.includes("404")) {
@@ -580,7 +533,7 @@ export function AIBracketSetup({
         } else if (msg.includes("safety")) {
           errorMessage = "The file was flagged by safety filters. Please ensure it contains only tournament data.";
         } else {
-          errorMessage = `Error: ${err instanceof Error ? err.message : "Something went wrong"}`;
+          errorMessage = `Error: ${err.message}`;
         }
       }
       
