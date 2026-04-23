@@ -535,8 +535,12 @@ export function AIBracketSetup({
         } else if (msg.includes("not configured") || msg.includes("missing or undefined")) {
           errorMessage = "Gemini API Key is missing. Please add your VITE_GEMINI_API_KEY in the app settings.";
         } else if (msg.includes("api_key_invalid") || msg.includes("api key") || msg.includes("400")) {
-          const debugKey = import.meta.env.VITE_GEMINI_API_KEY ? `(Key starts with: ${import.meta.env.VITE_GEMINI_API_KEY.substring(0, 4)}...)` : "(Key is blank)";
-          errorMessage = `Invalid API Key. ${debugKey} Please make sure you fully copied the key without extra spaces or quotes. Full error: ${err.message}`;
+          if (msg.includes("expired")) {
+            errorMessage = "Your Gemini API Key has expired. Please go to aistudio.google.com and generate a new key.";
+          } else {
+            const debugKey = import.meta.env.VITE_GEMINI_API_KEY ? `(Key starts with: ${import.meta.env.VITE_GEMINI_API_KEY.substring(0, 4)}...)` : "(Key is blank)";
+            errorMessage = `Invalid API Key. ${debugKey} Please make sure you fully copied the key without extra spaces or quotes. Full error: ${err.message}`;
+          }
         } else if (msg.includes("quota") || msg.includes("rate limit") || msg.includes("429")) {
           if (msg.includes("credits are depleted") || msg.includes("billing")) {
              errorMessage = "Your Google Cloud billing credits are depleted. Please check your billing settings at aistudio.google.com.";
