@@ -196,7 +196,7 @@ export function AIBracketSetup({
       `;
 
       const response = await ai.models.generateContent({
-        model: "models/gemini-1.5-flash",
+        model: "gemini-3-flash-preview",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -401,7 +401,7 @@ export function AIBracketSetup({
         }
       `;
 
-      const modelName = isThinkingMode ? "models/gemini-2.0-flash-thinking-exp-01-21" : "models/gemini-1.5-flash";
+      const modelName = isThinkingMode ? "gemini-3.1-pro-preview" : "gemini-3-flash-preview";
       const response = await ai.models.generateContent({
         model: modelName,
         contents: [
