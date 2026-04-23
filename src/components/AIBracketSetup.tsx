@@ -154,7 +154,7 @@ export function AIBracketSetup({
     setError(null);
 
     try {
-      const rawApiKey = process.env.GEMINI_API_KEY;
+      const rawApiKey = import.meta.env.VITE_GEMINI_API_KEY;
       // Strip ALL whitespace, invisible unicode characters (zero-width spaces), newlines, and surrounding quotes
       const apiKey = rawApiKey 
         ? String(rawApiKey).replace(/[\s\u200B-\u200D\uFEFF\u00A0\n\r"']/g, '') 
@@ -352,13 +352,13 @@ export function AIBracketSetup({
     }
 
     try {
-      const rawApiKey = process.env.GEMINI_API_KEY;
+      const rawApiKey = import.meta.env.VITE_GEMINI_API_KEY;
       const apiKey = rawApiKey 
         ? String(rawApiKey).replace(/[\s\u200B-\u200D\uFEFF\u00A0\n\r"']/g, '') 
         : undefined;
       
       if (!apiKey || apiKey === "undefined") {
-        throw new Error("Gemini API Key is not configured. To process images/PDFs, please add your GEMINI_API_KEY to the environment. Alternatively, upload a CSV file which does not require an API key.");
+        throw new Error("Gemini API Key is not configured. To process images/PDFs, please add your VITE_GEMINI_API_KEY to the environment. Alternatively, upload a CSV file which does not require an API key.");
       }
       
       const ai = new GoogleGenAI({ apiKey });
@@ -533,9 +533,9 @@ export function AIBracketSetup({
         if (msg.includes("timed out")) {
           errorMessage = "The request timed out. The image might be too complex or the connection is slow.";
         } else if (msg.includes("not configured") || msg.includes("missing or undefined")) {
-          errorMessage = "Gemini API Key is missing. Please add your GEMINI_API_KEY in the app settings.";
+          errorMessage = "Gemini API Key is missing. Please add your VITE_GEMINI_API_KEY in the app settings.";
         } else if (msg.includes("api_key_invalid") || msg.includes("api key") || msg.includes("400")) {
-          const debugKey = process.env.GEMINI_API_KEY ? `(Key starts with: ${process.env.GEMINI_API_KEY.substring(0, 4)}...)` : "(Key is blank)";
+          const debugKey = import.meta.env.VITE_GEMINI_API_KEY ? `(Key starts with: ${import.meta.env.VITE_GEMINI_API_KEY.substring(0, 4)}...)` : "(Key is blank)";
           errorMessage = `Invalid API Key. ${debugKey} Please make sure you fully copied the key without extra spaces or quotes. Full error: ${err.message}`;
         } else if (msg.includes("quota") || msg.includes("rate limit")) {
           errorMessage = "API quota exceeded. Please try again in a few minutes.";
