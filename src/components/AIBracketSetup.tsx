@@ -155,7 +155,7 @@ export function AIBracketSetup({
 
     try {
       const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) throw new Error("API Key missing");
+      if (!apiKey || apiKey === "undefined") throw new Error("API Key missing or undefined");
 
       const ai = new GoogleGenAI({ apiKey });
       const prompt = `
@@ -349,7 +349,7 @@ export function AIBracketSetup({
     try {
       const apiKey = process.env.GEMINI_API_KEY;
       
-      if (!apiKey) {
+      if (!apiKey || apiKey === "undefined") {
         throw new Error("Gemini API Key is not configured. To process images/PDFs, please add your GEMINI_API_KEY to the environment. Alternatively, upload a CSV file which does not require an API key.");
       }
       
@@ -524,6 +524,8 @@ export function AIBracketSetup({
         const msg = err.message.toLowerCase();
         if (msg.includes("timed out")) {
           errorMessage = "The request timed out. The image might be too complex or the connection is slow.";
+        } else if (msg.includes("not configured") || msg.includes("missing or undefined")) {
+          errorMessage = "Gemini API Key is missing. Please add your GEMINI_API_KEY in the app settings.";
         } else if (msg.includes("api_key_invalid") || msg.includes("api key")) {
           errorMessage = "Invalid API Key. Please check your configuration.";
         } else if (msg.includes("quota") || msg.includes("rate limit")) {
