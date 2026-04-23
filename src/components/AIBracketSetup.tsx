@@ -427,61 +427,99 @@ export function AIBracketSetup({
       `;
 
       const modelName = isThinkingMode ? "gemini-3.1-pro-preview" : "gemini-3-flash-preview";
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: [
-          {
-            parts: [
-              {
-                inlineData: {
-                  mimeType: file.type || "image/png",
-                  data: base64Data,
-                },
-              },
-            ],
-          },
-        ],
-        config: {
-          systemInstruction: prompt,
-          temperature: 0.1,
-          responseMimeType: "application/json",
-          maxOutputTokens: 32768,
-          thinkingConfig: isThinkingMode ? { thinkingLevel: ThinkingLevel.HIGH } : undefined,
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              matches: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    ring: { type: Type.NUMBER },
-                    bout: { type: Type.STRING },
-                    category: { type: Type.STRING },
-                    blue_name: { type: Type.STRING },
-                    blue_club: { type: Type.STRING },
-                    red_name: { type: Type.STRING },
-                    red_club: { type: Type.STRING },
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: modelName,
+          contents: [{ parts: [{ inlineData: { mimeType: file.type || "image/png", data: base64Data } }] }],
+          config: {
+            systemInstruction: prompt,
+            temperature: 0.1,
+            responseMimeType: "application/json",
+            maxOutputTokens: 32768,
+            thinkingConfig: isThinkingMode ? { thinkingLevel: ThinkingLevel.HIGH } : undefined,
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                matches: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      ring: { type: Type.NUMBER },
+                      bout: { type: Type.STRING },
+                      category: { type: Type.STRING },
+                      blue_name: { type: Type.STRING },
+                      blue_club: { type: Type.STRING },
+                      red_name: { type: Type.STRING },
+                      red_club: { type: Type.STRING },
+                    },
+                    required: ["bout", "category", "blue_name", "red_name"],
                   },
-                  required: ["bout", "category", "blue_name", "red_name"],
                 },
-              },
-              mappings: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    sourceBout: { type: Type.STRING },
-                    nextBout: { type: Type.STRING },
-                    slot: { type: Type.STRING, enum: ["Chung", "Hong"] },
+                mappings: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      sourceBout: { type: Type.STRING },
+                      nextBout: { type: Type.STRING },
+                      slot: { type: Type.STRING, enum: ["Chung", "Hong"] },
+                    },
+                    required: ["sourceBout", "nextBout", "slot"],
                   },
-                  required: ["sourceBout", "nextBout", "slot"],
                 },
               },
             },
           },
-        },
-      });
+        });
+      } catch (firstErr: any) {
+        console.warn(`${modelName} failed, trying gemini-1.5-flash fallback...`, firstErr);
+        // Fallback to stable 1.5 flash
+        response = await ai.models.generateContent({
+          model: "gemini-1.5-flash",
+          contents: [{ parts: [{ inlineData: { mimeType: file.type || "image/png", data: base64Data } }] }],
+          config: {
+            systemInstruction: prompt,
+            temperature: 0.1,
+            responseMimeType: "application/json",
+            maxOutputTokens: 8192,
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                matches: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      ring: { type: Type.NUMBER },
+                      bout: { type: Type.STRING },
+                      category: { type: Type.STRING },
+                      blue_name: { type: Type.STRING },
+                      blue_club: { type: Type.STRING },
+                      red_name: { type: Type.STRING },
+                      red_club: { type: Type.STRING },
+                    },
+                    required: ["bout", "category", "blue_name", "red_name"],
+                  },
+                },
+                mappings: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      sourceBout: { type: Type.STRING },
+                      nextBout: { type: Type.STRING },
+                      slot: { type: Type.STRING, enum: ["Chung", "Hong"] },
+                    },
+                    required: ["sourceBout", "nextBout", "slot"],
+                  },
+                },
+              },
+            },
+          },
+        });
+      }
 
       const result = JSON.parse(response.text);
       const normalizedResult = {
@@ -567,15 +605,11 @@ export function AIBracketSetup({
         } else if (msg.includes("not configured") || msg.includes("missing or undefined")) {
           errorMessage = "Gemini API Key is missing. Please add your VITE_GEMINI_API_KEY in the app settings.";
         } else if (msg.includes("api_key_invalid") || msg.includes("api key") || msg.includes("400")) {
-          if (msg.includes("expired")) {
-            errorMessage = "Your Gemini API Key has expired. Please go to aistudio.google.com and generate a new key.";
-          } else {
-            const activeKey = getActiveKey() || "";
-            const debugInfo = activeKey 
-              ? `(Used key: ${activeKey.substring(0, 6)}...${activeKey.substring(activeKey.length-4)}, length: ${activeKey.length})` 
-              : "(Key is BLANK)";
-            errorMessage = `Invalid API Key. ${debugInfo} Please ensure you are using a key from aistudio.google.com that has 'Generative Language API' enabled. Full error: ${err.message}`;
-          }
+          const activeKey = getActiveKey() || "";
+          const debugInfo = activeKey 
+            ? `(Used key: ${activeKey.substring(0, 6)}...${activeKey.substring(activeKey.length-4)}, length: ${activeKey.length})` 
+            : "(Key is BLANK)";
+          errorMessage = `API Key Error. ${debugInfo}. This usually means the key was copied incorrectly, it has expired, or the 'Generative Language API' is not enabled in your Google AI Studio project. Full error: ${err.message}`;
         } else if (msg.includes("quota") || msg.includes("rate limit") || msg.includes("429")) {
           if (msg.includes("credits are depleted") || msg.includes("billing")) {
              errorMessage = "Your Google Cloud billing credits are depleted. Please check your billing settings at aistudio.google.com.";
