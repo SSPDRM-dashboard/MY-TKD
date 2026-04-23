@@ -15,8 +15,7 @@ import {
   X,
   Send,
   Sparkles,
-  Zap,
-  Key
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
@@ -139,41 +138,6 @@ export function AIBracketSetup({
 
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
-  const [showKeyOverride, setShowKeyOverride] = useState(false);
-  const [manualKey, setManualKey] = useState(() => {
-    return localStorage.getItem('tkd_manual_gemini_key') || '';
-  });
-
-  // Save manual key to localStorage
-  React.useEffect(() => {
-    if (manualKey) {
-      localStorage.setItem('tkd_manual_gemini_key', manualKey);
-    }
-  }, [manualKey]);
-
-  const getActiveKey = () => {
-    // 1. Prioritize manual override state
-    let key = manualKey;
-    if (!key) {
-      key = localStorage.getItem('tkd_manual_gemini_key') || '';
-    }
-    
-    const cleanedKey = key.trim().replace(/["']/g, ''); // Remove spaces and quotes
-    
-    if (cleanedKey && cleanedKey.length > 30 && cleanedKey.startsWith('AIza')) {
-      return cleanedKey;
-    }
-    
-    // 2. Fallback to system environment keys
-    const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || (window as any).process?.env?.GEMINI_API_KEY;
-    if (envKey) {
-      const cleanedEnv = String(envKey).trim().replace(/["']/g, '');
-      if (cleanedEnv && cleanedEnv.length > 30) return cleanedEnv;
-    }
-    
-    return undefined;
-  };
-
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentEvent = events.find(e => e.id === currentEventId);
@@ -190,8 +154,8 @@ export function AIBracketSetup({
     setError(null);
 
     try {
-      const apiKey = getActiveKey();
-      if (!apiKey || apiKey === "undefined") throw new Error("API Key missing or undefined");
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) throw new Error("API Key missing");
 
       const ai = new GoogleGenAI({ apiKey });
       const prompt = `
@@ -383,10 +347,10 @@ export function AIBracketSetup({
     }
 
     try {
-      const apiKey = getActiveKey();
+      const apiKey = process.env.GEMINI_API_KEY;
       
-      if (!apiKey || apiKey === "undefined") {
-        throw new Error("Gemini API Key is not configured. To process images/PDFs, please add your VITE_GEMINI_API_KEY to the environment. Alternatively, upload a CSV file which does not require an API key.");
+      if (!apiKey) {
+        throw new Error("Gemini API Key is not configured. To process images/PDFs, please add your GEMINI_API_KEY to the environment. Alternatively, upload a CSV file which does not require an API key.");
       }
       
       const ai = new GoogleGenAI({ apiKey });
@@ -426,100 +390,60 @@ export function AIBracketSetup({
         }
       `;
 
-      const modelName = isThinkingMode ? "gemini-3.1-pro-preview" : "gemini-3-flash-preview";
-      let response;
-      try {
-        response = await ai.models.generateContent({
-          model: modelName,
-          contents: [{ parts: [{ inlineData: { mimeType: file.type || "image/png", data: base64Data } }] }],
-          config: {
-            systemInstruction: prompt,
-            temperature: 0.1,
-            responseMimeType: "application/json",
-            maxOutputTokens: 32768,
-            thinkingConfig: isThinkingMode ? { thinkingLevel: ThinkingLevel.HIGH } : undefined,
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                matches: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      ring: { type: Type.NUMBER },
-                      bout: { type: Type.STRING },
-                      category: { type: Type.STRING },
-                      blue_name: { type: Type.STRING },
-                      blue_club: { type: Type.STRING },
-                      red_name: { type: Type.STRING },
-                      red_club: { type: Type.STRING },
-                    },
-                    required: ["bout", "category", "blue_name", "red_name"],
-                  },
+      const response = await ai.models.generateContent({
+        model: isThinkingMode ? "gemini-3.1-pro-preview" : "gemini-3-flash-preview",
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  mimeType: file.type || "image/png",
+                  data: base64Data,
                 },
-                mappings: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      sourceBout: { type: Type.STRING },
-                      nextBout: { type: Type.STRING },
-                      slot: { type: Type.STRING, enum: ["Chung", "Hong"] },
-                    },
-                    required: ["sourceBout", "nextBout", "slot"],
+              },
+            ],
+          },
+        ],
+        config: {
+          temperature: 0.1,
+          responseMimeType: "application/json",
+          thinkingConfig: isThinkingMode ? { thinkingLevel: ThinkingLevel.HIGH } : undefined,
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              matches: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    ring: { type: Type.NUMBER },
+                    bout: { type: Type.STRING },
+                    category: { type: Type.STRING },
+                    blue_name: { type: Type.STRING },
+                    blue_club: { type: Type.STRING },
+                    red_name: { type: Type.STRING },
+                    red_club: { type: Type.STRING },
                   },
+                  required: ["bout", "category", "blue_name", "red_name"],
+                },
+              },
+              mappings: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    sourceBout: { type: Type.STRING },
+                    nextBout: { type: Type.STRING },
+                    slot: { type: Type.STRING, enum: ["Chung", "Hong"] },
+                  },
+                  required: ["sourceBout", "nextBout", "slot"],
                 },
               },
             },
           },
-        });
-      } catch (firstErr: any) {
-        console.warn(`${modelName} failed, trying gemini-1.5-flash fallback...`, firstErr);
-        // Fallback to stable 1.5 flash
-        response = await ai.models.generateContent({
-          model: "gemini-1.5-flash",
-          contents: [{ parts: [{ inlineData: { mimeType: file.type || "image/png", data: base64Data } }] }],
-          config: {
-            systemInstruction: prompt,
-            temperature: 0.1,
-            responseMimeType: "application/json",
-            maxOutputTokens: 8192,
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                matches: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      ring: { type: Type.NUMBER },
-                      bout: { type: Type.STRING },
-                      category: { type: Type.STRING },
-                      blue_name: { type: Type.STRING },
-                      blue_club: { type: Type.STRING },
-                      red_name: { type: Type.STRING },
-                      red_club: { type: Type.STRING },
-                    },
-                    required: ["bout", "category", "blue_name", "red_name"],
-                  },
-                },
-                mappings: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      sourceBout: { type: Type.STRING },
-                      nextBout: { type: Type.STRING },
-                      slot: { type: Type.STRING, enum: ["Chung", "Hong"] },
-                    },
-                    required: ["sourceBout", "nextBout", "slot"],
-                  },
-                },
-              },
-            },
-          },
-        });
-      }
+        },
+      });
 
       const result = JSON.parse(response.text);
       const normalizedResult = {
@@ -598,26 +522,14 @@ export function AIBracketSetup({
       
       if (err instanceof Error) {
         const msg = err.message.toLowerCase();
-        if (msg.includes("unexpected token") || msg.includes("json")) {
-          errorMessage = "The tournament data is very large and the AI response was partially cut off. I've increased the processing limit—please try analyzing this file one more time. If it still fails, try 'Deep Thinking Mode' or upload just one page at a time.";
-        } else if (msg.includes("timed out")) {
+        if (msg.includes("timed out")) {
           errorMessage = "The request timed out. The image might be too complex or the connection is slow.";
-        } else if (msg.includes("not configured") || msg.includes("missing or undefined")) {
-          errorMessage = "Gemini API Key is missing. Please add your VITE_GEMINI_API_KEY in the app settings.";
-        } else if (msg.includes("api_key_invalid") || msg.includes("api key") || msg.includes("400")) {
-          const activeKey = getActiveKey() || "";
-          const debugInfo = activeKey 
-            ? `(Used key: ${activeKey.substring(0, 6)}...${activeKey.substring(activeKey.length-4)}, length: ${activeKey.length})` 
-            : "(Key is BLANK)";
-          errorMessage = `API Key Error. ${debugInfo}. This usually means the key was copied incorrectly, it has expired, or the 'Generative Language API' is not enabled in your Google AI Studio project. Full error: ${err.message}`;
-        } else if (msg.includes("quota") || msg.includes("rate limit") || msg.includes("429")) {
-          if (msg.includes("credits are depleted") || msg.includes("billing")) {
-             errorMessage = "Your Google Cloud billing credits are depleted. Please check your billing settings at aistudio.google.com.";
-          } else {
-             errorMessage = "API quota exceeded. Please try again in a few minutes.";
-          }
+        } else if (msg.includes("api_key_invalid") || msg.includes("api key")) {
+          errorMessage = "Invalid API Key. Please check your configuration.";
+        } else if (msg.includes("quota") || msg.includes("rate limit")) {
+          errorMessage = "API quota exceeded. Please try again in a few minutes.";
         } else if (msg.includes("model not found") || msg.includes("404")) {
-          errorMessage = `The AI model (${isThinkingMode ? "Pro/Thinking" : "Flash"}) was not found in your region with this API key. Error: ${err.message}`;
+          errorMessage = "The AI model is currently unavailable. Please contact support.";
         } else if (msg.includes("safety")) {
           errorMessage = "The file was flagged by safety filters. Please ensure it contains only tournament data.";
         } else {
@@ -935,183 +847,71 @@ export function AIBracketSetup({
             </div>
 
             {error && (
-              <div className="space-y-4">
-                <div className="p-4 bg-red-50 border border-red-100 rounded-2xl space-y-3">
-                  <div className="flex items-center gap-3 text-red-600 text-sm font-bold">
-                    <AlertCircle size={20} className="shrink-0" />
-                    <p>{error}</p>
-                  </div>
-                  
-                  {(error.includes("Invalid API Key") || error.includes("missing")) && (
-                    <div className="pt-2 border-t border-red-100">
-                      <button 
-                        onClick={() => setShowKeyOverride(!showKeyOverride)}
-                        className="text-[10px] font-black text-red-500 uppercase tracking-widest hover:text-red-700 underline"
-                      >
-                        {showKeyOverride ? "Close Manual Input" : "Try Manual Key Paste (Bypasses System Settings)"}
-                      </button>
-                      
-                      {showKeyOverride && (
-                        <div className="mt-3 space-y-2">
-                          <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
-                            Paste your key from aistudio.google.com here to bypass environment variables:
-                          </p>
-                          <div className="flex gap-2">
-                            <input 
-                              type="text"
-                              value={manualKey}
-                              onChange={(e) => setManualKey(e.target.value)}
-                              placeholder="AIzaSy..."
-                              className="flex-1 p-2 bg-white border border-red-200 rounded-xl text-[10px] font-mono outline-none focus:ring-1 focus:ring-red-400"
-                            />
-                            <button 
-                              onClick={processFile}
-                              className="px-4 py-2 bg-red-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors"
-                            >
-                              Retry Now
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+              <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 text-sm font-bold">
+                <AlertCircle size={20} />
+                {error}
               </div>
             )}
 
             {/* AI Settings */}
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-6 p-6 bg-white rounded-3xl border border-slate-200 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
-                    isThinkingMode ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-100 text-slate-400"
-                  )}>
-                    <Sparkles size={20} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-black uppercase tracking-widest text-slate-900">Deep Thinking Mode</span>
-                      <button 
-                        onClick={() => setIsThinkingMode(!isThinkingMode)}
-                        className={cn(
-                          "w-10 h-5 rounded-full relative transition-all",
-                          isThinkingMode ? "bg-indigo-600" : "bg-slate-200"
-                        )}
-                      >
-                        <div className={cn(
-                          "absolute top-1 w-3 h-3 bg-white rounded-full transition-all",
-                          isThinkingMode ? "left-6" : "left-1"
-                        )} />
-                      </button>
-                    </div>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                      {isThinkingMode ? "Using Pro Model + Reasoning (Slower, More Accurate)" : "Using Flash Model (Faster, Standard Accuracy)"}
-                    </p>
-                  </div>
+            <div className="flex flex-wrap items-center gap-6 p-6 bg-white rounded-3xl border border-slate-200 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                  isThinkingMode ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-100 text-slate-400"
+                )}>
+                  <Sparkles size={20} />
                 </div>
-
-                <div className="h-8 w-px bg-slate-100 hidden md:block" />
-
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
-                    isPoomsaeMode ? "bg-purple-600 text-white shadow-lg shadow-purple-200" : "bg-slate-100 text-slate-400"
-                  )}>
-                    <Zap size={20} />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-900">Deep Thinking Mode</span>
+                    <button 
+                      onClick={() => setIsThinkingMode(!isThinkingMode)}
+                      className={cn(
+                        "w-10 h-5 rounded-full relative transition-all",
+                        isThinkingMode ? "bg-indigo-600" : "bg-slate-200"
+                      )}
+                    >
+                      <div className={cn(
+                        "absolute top-1 w-3 h-3 bg-white rounded-full transition-all",
+                        isThinkingMode ? "left-6" : "left-1"
+                      )} />
+                    </button>
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-black uppercase tracking-widest text-slate-900">Poomsae Solo Mode</span>
-                      <button 
-                        onClick={() => setIsPoomsaeMode(!isPoomsaeMode)}
-                        className={cn(
-                          "w-10 h-5 rounded-full relative transition-all",
-                          isPoomsaeMode ? "bg-purple-600" : "bg-slate-200"
-                        )}
-                      >
-                        <div className={cn(
-                          "absolute top-1 w-3 h-3 bg-white rounded-full transition-all",
-                          isPoomsaeMode ? "left-6" : "left-1"
-                        )} />
-                      </button>
-                    </div>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Map every player as a sequential performance (e.g. 1, 2, 3...)</p>
-                  </div>
-                </div>
-
-                <div className="h-8 w-px bg-slate-100 hidden md:block ml-auto" />
-
-                <div className="flex items-center gap-3">
-                  <button 
-                    onClick={() => setShowKeyOverride(!showKeyOverride)}
-                    className={cn(
-                      "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
-                      manualKey ? "bg-green-600 text-white shadow-lg shadow-green-200" : "bg-slate-100 text-slate-400"
-                    )}
-                  >
-                    <Key size={20} />
-                  </button>
-                  <div onClick={() => setShowKeyOverride(!showKeyOverride)} className="cursor-pointer">
-                    <p className="text-xs font-black uppercase tracking-widest text-slate-900">AI API Settings</p>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                      {manualKey ? "Active: Manual Override Key" : "Active: System Environment Key"}
-                    </p>
-                  </div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                    {isThinkingMode ? "Using Pro Model + Reasoning (Slower, More Accurate)" : "Using Flash Model (Faster, Standard Accuracy)"}
+                  </p>
                 </div>
               </div>
 
-              {showKeyOverride && (
-                <motion.div 
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  className="p-6 bg-slate-900 rounded-3xl space-y-4 border border-indigo-500/20 shadow-2xl"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-xs font-black text-white uppercase tracking-widest">Manual API Key Configuration</h4>
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">This key is saved only in your browser and used if correctly formatted.</p>
-                    </div>
-                    <button onClick={() => setShowKeyOverride(false)} className="text-slate-400 hover:text-white">
-                      <X size={16} />
-                    </button>
-                  </div>
-                  <div className="flex gap-3">
-                    <div className="flex-1 relative">
-                      <input 
-                        type="text"
-                        value={manualKey}
-                        onChange={(e) => {
-                          setManualKey(e.target.value);
-                          setError(null);
-                        }}
-                        placeholder="Paste your AIzaSy... key here"
-                        className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-xs font-mono text-white outline-none focus:ring-1 focus:ring-indigo-500 pr-20"
-                      />
-                      {manualKey.length >= 39 && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[8px] font-black text-green-400 uppercase tracking-widest bg-green-400/10 px-2 py-1 rounded-md">
-                          <CheckCircle2 size={10} /> Valid Length
-                        </div>
-                      )}
-                    </div>
+              <div className="h-8 w-px bg-slate-100 hidden md:block" />
+
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                  isPoomsaeMode ? "bg-purple-600 text-white shadow-lg shadow-purple-200" : "bg-slate-100 text-slate-400"
+                )}>
+                  <Zap size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-900">Poomsae Solo Mode</span>
                     <button 
-                      onClick={() => { 
-                        setManualKey(''); 
-                        localStorage.removeItem('tkd_manual_gemini_key');
-                        setError(null);
-                      }}
-                      className="px-4 py-2 bg-red-500/10 text-red-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500/20 transition-colors"
+                      onClick={() => setIsPoomsaeMode(!isPoomsaeMode)}
+                      className={cn(
+                        "w-10 h-5 rounded-full relative transition-all",
+                        isPoomsaeMode ? "bg-purple-600" : "bg-slate-200"
+                      )}
                     >
-                      Clear
+                      <div className={cn(
+                        "absolute top-1 w-3 h-3 bg-white rounded-full transition-all",
+                        isPoomsaeMode ? "left-6" : "left-1"
+                      )} />
                     </button>
                   </div>
-                  {manualKey && !manualKey.startsWith('AIza') && (
-                    <p className="text-[9px] font-bold text-red-400 uppercase tracking-widest leading-loose">
-                      Warning: Standard keys usually start with "AIza". Please check your copy-paste.
-                    </p>
-                  )}
-                </motion.div>
-              )}
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Map every player as a sequential performance (e.g. 1, 2, 3...)</p>
+                </div>
+              </div>
             </div>
 
             {/* Admin Note Section */}
