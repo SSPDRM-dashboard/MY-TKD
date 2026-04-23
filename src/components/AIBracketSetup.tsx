@@ -190,7 +190,7 @@ export function AIBracketSetup({
       `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-1.5-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -399,7 +399,7 @@ export function AIBracketSetup({
       `;
 
       const response = await ai.models.generateContent({
-        model: isThinkingMode ? "gemini-3.1-pro-preview" : "gemini-3-flash-preview",
+        model: isThinkingMode ? "gemini-2.0-flash-thinking-exp-01-21" : "gemini-1.5-flash",
         contents: [
           {
             parts: [
@@ -538,8 +538,11 @@ export function AIBracketSetup({
           if (msg.includes("expired")) {
             errorMessage = "Your Gemini API Key has expired. Please go to aistudio.google.com and generate a new key.";
           } else {
-            const debugKey = import.meta.env.VITE_GEMINI_API_KEY ? `(Key starts with: ${import.meta.env.VITE_GEMINI_API_KEY.substring(0, 4)}...)` : "(Key is blank)";
-            errorMessage = `Invalid API Key. ${debugKey} Please make sure you fully copied the key without extra spaces or quotes. Full error: ${err.message}`;
+            const currentKey = import.meta.env.VITE_GEMINI_API_KEY || "";
+            const debugInfo = currentKey 
+              ? `(Your key starts with: ${currentKey.substring(0, 6)} and is ${currentKey.length} chars long)` 
+              : "(The app says the key is BLANK)";
+            errorMessage = `Invalid API Key. ${debugInfo} Please make sure you fully copied the key without extra spaces or quotes. Full error: ${err.message}`;
           }
         } else if (msg.includes("quota") || msg.includes("rate limit") || msg.includes("429")) {
           if (msg.includes("credits are depleted") || msg.includes("billing")) {
