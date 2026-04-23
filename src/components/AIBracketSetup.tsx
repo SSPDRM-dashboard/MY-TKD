@@ -139,7 +139,16 @@ export function AIBracketSetup({
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [showKeyOverride, setShowKeyOverride] = useState(false);
-  const [manualKey, setManualKey] = useState('');
+  const [manualKey, setManualKey] = useState(() => {
+    return localStorage.getItem('tkd_manual_gemini_key') || '';
+  });
+
+  // Save manual key to localStorage
+  React.useEffect(() => {
+    if (manualKey) {
+      localStorage.setItem('tkd_manual_gemini_key', manualKey);
+    }
+  }, [manualKey]);
 
   const getActiveKey = () => {
     const cleanedManual = manualKey.replace(/[\s\u200B-\u200D\uFEFF\u00A0\n\r"']/g, '');
@@ -420,6 +429,7 @@ export function AIBracketSetup({
         config: {
           temperature: 0.1,
           responseMimeType: "application/json",
+          maxOutputTokens: 8192,
           thinkingConfig: isThinkingMode ? { thinkingLevel: ThinkingLevel.HIGH } : undefined,
           responseSchema: {
             type: Type.OBJECT,
@@ -534,7 +544,9 @@ export function AIBracketSetup({
       
       if (err instanceof Error) {
         const msg = err.message.toLowerCase();
-        if (msg.includes("timed out")) {
+        if (msg.includes("unexpected token") || msg.includes("json")) {
+          errorMessage = "The AI response was cut off because the bracket page is too detailed. Please try uploading only one page at a time or use 'Deep Thinking Mode'.";
+        } else if (msg.includes("timed out")) {
           errorMessage = "The request timed out. The image might be too complex or the connection is slow.";
         } else if (msg.includes("not configured") || msg.includes("missing or undefined")) {
           errorMessage = "Gemini API Key is missing. Please add your VITE_GEMINI_API_KEY in the app settings.";
