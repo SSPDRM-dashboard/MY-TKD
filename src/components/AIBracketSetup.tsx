@@ -152,12 +152,26 @@ export function AIBracketSetup({
   }, [manualKey]);
 
   const getActiveKey = () => {
-    const cleanedManual = manualKey.replace(/[\s\u200B-\u200D\uFEFF\u00A0\n\r"']/g, '');
-    if (cleanedManual && cleanedManual.length > 5) return cleanedManual;
+    // 1. Prioritize manual override state
+    let key = manualKey;
+    if (!key) {
+      key = localStorage.getItem('tkd_manual_gemini_key') || '';
+    }
     
-    // Check both standard Vite env and the platform-injected process.env (as per SDK skill)
+    const cleanedKey = key.trim().replace(/["']/g, ''); // Remove spaces and quotes
+    
+    if (cleanedKey && cleanedKey.length > 30 && cleanedKey.startsWith('AIza')) {
+      return cleanedKey;
+    }
+    
+    // 2. Fallback to system environment keys
     const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || (window as any).process?.env?.GEMINI_API_KEY;
-    return envKey ? String(envKey).replace(/[\s\u200B-\u200D\uFEFF\u00A0\n\r"']/g, '') : undefined;
+    if (envKey) {
+      const cleanedEnv = String(envKey).trim().replace(/["']/g, '');
+      if (cleanedEnv && cleanedEnv.length > 30) return cleanedEnv;
+    }
+    
+    return undefined;
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1029,20 +1043,39 @@ export function AIBracketSetup({
                     </button>
                   </div>
                   <div className="flex gap-3">
-                    <input 
-                      type="text"
-                      value={manualKey}
-                      onChange={(e) => setManualKey(e.target.value)}
-                      placeholder="Paste your AIzaSy... key here"
-                      className="flex-1 p-4 bg-white/5 border border-white/10 rounded-2xl text-xs font-mono text-white outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
+                    <div className="flex-1 relative">
+                      <input 
+                        type="text"
+                        value={manualKey}
+                        onChange={(e) => {
+                          setManualKey(e.target.value);
+                          setError(null);
+                        }}
+                        placeholder="Paste your AIzaSy... key here"
+                        className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-xs font-mono text-white outline-none focus:ring-1 focus:ring-indigo-500 pr-20"
+                      />
+                      {manualKey.length >= 39 && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[8px] font-black text-green-400 uppercase tracking-widest bg-green-400/10 px-2 py-1 rounded-md">
+                          <CheckCircle2 size={10} /> Valid Length
+                        </div>
+                      )}
+                    </div>
                     <button 
-                      onClick={() => { setManualKey(''); localStorage.removeItem('tkd_manual_gemini_key'); }}
+                      onClick={() => { 
+                        setManualKey(''); 
+                        localStorage.removeItem('tkd_manual_gemini_key');
+                        setError(null);
+                      }}
                       className="px-4 py-2 bg-red-500/10 text-red-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500/20 transition-colors"
                     >
-                      Reset to System
+                      Clear
                     </button>
                   </div>
+                  {manualKey && !manualKey.startsWith('AIza') && (
+                    <p className="text-[9px] font-bold text-red-400 uppercase tracking-widest leading-loose">
+                      Warning: Standard keys usually start with "AIza". Please check your copy-paste.
+                    </p>
+                  )}
                 </motion.div>
               )}
             </div>
