@@ -154,7 +154,7 @@ export function AIBracketSetup({
     setError(null);
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY?.trim();
+      const apiKey = process.env.GEMINI_API_KEY?.trim().replace(/^["']|["']$/g, '');
       if (!apiKey || apiKey === "undefined") throw new Error("API Key missing or undefined");
 
       const ai = new GoogleGenAI({ apiKey });
@@ -347,7 +347,7 @@ export function AIBracketSetup({
     }
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY?.trim();
+      const apiKey = process.env.GEMINI_API_KEY?.trim().replace(/^["']|["']$/g, '');
       
       if (!apiKey || apiKey === "undefined") {
         throw new Error("Gemini API Key is not configured. To process images/PDFs, please add your GEMINI_API_KEY to the environment. Alternatively, upload a CSV file which does not require an API key.");
