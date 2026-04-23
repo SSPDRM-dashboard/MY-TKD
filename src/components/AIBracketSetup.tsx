@@ -15,7 +15,8 @@ import {
   X,
   Send,
   Sparkles,
-  Zap
+  Zap,
+  Key
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
@@ -417,7 +418,6 @@ export function AIBracketSetup({
         contents: [
           {
             parts: [
-              { text: prompt },
               {
                 inlineData: {
                   mimeType: file.type || "image/png",
@@ -428,9 +428,10 @@ export function AIBracketSetup({
           },
         ],
         config: {
+          systemInstruction: prompt,
           temperature: 0.1,
           responseMimeType: "application/json",
-          maxOutputTokens: 8192,
+          maxOutputTokens: 32768,
           thinkingConfig: isThinkingMode ? { thinkingLevel: ThinkingLevel.HIGH } : undefined,
           responseSchema: {
             type: Type.OBJECT,
@@ -546,7 +547,7 @@ export function AIBracketSetup({
       if (err instanceof Error) {
         const msg = err.message.toLowerCase();
         if (msg.includes("unexpected token") || msg.includes("json")) {
-          errorMessage = "The AI response was cut off because the bracket page is too detailed. Please try uploading only one page at a time or use 'Deep Thinking Mode'.";
+          errorMessage = "The tournament data is very large and the AI response was partially cut off. I've increased the processing limit—please try analyzing this file one more time. If it still fails, try 'Deep Thinking Mode' or upload just one page at a time.";
         } else if (msg.includes("timed out")) {
           errorMessage = "The request timed out. The image might be too complex or the connection is slow.";
         } else if (msg.includes("not configured") || msg.includes("missing or undefined")) {
