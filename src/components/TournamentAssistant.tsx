@@ -86,9 +86,9 @@ export function TournamentAssistant({
     setIsLoading(true);
 
     try {
-      const apiKey = import.meta.env.VITE_CUSTOM_API_KEY || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined);
+      const apiKey = import.meta.env.VITE_CUSTOM_API_KEY || (typeof process !== 'undefined' ? process.env.VITE_CUSTOM_API_KEY || process.env.CUSTOM_API_KEY || process.env.GEMINI_API_KEY : undefined);
       if (!apiKey) {
-        throw new Error("GEMINI_API_KEY is not configured.");
+        throw new Error("No API Key found. Please add VITE_CUSTOM_API_KEY to your Secrets.");
       }
 
       const ai = new GoogleGenAI({ apiKey });

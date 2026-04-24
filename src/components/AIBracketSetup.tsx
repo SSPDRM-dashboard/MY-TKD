@@ -154,8 +154,8 @@ export function AIBracketSetup({
     setError(null);
 
     try {
-      const apiKey = import.meta.env.VITE_CUSTOM_API_KEY || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined);
-      if (!apiKey) throw new Error("API Key missing");
+      const apiKey = import.meta.env.VITE_CUSTOM_API_KEY || (typeof process !== 'undefined' ? process.env.VITE_CUSTOM_API_KEY || process.env.CUSTOM_API_KEY || process.env.GEMINI_API_KEY : undefined);
+      if (!apiKey) throw new Error("No API Key found. Please add VITE_CUSTOM_API_KEY to your Secrets.");
 
       const ai = new GoogleGenAI({ apiKey });
       const prompt = `
@@ -347,10 +347,10 @@ export function AIBracketSetup({
     }
 
     try {
-      const apiKey = import.meta.env.VITE_CUSTOM_API_KEY || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined);
+      const apiKey = import.meta.env.VITE_CUSTOM_API_KEY || (typeof process !== 'undefined' ? process.env.VITE_CUSTOM_API_KEY || process.env.CUSTOM_API_KEY || process.env.GEMINI_API_KEY : undefined);
       
       if (!apiKey) {
-        throw new Error("Gemini API Key is not configured. To process images/PDFs, please add your GEMINI_API_KEY to the environment. Alternatively, upload a CSV file which does not require an API key.");
+        throw new Error("No API Key found. Please add VITE_CUSTOM_API_KEY to your Secrets.");
       }
       
       const ai = new GoogleGenAI({ apiKey });
