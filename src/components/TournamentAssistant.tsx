@@ -86,9 +86,9 @@ export function TournamentAssistant({
     setIsLoading(true);
 
     try {
-      const apiKey = import.meta.env.VITE_CUSTOM_API_KEY || process.env.CUSTOM_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      const apiKey = import.meta.env.VITE_CUSTOM_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || process.env.CUSTOM_API_KEY || process.env.GEMINI_API_KEY;
       if (!apiKey) {
-        throw new Error("No API Key found. Please add VITE_CUSTOM_API_KEY to your Secrets.");
+        throw new Error("No API Key found. When deploying to Vercel, make sure to add VITE_GEMINI_API_KEY or VITE_CUSTOM_API_KEY to your environment variables.");
       }
       console.log("Using API Key starting with:", apiKey.substring(0, 5), "Is Custom?", !!import.meta.env.VITE_CUSTOM_API_KEY);
 

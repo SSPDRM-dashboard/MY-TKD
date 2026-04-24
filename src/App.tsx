@@ -623,6 +623,7 @@ export default function App() {
   const [isSheetSaved, setIsSheetSaved] = useState(false);
   const [showTotalBoutsPublic, setShowTotalBoutsPublic] = useSyncedState<boolean>('tkd_show_total_bouts_public', true);
   const [showOnlyActiveRings, setShowOnlyActiveRings] = useSyncedState<boolean>('tkd_show_only_active_rings', false);
+  const [showEmptyBoutAsInactive, setShowEmptyBoutAsInactive] = useSyncedState<boolean>('tkd_show_empty_bout_inactive', false);
   const [showPublicStandbyQueue, setShowPublicStandbyQueue] = useSyncedState<boolean>('tkd_show_public_standby_queue', true);
 
   // Persistence & Cross-tab Sync handled by useSyncedState
@@ -1828,25 +1829,15 @@ export default function App() {
     setEvents(updated);
     localStorage.setItem('tkd_events', JSON.stringify(updated));
     
-    // Remove related bout queue
-    const updatedQueue = boutQueue.filter(b => b.data.eventId !== id);
-    setBoutQueue(updatedQueue);
-    localStorage.setItem('tkd_bout_queue', JSON.stringify(updatedQueue));
-
-    // Remove related match history
-    const updatedHistory = matchHistory.filter(h => h.eventId !== id);
-    setMatchHistory(updatedHistory);
-    localStorage.setItem('tkd_match_history', JSON.stringify(updatedHistory));
-
-    // Remove related bout mappings
-    const updatedMappings = mappings.filter(m => m.eventId !== id);
-    setMappings(updatedMappings);
-    localStorage.setItem('tkd_bout_mappings', JSON.stringify(updatedMappings));
-
-    if (currentEventId === id) {
+    if (updated.length === 0) {
+      setBoutQueue([]);
+      localStorage.removeItem('tkd_bout_queue');
+      setMatchHistory([]);
+      localStorage.removeItem('tkd_match_history');
+      setMappings([]);
+      localStorage.removeItem('tkd_bout_mappings');
       setCurrentEventId(null);
       localStorage.removeItem('tkd_current_event');
-      // Clear rings if current event is deleted
       const clearedRings = Array.from({ length: 12 }, (_, i) => ({
         ringNumber: i + 1,
         currentBout: null,
@@ -1855,6 +1846,35 @@ export default function App() {
       }));
       setRings(clearedRings);
       localStorage.setItem('tkd_rings', JSON.stringify(clearedRings));
+    } else {
+      // Remove related bout queue
+      const updatedQueue = boutQueue.filter(b => b.data.eventId !== id);
+      setBoutQueue(updatedQueue);
+      localStorage.setItem('tkd_bout_queue', JSON.stringify(updatedQueue));
+
+      // Remove related match history
+      const updatedHistory = matchHistory.filter(h => h.eventId !== id);
+      setMatchHistory(updatedHistory);
+      localStorage.setItem('tkd_match_history', JSON.stringify(updatedHistory));
+
+      // Remove related bout mappings
+      const updatedMappings = mappings.filter(m => m.eventId !== id);
+      setMappings(updatedMappings);
+      localStorage.setItem('tkd_bout_mappings', JSON.stringify(updatedMappings));
+
+      if (currentEventId === id) {
+        setCurrentEventId(null);
+        localStorage.removeItem('tkd_current_event');
+        // Clear rings if current event is deleted
+        const clearedRings = Array.from({ length: 12 }, (_, i) => ({
+          ringNumber: i + 1,
+          currentBout: null,
+          onDeck: null,
+          inTheHole: null
+        }));
+        setRings(clearedRings);
+        localStorage.setItem('tkd_rings', JSON.stringify(clearedRings));
+      }
     }
   };
 
@@ -1880,6 +1900,23 @@ export default function App() {
     localStorage.setItem('tkd_accounts', JSON.stringify(updated));
   };
 
+  const currentBoutQueue = React.useMemo(() => {
+    if (!currentEventId) return [];
+    return boutQueue.filter(b => b.data.eventId === currentEventId);
+  }, [boutQueue, currentEventId]);
+
+  const currentRings = React.useMemo(() => {
+    if (!currentEventId) {
+      return rings.map(r => ({ ...r, currentBout: null, onDeck: null, inTheHole: null }));
+    }
+    return rings.map(r => ({
+      ...r,
+      currentBout: r.currentBout && r.currentBout.eventId === currentEventId ? r.currentBout : null,
+      onDeck: r.onDeck && r.onDeck.eventId === currentEventId ? r.onDeck : null,
+      inTheHole: r.inTheHole && r.inTheHole.eventId === currentEventId ? r.inTheHole : null,
+    }));
+  }, [rings, currentEventId]);
+
   if (!user && showLogin && !isPublicView) {
     return <LoginScreen onLogin={handleLogin} events={events} onBack={() => setShowLogin(false)} />;
   }
@@ -1887,14 +1924,15 @@ export default function App() {
   if (!user) {
     return (
       <PublicDashboardView 
-        rings={rings} 
-        boutQueue={boutQueue} 
+        rings={currentRings} 
+        boutQueue={currentBoutQueue} 
         namingMode={ringNamingMode} 
         onBack={() => setShowLogin(true)} 
         isSpectator={true}
         showTotalBouts={showTotalBoutsPublic}
         boutNumberingMode={boutNumberingMode}
         showOnlyActiveRings={showOnlyActiveRings}
+        showEmptyBoutAsInactive={showEmptyBoutAsInactive}
         showPublicStandbyQueue={showPublicStandbyQueue}
       />
     );
@@ -1903,13 +1941,14 @@ export default function App() {
   if (isPublicView) {
     return (
       <PublicDashboardView 
-        rings={rings} 
-        boutQueue={boutQueue} 
+        rings={currentRings} 
+        boutQueue={currentBoutQueue} 
         namingMode={ringNamingMode} 
         onBack={() => setIsPublicView(false)} 
         showTotalBouts={showTotalBoutsPublic}
         boutNumberingMode={boutNumberingMode}
         showOnlyActiveRings={showOnlyActiveRings}
+        showEmptyBoutAsInactive={showEmptyBoutAsInactive}
         showPublicStandbyQueue={showPublicStandbyQueue}
       />
     );
@@ -2369,27 +2408,29 @@ export default function App() {
 
           {activeTab === 'standby' && (
             <StandbyView 
-              rings={rings} 
-              boutQueue={boutQueue} 
+              rings={currentRings} 
+              boutQueue={currentBoutQueue} 
               namingMode={ringNamingMode} 
               activeAnnouncement={activeAnnouncement}
               onAnnouncementClose={handleAnnouncementClose}
               currentEventId={currentEventId}
               boutNumberingMode={boutNumberingMode}
               showOnlyActiveRings={showOnlyActiveRings}
+              showEmptyBoutAsInactive={showEmptyBoutAsInactive}
             />
           )}
 
           {activeTab === 'general' && (
             <OnsiteView 
-              rings={rings} 
-              boutQueue={boutQueue} 
+              rings={currentRings} 
+              boutQueue={currentBoutQueue} 
               namingMode={ringNamingMode} 
               activeAnnouncement={activeAnnouncement}
               onAnnouncementClose={handleAnnouncementClose}
               currentEventId={currentEventId}
               boutNumberingMode={boutNumberingMode}
               showOnlyActiveRings={showOnlyActiveRings}
+              showEmptyBoutAsInactive={showEmptyBoutAsInactive}
             />
           )}
 
@@ -2757,6 +2798,32 @@ export default function App() {
                           )}
                         >
                           Active Only
+                        </button>
+                      </div>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-slate-700">Empty Ring View</p>
+                        <p className="text-[10px] text-slate-500">How to display rings without active bouts</p>
+                      </div>
+                      <div className="flex bg-slate-200 p-1 rounded-lg">
+                        <button 
+                          onClick={() => setShowEmptyBoutAsInactive(false)}
+                          className={cn(
+                            "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                            !showEmptyBoutAsInactive ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                          )}
+                        >
+                          Blurred View
+                        </button>
+                        <button 
+                          onClick={() => setShowEmptyBoutAsInactive(true)}
+                          className={cn(
+                            "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                            showEmptyBoutAsInactive ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                          )}
+                        >
+                          Inactive View
                         </button>
                       </div>
                     </div>
@@ -4594,15 +4661,16 @@ interface PublicRingCardProps {
   boutNumberingMode?: 'numeric' | 'alphanumeric';
   ringQueue?: {id: string, data: MatchData}[];
   showPublicStandbyQueue?: boolean;
+  showEmptyBoutAsInactive?: boolean;
 }
 
-function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean }) {
+function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
   const ringsPerPage = 4;
   
-  const effectiveRings = showOnlyActiveRings ? rings.filter(r => r.currentBout) : rings;
+  const effectiveRings = showOnlyActiveRings ? rings.filter(r => r.currentBout && hasPlayers(r.currentBout)) : rings;
   const totalPages = Math.ceil(effectiveRings.length / ringsPerPage);
 
   const toggleFullScreen = () => {
@@ -4710,26 +4778,35 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                 </div>
                 {/* Content */}
                 <div className="flex-1 grid grid-cols-12">
-                  {/* Bout Num */}
-                  <div className="col-span-2 flex items-center justify-center text-3xl font-black text-white border-r border-white/10 bg-[#161f33]">
-                    {hasPlayers(current) ? formatBoutNumber(ring.ringNumber, current!.bout, boutNumberingMode) : "---"}
-                  </div>
-                  {/* Players */}
-                  <div className="col-span-10 flex flex-col">
-                    <div className={cn(
-                      "flex-1 bg-blue-600/90 flex flex-col justify-center px-4 relative",
-                      !isPoomsaeModeCurrent && "border-b border-white/10"
-                    )}>
-                      <p className="text-[15px] font-bold text-black uppercase leading-none mb-1">{cleanPlaceholder(current?.blue_club || "")}</p>
-                      <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{cleanPlaceholder(current?.blue_name || "")}</h4>
+                  {(!current || !hasPlayers(current)) && showEmptyBoutAsInactive ? (
+                    <div className="col-span-12 flex flex-col items-center justify-center text-slate-500/50 space-y-4 py-8">
+                      <AlertCircle size={32} />
+                      <p className="text-xl font-black uppercase tracking-[0.3em]">Ring Inactive</p>
                     </div>
-                    {!isPoomsaeModeCurrent && (
-                      <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
-                        <p className="text-[15px] font-bold text-black uppercase leading-none mb-1">{cleanPlaceholder(current?.red_club || "")}</p>
-                        <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{cleanPlaceholder(current?.red_name || "")}</h4>
+                  ) : (
+                    <>
+                      {/* Bout Num */}
+                      <div className="col-span-2 flex items-center justify-center text-3xl font-black text-white border-r border-white/10 bg-[#161f33]">
+                        {current && hasPlayers(current) ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
                       </div>
-                    )}
-                  </div>
+                      {/* Players */}
+                      <div className="col-span-10 flex flex-col">
+                        <div className={cn(
+                          "flex-1 bg-blue-600/90 flex flex-col justify-center px-4 relative",
+                          !isPoomsaeModeCurrent && "border-b border-white/10"
+                        )}>
+                          <p className="text-[15px] font-bold text-black uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
+                          <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.blue_name || "") : "---"}</h4>
+                        </div>
+                        {!isPoomsaeModeCurrent && (
+                          <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
+                            <p className="text-[15px] font-bold text-black uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
+                            <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.red_name || "") : "---"}</h4>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -4746,30 +4823,53 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                   const isPoomsaeItem = b?.data?.category?.toUpperCase().includes('POOMSAE SOLO') || 
                                         b?.data?.category?.toUpperCase().includes('FREESTYLE') ||
                                         (b?.data?.category?.toUpperCase().includes('POOMSAE') && !b?.data?.red_name);
+                  const isRingInactive = showEmptyBoutAsInactive && (!current || !hasPlayers(current));
                   return (
                     <div key={idx} className="flex-1 grid grid-cols-12 bg-[#0d1526] border border-white/10 rounded overflow-hidden">
                       <div className="col-span-3 flex items-center justify-center text-xl font-black text-white bg-[#161f33] border-r border-white/10">
                         {hasPlayers(b?.data) ? formatBoutNumber(ring.ringNumber, b!.data.bout, boutNumberingMode) : "---"}
                       </div>
                       <div className={cn(
-                        "bg-blue-600/80 flex flex-col justify-center px-3 relative",
-                        isPoomsaeItem ? "col-span-9" : "col-span-5 border-r border-white/10"
+                        "flex flex-col justify-center px-3 relative",
+                        isPoomsaeItem ? "col-span-9" : "col-span-5 border-r border-white/10",
+                        isRingInactive ? "bg-slate-800" : "bg-blue-600/80"
                       )}>
-                        <span className="text-[13px] font-bold text-black uppercase leading-none">{cleanPlaceholder(b?.data.blue_club || "")}</span>
-                        <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{cleanPlaceholder(b?.data.blue_name || "")}</span>
+                        <span className={cn(
+                          "text-[13px] font-bold uppercase leading-none",
+                          isRingInactive ? "text-slate-500" : "text-black"
+                        )}>{cleanPlaceholder(b?.data.blue_club || "")}</span>
+                        <span className={cn(
+                          "text-[16px] font-black uppercase truncate leading-tight",
+                          isRingInactive ? "text-slate-400" : "text-white"
+                        )}>{cleanPlaceholder(b?.data.blue_name || "")}</span>
                         {b?.data.blue_inspected && (
                           <div className="absolute bottom-1 right-2">
-                            <span className="text-[10px] font-black text-green-400 uppercase tracking-tighter">INSPECTED</span>
+                            <span className={cn(
+                              "text-[10px] font-black uppercase tracking-tighter",
+                              isRingInactive ? "text-slate-600" : "text-green-400"
+                            )}>INSPECTED</span>
                           </div>
                         )}
                       </div>
                       {!isPoomsaeItem && (
-                        <div className="col-span-4 bg-red-600/80 flex flex-col justify-center px-3 relative">
-                          <span className="text-[13px] font-bold text-black uppercase leading-none">{cleanPlaceholder(b?.data.red_club || "")}</span>
-                          <span className="text-[16px] font-black text-white uppercase truncate leading-tight">{cleanPlaceholder(b?.data.red_name || "")}</span>
+                        <div className={cn(
+                          "col-span-4 flex flex-col justify-center px-3 relative",
+                          isRingInactive ? "bg-slate-800" : "bg-red-600/80"
+                        )}>
+                          <span className={cn(
+                            "text-[13px] font-bold uppercase leading-none",
+                            isRingInactive ? "text-slate-500" : "text-black"
+                          )}>{cleanPlaceholder(b?.data.red_club || "")}</span>
+                          <span className={cn(
+                            "text-[16px] font-black uppercase truncate leading-tight",
+                            isRingInactive ? "text-slate-400" : "text-white"
+                          )}>{cleanPlaceholder(b?.data.red_name || "")}</span>
                           {b?.data.red_inspected && (
                             <div className="absolute bottom-1 right-2">
-                              <span className="text-[10px] font-black text-green-400 uppercase tracking-tighter">INSPECTED</span>
+                              <span className={cn(
+                                "text-[10px] font-black uppercase tracking-tighter",
+                                isRingInactive ? "text-slate-600" : "text-green-400"
+                              )}>INSPECTED</span>
                             </div>
                           )}
                         </div>
@@ -4787,13 +4887,13 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
   );
 }
 
-function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean }) {
+function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
   const ringsPerPage = 3;
 
-  const effectiveRings = showOnlyActiveRings ? rings.filter(r => r.currentBout) : rings;
+  const effectiveRings = showOnlyActiveRings ? rings.filter(r => r.currentBout && hasPlayers(r.currentBout)) : rings;
   const totalPages = Math.ceil(effectiveRings.length / ringsPerPage);
 
   const toggleFullScreen = () => {
@@ -4947,45 +5047,54 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                     "flex items-center bg-slate-900 rounded-[3rem] border-4 border-slate-800 shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-500",
                     isFullscreen ? "h-36" : "h-40"
                   )}>
-                    {/* Blue Side */}
-                    <div className={cn(
-                      "flex-1 h-full bg-blue-600 flex flex-col justify-center px-10 relative overflow-hidden group transition-all duration-500",
-                      isPoomsaeModeCurrent ? "flex-[10]" : "flex-1"
-                    )}>
-                      <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/20 to-transparent pointer-events-none" />
-                      <div className="absolute -right-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">BLUE</div>
-                      <p className="text-[15px] font-black text-black uppercase tracking-[0.2em] mb-1 relative z-10">{cleanPlaceholder(current?.blue_club || "")}</p>
-                      <h4 className={cn(
-                        "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
-                        getDynamicFontSize(current?.blue_name || "")
-                      )}>
-                        {current?.privacy_mode ? "---" : cleanPlaceholder(current?.blue_name || "")}
-                      </h4>
-                    </div>
-
-                    {/* Bout Number Circle */}
-                    <div className={cn(
-                      "z-20 w-[120px] h-[120px] bg-white rounded-full border-[10px] border-slate-800 flex items-center justify-center shadow-2xl transform hover:scale-105 transition-all",
-                      isPoomsaeModeCurrent ? "ml-auto mr-10" : "-mx-10"
-                    )}>
-                      <span className="text-[36px] font-black text-slate-900 leading-none">
-                        {hasPlayers(current) ? formatBoutNumber(ring.ringNumber, current!.bout, boutNumberingMode) : "---"}
-                      </span>
-                    </div>
-
-                    {/* Red Side */}
-                    {!isPoomsaeModeCurrent && (
-                      <div className="flex-1 h-full bg-red-600 flex flex-col justify-center px-10 text-right relative overflow-hidden group">
-                        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/20 to-transparent pointer-events-none" />
-                        <div className="absolute -left-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">RED</div>
-                        <p className="text-[15px] font-black text-black uppercase tracking-[0.2em] mb-1 relative z-10">{cleanPlaceholder(current?.red_club || "")}</p>
-                        <h4 className={cn(
-                          "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
-                          getDynamicFontSize(current?.red_name || "")
-                        )}>
-                          {current?.privacy_mode ? "---" : cleanPlaceholder(current?.red_name || "")}
-                        </h4>
+                    {(!current || !hasPlayers(current)) && showEmptyBoutAsInactive ? (
+                      <div className="flex-1 flex flex-col items-center justify-center text-slate-500/50 space-y-4 py-8">
+                        <AlertCircle size={48} />
+                        <p className="text-2xl font-black uppercase tracking-[0.3em]">Ring Inactive</p>
                       </div>
+                    ) : (
+                      <>
+                        {/* Blue Side */}
+                        <div className={cn(
+                          "flex-1 h-full bg-blue-600 flex flex-col justify-center px-10 relative overflow-hidden group transition-all duration-500",
+                          isPoomsaeModeCurrent ? "flex-[10]" : "flex-1"
+                        )}>
+                          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/20 to-transparent pointer-events-none" />
+                          <div className="absolute -right-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">{(!current || !hasPlayers(current)) ? 'BLURRED' : 'BLUE'}</div>
+                          <p className="text-[15px] font-black text-black uppercase tracking-[0.2em] mb-1 relative z-10">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
+                          <h4 className={cn(
+                            "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
+                            getDynamicFontSize(current?.blue_name || "")
+                          )}>
+                            {current?.privacy_mode || !current?.blue_name ? "---" : cleanPlaceholder(current.blue_name)}
+                          </h4>
+                        </div>
+
+                        {/* Bout Number Circle */}
+                        <div className={cn(
+                          "z-20 w-[120px] h-[120px] bg-white rounded-full border-[10px] border-slate-800 flex items-center justify-center shadow-2xl transform hover:scale-105 transition-all",
+                          isPoomsaeModeCurrent ? "ml-auto mr-10" : "-mx-10"
+                        )}>
+                          <span className="text-[36px] font-black text-slate-900 leading-none">
+                            {current && hasPlayers(current) ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
+                          </span>
+                        </div>
+
+                        {/* Red Side */}
+                        {!isPoomsaeModeCurrent && (
+                          <div className="flex-1 h-full bg-red-600 flex flex-col justify-center px-10 text-right relative overflow-hidden group">
+                            <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/20 to-transparent pointer-events-none" />
+                            <div className="absolute -left-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">{(!current || !hasPlayers(current)) ? 'BLURRED' : 'RED'}</div>
+                            <p className="text-[15px] font-black text-black uppercase tracking-[0.2em] mb-1 relative z-10">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
+                            <h4 className={cn(
+                              "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
+                              getDynamicFontSize(current?.red_name || "")
+                            )}>
+                              {current?.privacy_mode || !current?.red_name ? "---" : cleanPlaceholder(current.red_name)}
+                            </h4>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -5007,23 +5116,31 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                   "transition-all duration-500",
                   isFullscreen ? "space-y-1.5" : "space-y-2.5"
                 )}>
-                  {[0, 1, 2].map((idx) => {
-                    const bout = ringQueue[idx];
+                      {[0, 1, 2].map((idx) => {
+                        const bout = ringQueue[idx];
                     const isPoomsaeItem = bout?.data?.category?.toUpperCase().includes('POOMSAE SOLO') || 
                                           bout?.data?.category?.toUpperCase().includes('FREESTYLE') ||
                                           (bout?.data?.category?.toUpperCase().includes('POOMSAE') && !bout?.data?.red_name);
+                    const isRingInactive = showEmptyBoutAsInactive && (!current || !hasPlayers(current));
                     return (
                       <div key={idx} className="flex items-center bg-slate-900 rounded-full border border-slate-800 overflow-hidden min-h-[2.5rem] py-1 shadow-lg group hover:border-slate-600 transition-colors">
                         {/* Blue Side */}
                         <div className={cn(
-                          "self-stretch bg-blue-600/90 flex flex-col justify-center px-3 min-w-0 relative transition-all duration-500",
-                          isPoomsaeItem ? "flex-[10]" : "flex-1"
+                          "self-stretch flex flex-col justify-center px-3 min-w-0 relative transition-all duration-500",
+                          isPoomsaeItem ? "flex-[10]" : "flex-1",
+                          isRingInactive ? "bg-slate-800" : "bg-blue-600/90"
                         )}>
-                          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
-                          <p className="text-[13px] font-bold text-black uppercase leading-none mb-0.5 relative z-10">
+                          {!isRingInactive && <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />}
+                          <p className={cn(
+                            "text-[13px] font-bold uppercase leading-none mb-0.5 relative z-10",
+                            isRingInactive ? "text-slate-500" : "text-black"
+                          )}>
                             {bout ? cleanPlaceholder(bout.data.blue_club) : ""}
                           </p>
-                          <p className="text-[17px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
+                          <p className={cn(
+                            "text-[17px] font-black uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2",
+                            isRingInactive ? "text-slate-400" : "text-white"
+                          )}>
                             {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.blue_name)) : ""}
                           </p>
                         </div>
@@ -5040,12 +5157,21 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
 
                         {/* Red Side */}
                         {!isPoomsaeItem && (
-                          <div className="flex-1 self-stretch bg-red-600/90 flex flex-col justify-center px-3 min-w-0 text-right relative">
-                            <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/10 to-transparent pointer-events-none" />
-                            <p className="text-[13px] font-bold text-black uppercase leading-none mb-0.5 relative z-10">
+                          <div className={cn(
+                            "flex-1 self-stretch flex flex-col justify-center px-3 min-w-0 text-right relative",
+                            isRingInactive ? "bg-slate-800" : "bg-red-600/90"
+                          )}>
+                            {!isRingInactive && <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/10 to-transparent pointer-events-none" />}
+                            <p className={cn(
+                              "text-[13px] font-bold uppercase leading-none mb-0.5 relative z-10",
+                              isRingInactive ? "text-slate-500" : "text-black"
+                            )}>
                               {bout ? cleanPlaceholder(bout.data.red_club) : ""}
                             </p>
-                            <p className="text-[17px] font-black text-white uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2">
+                            <p className={cn(
+                              "text-[17px] font-black uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2",
+                              isRingInactive ? "text-slate-400" : "text-white"
+                            )}>
                               {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.red_name)) : ""}
                             </p>
                           </div>
@@ -5081,10 +5207,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
   );
 }
 
-function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator, showTotalBouts = true, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showPublicStandbyQueue = true }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', onBack: () => void, isSpectator?: boolean, showTotalBouts?: boolean, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showPublicStandbyQueue?: boolean }) {
-  const containerRef = React.useRef<HTMLDivElement>(null);
-  const [isFullscreen, setIsFullscreen] = React.useState(false);
-  const [currentPage, setCurrentPage] = React.useState(0);
+function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator, showTotalBouts = true, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, showPublicStandbyQueue = true }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', onBack: () => void, isSpectator?: boolean, showTotalBouts?: boolean, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, showPublicStandbyQueue?: boolean }) {
   const [logoClicks, setLogoClicks] = React.useState(0);
   const clickTimer = React.useRef<NodeJS.Timeout | null>(null);
 
@@ -5104,55 +5227,14 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
     }
   };
 
-  const ringsPerPage = 9; // Show 9 rings per page in fullscreen
-  
-  const effectiveRings = showOnlyActiveRings ? rings.filter(r => r.currentBout) : rings;
-  const totalPages = Math.ceil(effectiveRings.length / ringsPerPage);
+  const effectiveRings = showOnlyActiveRings ? rings.filter(r => r.currentBout && hasPlayers(r.currentBout)) : rings;
 
-  const toggleFullScreen = () => {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen().catch(err => {
-        console.error(`Error attempting to enable full-screen mode: ${err.message}`);
-      });
-    } else {
-      document.exitFullscreen();
-    }
-  };
-
-  React.useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-      if (!document.fullscreenElement) {
-        setCurrentPage(0);
-      }
-    };
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
-
-  React.useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isFullscreen && totalPages > 1) {
-      interval = setInterval(() => {
-        setCurrentPage((prev) => (prev + 1) % totalPages);
-      }, 30000); // 30 seconds
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isFullscreen, totalPages]);
-
-  const displayedRings = isFullscreen 
-    ? effectiveRings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
-    : effectiveRings;
+  const displayedRings = effectiveRings;
 
   return (
-    <div ref={containerRef} className="min-h-[100dvh] bg-slate-900 text-white font-sans overflow-x-hidden flex flex-col">
+    <div className="min-h-[100dvh] bg-slate-900 text-white font-sans overflow-x-hidden flex flex-col">
       {/* Public Header */}
-      <header className={cn(
-        "p-6 bg-slate-800 border-b border-slate-700 flex items-center justify-between sticky top-0 z-50 transition-all",
-        isFullscreen && "opacity-0 h-0 p-0 overflow-hidden"
-      )}>
+      <header className="p-6 bg-slate-800 border-b border-slate-700 flex items-center justify-between sticky top-0 z-50 transition-all">
         <div 
           className="flex items-center gap-3 cursor-pointer select-none"
           onClick={handleLogoClick}
@@ -5165,34 +5247,17 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Web View Dashboard</p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={toggleFullScreen}
-            className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white transition-colors"
-            title="Fullscreen Mode"
-          >
-            <Maximize size={20} />
-          </button>
-        </div>
       </header>
 
-      <div className={cn(
-        "p-4 md:p-8 space-y-8 max-w-[1600px] mx-auto flex-1",
-        isFullscreen && "max-w-none w-full flex flex-col justify-center p-12"
-      )}>
+      <div className="p-4 md:p-8 space-y-8 max-w-[1600px] mx-auto flex-1 w-full">
         <div className="grid grid-cols-1 gap-8">
           {/* Mats Grid */}
           <div className="space-y-6">
-            {!isFullscreen && (
-              <h3 className="text-lg font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                <LayoutDashboard size={20} className="text-red-500" />
-                Live Ring Status
-              </h3>
-            )}
-            <div className={cn(
-              "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6",
-              isFullscreen && "lg:grid-cols-3 gap-8"
-            )}>
+            <h3 className="text-lg font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+              <LayoutDashboard size={20} className="text-red-500" />
+              Live Ring Status
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {displayedRings.map((ring) => {
                 const ringQueueAll = boutQueue
                   .filter(q => q.data.ring === ring.ringNumber)
@@ -5221,6 +5286,7 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
                     showTotalBouts={showTotalBouts}
                     ringQueue={rQueue}
                     showPublicStandbyQueue={showPublicStandbyQueue}
+                    showEmptyBoutAsInactive={showEmptyBoutAsInactive}
                   />
                 );
               })}
@@ -5229,58 +5295,34 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
         </div>
       </div>
 
-      {!isFullscreen && (
-        <footer className="p-8 bg-slate-800 border-t border-slate-700 mt-12 text-center space-y-4">
-          <div className="flex flex-col items-center gap-2">
-            <div className="w-12 h-12 bg-white p-1 rounded-lg">
-              <QrCode size={40} className="text-slate-900" />
-            </div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Scan for Live Updates</p>
+      <footer className="p-8 bg-slate-800 border-t border-slate-700 mt-12 text-center space-y-4">
+        <div className="flex flex-col items-center gap-2">
+          <div className="w-12 h-12 bg-white p-1 rounded-lg">
+            <QrCode size={40} className="text-slate-900" />
           </div>
-          <div className="flex flex-col items-center gap-2">
-            <p className="text-xs text-slate-500 font-medium">© 2026 MY-TKD Tournament Management System</p>
-            {/* Hide back button in strict public mode */}
-            {!isStrictPublic && (
-              <button 
-                onClick={onBack}
-                className="px-4 py-2 bg-slate-700/30 hover:bg-slate-700 text-[10px] text-slate-400 hover:text-white uppercase font-black tracking-widest transition-all mt-4 rounded-lg border border-slate-700/50"
-              >
-                {isSpectator ? "Operator Access" : "Exit Public View"}
-              </button>
-            )}
-          </div>
-        </footer>
-      )}
-
-      {isFullscreen && totalPages > 1 && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex gap-2">
-          {[...Array(totalPages)].map((_, i) => (
-            <div 
-              key={i} 
-              className={cn(
-                "w-2 h-2 rounded-full transition-all duration-500",
-                currentPage === i ? "w-8 bg-red-500" : "bg-slate-700"
-              )}
-            />
-          ))}
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Scan for Live Updates</p>
         </div>
-      )}
-      
-      {isFullscreen && (
-        <button 
-          onClick={toggleFullScreen}
-          className="fixed top-8 right-8 p-4 bg-slate-800/80 hover:bg-slate-800 text-white rounded-2xl border border-slate-700 transition-all opacity-40 hover:opacity-100 z-50"
-        >
-          <Minimize size={24} />
-        </button>
-      )}
+        <div className="flex flex-col items-center gap-2">
+          <p className="text-xs text-slate-500 font-medium">© 2026 MY-TKD Tournament Management System</p>
+          {/* Hide back button in strict public mode */}
+          {!isStrictPublic && (
+            <button 
+              onClick={onBack}
+              className="px-4 py-2 bg-slate-700/30 hover:bg-slate-700 text-[10px] text-slate-400 hover:text-white uppercase font-black tracking-widest transition-all mt-4 rounded-lg border border-slate-700/50"
+            >
+              {isSpectator ? "Operator Access" : "Exit Public View"}
+            </button>
+          )}
+        </div>
+      </footer>
     </div>
   );
 }
 
-function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, boutNumberingMode = 'alphanumeric', ringQueue, showPublicStandbyQueue = true }: PublicRingCardProps) {
+function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, boutNumberingMode = 'alphanumeric', ringQueue, showPublicStandbyQueue = true, showEmptyBoutAsInactive = false }: PublicRingCardProps) {
   const current = ring.currentBout;
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
+  const isRingInactive = showEmptyBoutAsInactive && (!current || !hasPlayers(current));
   
   const formatCategoryName = (cat?: string) => {
     if (!cat) return "";
@@ -5314,10 +5356,12 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
           </div>
           <div>
             <h4 className="font-black text-[20px] uppercase tracking-widest text-white">Ring {ringName}</h4>
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-[10px] font-bold text-green-500 uppercase tracking-widest">Live Match</span>
-            </div>
+            {!isRingInactive && (
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                <span className="text-[10px] font-bold text-green-500 uppercase tracking-widest">Live Match</span>
+              </div>
+            )}
           </div>
         </div>
         {current && (
@@ -5336,35 +5380,33 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
       </div>
       
       <div className="p-6 space-y-4">
-        {current ? (
-          <>
-            <div className="space-y-4">
-              <div className="flex items-center justify-center">
-                <span className="text-[20px] font-black text-white uppercase tracking-widest text-center leading-tight">{cleanPlaceholder(formatCategoryName(current.category))}</span>
-              </div>
-              
-              <div className="flex items-start gap-6">
-                <PublicFighterSide color="blue" name={cleanPlaceholder(current.blue_name)} club={cleanPlaceholder(current.blue_club)} privacy={current.privacy_mode} />
-                {!current.category?.toUpperCase().includes('POOMSAE SOLO') && 
-                  !current.category?.toUpperCase().includes('FREESTYLE') && 
-                  !(current.category?.toUpperCase().includes('POOMSAE') && !current.red_name) && (
-                  <>
-                    <div className="text-xl font-black text-white italic mt-4">VS</div>
-                    <PublicFighterSide color="red" name={cleanPlaceholder(current.red_name)} club={cleanPlaceholder(current.red_club)} privacy={current.privacy_mode} />
-                  </>
-                )}
-              </div>
-            </div>
-          </>
-        ) : (
+        {(!current || !hasPlayers(current)) && showEmptyBoutAsInactive ? (
           <div className="py-8 flex flex-col items-center justify-center text-slate-600 space-y-4">
             <AlertCircle size={48} />
             <p className="text-sm font-black uppercase tracking-widest">Ring Inactive</p>
           </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-center">
+              <span className="text-[20px] font-black text-white uppercase tracking-widest text-center leading-tight">{current ? cleanPlaceholder(formatCategoryName(current.category)) : "---"}</span>
+            </div>
+            
+            <div className="flex items-start gap-6">
+              <PublicFighterSide color="blue" name={current ? cleanPlaceholder(current.blue_name) : ""} club={current ? cleanPlaceholder(current.blue_club) : ""} privacy={current ? current.privacy_mode : false} />
+              {!current?.category?.toUpperCase().includes('POOMSAE SOLO') && 
+                !current?.category?.toUpperCase().includes('FREESTYLE') && 
+                !(current?.category?.toUpperCase().includes('POOMSAE') && !current?.red_name) && (
+                <>
+                  <div className="text-xl font-black text-white italic mt-4">VS</div>
+                  <PublicFighterSide color="red" name={current ? cleanPlaceholder(current.red_name) : ""} club={current ? cleanPlaceholder(current.red_club) : ""} privacy={current ? current.privacy_mode : false} />
+                </>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Public Standby Queue */}
-        {showPublicStandbyQueue && ringQueue && ringQueue.length > 0 && (
+        {!isRingInactive && showPublicStandbyQueue && ringQueue && ringQueue.length > 0 && (
           <div className="mt-6 border-t border-slate-700 pt-4">
             <div className="flex items-center justify-between mb-3">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
@@ -5395,26 +5437,42 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
 
                           {/* Blue Side */}
                           <div className={cn(
-                            "self-stretch flex flex-col justify-center px-4 relative transition-all duration-500 border-l-[4px] border-[#00a2e8] min-w-0 overflow-hidden",
-                            isPoomsaeItem ? "flex-[10]" : "flex-1 basis-1/2 border-r border-slate-700/50"
+                            "self-stretch flex flex-col justify-center px-4 relative transition-all duration-500 border-l-[4px] min-w-0 overflow-hidden",
+                            isPoomsaeItem ? "flex-[10]" : "flex-1 basis-1/2 border-r border-slate-700/50",
+                            isRingInactive ? "border-slate-600" : "border-[#00a2e8]"
                           )}>
-                            <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-blue-900/10 to-transparent pointer-events-none" />
-                            <p className="text-[13px] font-bold text-[#00a2e8] uppercase leading-none mb-0.5 truncate">
+                            {!isRingInactive && <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-blue-900/10 to-transparent pointer-events-none" />}
+                            <p className={cn(
+                              "text-[13px] font-bold uppercase leading-none mb-0.5 truncate",
+                              isRingInactive ? "text-slate-400" : "text-[#00a2e8]"
+                            )}>
                               {bout ? cleanPlaceholder(bout.data.blue_club) : ""}
                             </p>
-                            <p className="text-[17px] font-black text-slate-200 uppercase tracking-[0.5px] leading-tight truncate w-full">
+                            <p className={cn(
+                              "text-[17px] font-black uppercase tracking-[0.5px] leading-tight truncate w-full",
+                              isRingInactive ? "text-slate-500" : "text-slate-200"
+                            )}>
                               {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.blue_name)) : ""}
                             </p>
                           </div>
 
                           {/* Red Side */}
                           {!isPoomsaeItem && (
-                            <div className="flex-1 basis-1/2 self-stretch flex flex-col justify-center px-4 relative border-l-[4px] border-[#ed1c24] min-w-0 overflow-hidden">
-                              <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-red-900/10 to-transparent pointer-events-none" />
-                              <p className="text-[13px] font-bold text-[#ed1c24] uppercase leading-none mb-0.5 truncate">
+                            <div className={cn(
+                              "flex-1 basis-1/2 self-stretch flex flex-col justify-center px-4 relative border-l-[4px] min-w-0 overflow-hidden",
+                              isRingInactive ? "border-slate-600" : "border-[#ed1c24]"
+                            )}>
+                              {!isRingInactive && <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-red-900/10 to-transparent pointer-events-none" />}
+                              <p className={cn(
+                                "text-[13px] font-bold uppercase leading-none mb-0.5 truncate",
+                                isRingInactive ? "text-slate-400" : "text-[#ed1c24]"
+                              )}>
                                 {bout ? cleanPlaceholder(bout.data.red_club) : ""}
                               </p>
-                              <p className="text-[17px] font-black text-slate-200 uppercase tracking-[0.5px] leading-tight truncate w-full">
+                              <p className={cn(
+                                "text-[17px] font-black uppercase tracking-[0.5px] leading-tight truncate w-full",
+                                isRingInactive ? "text-slate-500" : "text-slate-200"
+                              )}>
                                 {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.red_name)) : ""}
                               </p>
                             </div>
