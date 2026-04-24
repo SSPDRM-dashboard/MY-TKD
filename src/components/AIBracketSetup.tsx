@@ -154,8 +154,8 @@ export function AIBracketSetup({
     setError(null);
 
     try {
-      const apiKey = import.meta.env.VITE_CUSTOM_API_KEY || (typeof process !== 'undefined' ? process.env.VITE_CUSTOM_API_KEY || process.env.CUSTOM_API_KEY || process.env.GEMINI_API_KEY : undefined);
-      if (!apiKey) throw new Error("No API Key found. Please add VITE_CUSTOM_API_KEY to your Secrets.");
+      const apiKey = process.env.CUSTOM_API_KEY || process.env.GEMINI_API_KEY;
+      if (!apiKey) throw new Error("No API Key found. Please add CUSTOM_API_KEY to your Secrets.");
 
       const ai = new GoogleGenAI({ apiKey });
       const prompt = `
@@ -347,10 +347,10 @@ export function AIBracketSetup({
     }
 
     try {
-      const apiKey = import.meta.env.VITE_CUSTOM_API_KEY || (typeof process !== 'undefined' ? process.env.VITE_CUSTOM_API_KEY || process.env.CUSTOM_API_KEY || process.env.GEMINI_API_KEY : undefined);
+      const apiKey = process.env.CUSTOM_API_KEY || process.env.GEMINI_API_KEY;
       
       if (!apiKey) {
-        throw new Error("No API Key found. Please add VITE_CUSTOM_API_KEY to your Secrets.");
+        throw new Error("No API Key found. Please add CUSTOM_API_KEY to your Secrets.");
       }
       
       const ai = new GoogleGenAI({ apiKey });
