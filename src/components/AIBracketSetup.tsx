@@ -154,7 +154,7 @@ export function AIBracketSetup({
     setError(null);
 
     try {
-      const apiKey = typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined;
+      const apiKey = import.meta.env.VITE_CUSTOM_API_KEY || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined);
       if (!apiKey) throw new Error("API Key missing");
 
       const ai = new GoogleGenAI({ apiKey });
@@ -347,7 +347,7 @@ export function AIBracketSetup({
     }
 
     try {
-      const apiKey = typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined;
+      const apiKey = import.meta.env.VITE_CUSTOM_API_KEY || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined);
       
       if (!apiKey) {
         throw new Error("Gemini API Key is not configured. To process images/PDFs, please add your GEMINI_API_KEY to the environment. Alternatively, upload a CSV file which does not require an API key.");

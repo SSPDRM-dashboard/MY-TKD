@@ -86,7 +86,7 @@ export function TournamentAssistant({
     setIsLoading(true);
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = import.meta.env.VITE_CUSTOM_API_KEY || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined);
       if (!apiKey) {
         throw new Error("GEMINI_API_KEY is not configured.");
       }
