@@ -617,7 +617,7 @@ export default function App() {
   const [finalBoutCheck, setFinalBoutCheck] = useState<{ ringNumber: number; remainingCount: number } | null>(null);
   const [ringNamingMode, setRingNamingMode] = useState<'number' | 'alphabet'>('number');
   const [boutNumberingMode, setBoutNumberingMode] = useSyncedState<'numeric' | 'alphanumeric'>('tkd_bout_numbering_mode', 'alphanumeric');
-  const [categories, setCategories] = useSyncedState<string[]>('tkd_categories', ["Junior Male -45kg", "Junior Female -42kg", "Senior Male -54kg", "POOMSAE SOLO"]);
+  const [categories, setCategories] = useSyncedState<string[]>('tkd_categories', ["Junior Male -45kg", "Junior Female -42kg", "Senior Male -54kg", "INDIVIDUAL POOMSAE"]);
   const [clubs, setClubs] = useSyncedState<string[]>('tkd_clubs', ["KST", "TKT", "PST", "MTA"]);
   const [googleSheetUrl, setGoogleSheetUrl] = useSyncedState<string>('tkd_sheet_url', 'https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/edit?usp=sharing');
   const [isSheetSaved, setIsSheetSaved] = useState(false);
@@ -2914,8 +2914,8 @@ export default function App() {
           onSubmit={(ringNumber, data) => handleNewBoutSubmit(ringNumber, data)}
           categories={categories}
           clubs={clubs}
-          rings={rings}
-          queue={boutQueue}
+          rings={currentRings}
+          queue={currentBoutQueue}
           user={user}
           initialRing={newBoutInitialRing}
           currentEventId={currentEventId}
@@ -2966,8 +2966,13 @@ export default function App() {
             }
 
             if (found) {
-              winName = winner === 'Blue' ? found.blue_name : found.red_name;
-              winClub = winner === 'Blue' ? found.blue_club : found.red_club;
+              if (winner === 'Completed') {
+                winName = 'Completed';
+                winClub = found.blue_club || '';
+              } else {
+                winName = winner === 'Blue' ? found.blue_name : found.red_name;
+                winClub = winner === 'Blue' ? found.blue_club : found.red_club;
+              }
               cat = found.category;
             }
 
@@ -3016,8 +3021,8 @@ export default function App() {
               checkAndGenerateNextBout(boutNumber, winName, winClub);
             }
           }}
-          rings={rings}
-          queue={boutQueue}
+          rings={currentRings}
+          queue={currentBoutQueue}
           user={user}
           boutNumberingMode={boutNumberingMode}
         />
@@ -3129,8 +3134,8 @@ export default function App() {
               }
             }
           }}
-          rings={rings}
-          queue={boutQueue}
+          rings={currentRings}
+          queue={currentBoutQueue}
           user={user}
           boutNumberingMode={boutNumberingMode}
         />
@@ -3588,7 +3593,7 @@ interface RingCardProps {
 
 interface EditResultModalProps {
   onClose: () => void;
-  onSubmit: (ringNumber: number, boutNumber: string | number, winner: 'Blue' | 'Red') => void;
+  onSubmit: (ringNumber: number, boutNumber: string | number, winner: 'Blue' | 'Red' | 'Completed' | string) => void;
   rings: RingStatus[];
   queue: { id: string; data: MatchData }[];
   user: UserAccount | null;
@@ -3601,14 +3606,16 @@ function EditResultModal({ onClose, onSubmit, rings, queue, user, boutNumberingM
   const [formData, setFormData] = useState({
     ring: defaultRing,
     bout: '',
-    winner: 'Blue' as 'Blue' | 'Red'
+    winner: 'Blue' as 'Blue' | 'Red' | 'Completed'
   });
 
   const [activeBoutNames, setActiveBoutNames] = useState<{blue: string, red: string} | null>(null);
+  const [isPoomsae, setIsPoomsae] = useState(false);
 
   useEffect(() => {
     if (!formData.bout) {
       setActiveBoutNames(null);
+      setIsPoomsae(false);
       return;
     }
     const normalized = normalizeBoutNumber(formData.bout);
@@ -3627,8 +3634,16 @@ function EditResultModal({ onClose, onSubmit, rings, queue, user, boutNumberingM
 
     if (found) {
       setActiveBoutNames({ blue: found.blue_name, red: found.red_name });
+      const poomsaeMode = found.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || false;
+      setIsPoomsae(poomsaeMode);
+      if (poomsaeMode && formData.winner !== 'Completed') {
+        setFormData(prev => ({ ...prev, winner: 'Completed' }));
+      } else if (!poomsaeMode && formData.winner === 'Completed') {
+        setFormData(prev => ({ ...prev, winner: 'Blue' }));
+      }
     } else {
       setActiveBoutNames(null);
+      setIsPoomsae(false);
     }
   }, [formData.ring, formData.bout, rings, queue]);
 
@@ -3705,15 +3720,23 @@ function EditResultModal({ onClose, onSubmit, rings, queue, user, boutNumberingM
             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Winner</label>
             <select 
               value={formData.winner}
-              onChange={(e) => setFormData({...formData, winner: e.target.value as 'Blue' | 'Red'})}
+              onChange={(e) => setFormData({...formData, winner: e.target.value as 'Blue' | 'Red' | 'Completed'})}
               className={cn(
                 "w-full px-4 py-3 border rounded-xl text-sm font-bold transition-colors",
-                formData.winner === 'Blue' ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-red-50 border-red-200 text-red-700"
+                formData.winner === 'Blue' ? "bg-blue-50 border-blue-200 text-blue-700" : 
+                formData.winner === 'Red' ? "bg-red-50 border-red-200 text-red-700" : 
+                "bg-green-50 border-green-200 text-green-700"
               )}
               required
             >
-              <option value="Blue">Blue Corner {activeBoutNames ? `(${activeBoutNames.blue})` : ''}</option>
-              <option value="Red">Red Corner {activeBoutNames ? `(${activeBoutNames.red})` : ''}</option>
+              {isPoomsae ? (
+                <option value="Completed">Completed {activeBoutNames ? `(${activeBoutNames.blue})` : ''}</option>
+              ) : (
+                <>
+                  <option value="Blue">Blue Corner {activeBoutNames ? `(${activeBoutNames.blue})` : ''}</option>
+                  <option value="Red">Red Corner {activeBoutNames ? `(${activeBoutNames.red})` : ''}</option>
+                </>
+              )}
             </select>
           </div>
 
@@ -3852,12 +3875,12 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
     };
   });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const isPoomsaeMode = formData.category?.toUpperCase().includes('POOMSAE SOLO');
+  const isPoomsaeMode = formData.category?.toUpperCase().includes('INDIVIDUAL POOMSAE');
 
   const setPoomsaeMode = (checked: boolean) => {
     if (checked) {
-      setFormData(prev => ({ ...prev, category: 'POOMSAE SOLO' }));
-    } else if (formData.category === 'POOMSAE SOLO') {
+      setFormData(prev => ({ ...prev, category: 'INDIVIDUAL POOMSAE' }));
+    } else if (formData.category === 'INDIVIDUAL POOMSAE') {
       setFormData(prev => ({ ...prev, category: '' }));
     }
   };
@@ -4035,7 +4058,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                 className="w-5 h-5 rounded-lg border-slate-300 text-red-600 focus:ring-red-500 transition-all cursor-pointer"
               />
               <label htmlFor="is-poomsae-modal" className="flex flex-col cursor-pointer select-none">
-                <span className="text-xs font-black text-slate-900 uppercase tracking-tight">Poomsae Solo Mode</span>
+                <span className="text-xs font-black text-slate-900 uppercase tracking-tight">Individual Poomsae Mode</span>
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Solo entry (No Red Corner)</span>
               </label>
             </div>
@@ -4235,7 +4258,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
   // Only show current bout if it belongs to the current event
   const current = ring.currentBout && ring.currentBout.eventId === currentEventId ? ring.currentBout : null;
 
-  const isPoomsaeMode = current?.category?.toUpperCase().includes('POOMSAE SOLO') || 
+  const isPoomsaeMode = current?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
                         current?.category?.toUpperCase().includes('FREESTYLE') ||
                         (current?.category?.toUpperCase().includes('POOMSAE') && !current.red_name && current.blue_name);
 
@@ -4759,7 +4782,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
           const current = ring.currentBout;
           const standby = ringQueue;
           const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
-          const isPoomsaeModeCurrent = current?.category?.toUpperCase().includes('POOMSAE SOLO') || 
+          const isPoomsaeModeCurrent = current?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
                                current?.category?.toUpperCase().includes('FREESTYLE') ||
                                (current?.category?.toUpperCase().includes('POOMSAE') && !current.red_name);
           
@@ -4820,7 +4843,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
               <div className="flex-[2] flex flex-col gap-1">
                 {[0, 1, 2].map((idx) => {
                   const b = standby[idx];
-                  const isPoomsaeItem = b?.data?.category?.toUpperCase().includes('POOMSAE SOLO') || 
+                  const isPoomsaeItem = b?.data?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
                                         b?.data?.category?.toUpperCase().includes('FREESTYLE') ||
                                         (b?.data?.category?.toUpperCase().includes('POOMSAE') && !b?.data?.red_name);
                   const isRingInactive = showEmptyBoutAsInactive && (!current || !hasPlayers(current));
@@ -5020,7 +5043,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
             .slice(0, 3);
           const current = ring.currentBout;
           const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
-          const isPoomsaeModeCurrent = current?.category?.toUpperCase().includes('POOMSAE SOLO') || 
+          const isPoomsaeModeCurrent = current?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
                                current?.category?.toUpperCase().includes('FREESTYLE') ||
                                (current?.category?.toUpperCase().includes('POOMSAE') && !current.red_name);
           
@@ -5118,7 +5141,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                 )}>
                       {[0, 1, 2].map((idx) => {
                         const bout = ringQueue[idx];
-                    const isPoomsaeItem = bout?.data?.category?.toUpperCase().includes('POOMSAE SOLO') || 
+                    const isPoomsaeItem = bout?.data?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
                                           bout?.data?.category?.toUpperCase().includes('FREESTYLE') ||
                                           (bout?.data?.category?.toUpperCase().includes('POOMSAE') && !bout?.data?.red_name);
                     const isRingInactive = showEmptyBoutAsInactive && (!current || !hasPlayers(current));
@@ -5326,8 +5349,8 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
   
   const formatCategoryName = (cat?: string) => {
     if (!cat) return "";
-    // Specifically remove "(POOMSAE SOLO)" or "(POOMSAE SOLO)-" as requested
-    return cat.replace(/\s*\(POOMSAE SOLO\)\s*-?/gi, '').trim();
+    // Specifically remove "(INDIVIDUAL POOMSAE)" or "(INDIVIDUAL POOMSAE)-" as requested
+    return cat.replace(/\s*\(INDIVIDUAL POOMSAE\)\s*-?/gi, '').trim();
   };
 
   const groupedQueue = React.useMemo(() => {
@@ -5393,7 +5416,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
             
             <div className="flex items-start gap-6">
               <PublicFighterSide color="blue" name={current ? cleanPlaceholder(current.blue_name) : ""} club={current ? cleanPlaceholder(current.blue_club) : ""} privacy={current ? current.privacy_mode : false} />
-              {!current?.category?.toUpperCase().includes('POOMSAE SOLO') && 
+              {!current?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') && 
                 !current?.category?.toUpperCase().includes('FREESTYLE') && 
                 !(current?.category?.toUpperCase().includes('POOMSAE') && !current?.red_name) && (
                 <>
@@ -5423,7 +5446,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                   </div>
                   <div className="space-y-2">
                     {group.bouts.map((bout, idx) => {
-                      const isPoomsaeItem = bout?.data?.category?.toUpperCase().includes('POOMSAE SOLO') || 
+                      const isPoomsaeItem = bout?.data?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
                                             bout?.data?.category?.toUpperCase().includes('FREESTYLE') ||
                                             (bout?.data?.category?.toUpperCase().includes('POOMSAE') && !bout?.data?.red_name);
                       return (

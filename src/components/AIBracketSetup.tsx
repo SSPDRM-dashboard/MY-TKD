@@ -374,14 +374,14 @@ export function AIBracketSetup({
           - If alphanumeric (e.g. A01), A=1, B=2, C=3, D=4, E=5, F=6, G=7, H=8, I=9, J=10, K=11, L=12.
 
         ${isPoomsaeMode ? `
-        POOMSAE SOLO MODE ACTIVE:
+        INDIVIDUAL POOMSAE MODE ACTIVE:
         - This document contains Poomsae performances that should be treated as individual solo entries.
         - Map EACH player as their own separate SOLO entry (put player in "blue_name", leave "red_name" and "red_club" EMPTY).
         - Use sequential bout numbers (e.g., 1, 2, 3, 4, 5...) based on the performance order in the document.
         - Every single participant in the category must get an individual match record.
-        - The category name MUST include the suffix "POOMSAE SOLO" (e.g., "Junior Female POOMSAE SOLO").
+        - The category name MUST include the suffix "INDIVIDUAL POOMSAE" (e.g., "Junior Female INDIVIDUAL POOMSAE").
         - If the document is a bracket, treat every individual player slot in that bracket as a unique solo bout.
-        ` : 'STRICT RULE: Do NOT treat as Poomsae Solo. Every match MUST have a Blue and Red corner if data is available.'}
+        ` : 'STRICT RULE: Do NOT treat as Individual Poomsae. Every match MUST have a Blue and Red corner if data is available.'}
 
         ${adminNote ? `ADMIN NOTE: ${adminNote}` : ''}
 
@@ -474,16 +474,22 @@ export function AIBracketSetup({
         else if (prefix === 'G') inferredRing = 7;
         else if (prefix === 'H') inferredRing = 8;
 
+        let finalCategory = (m.category || '').toString().toUpperCase();
+        if (isPoomsaeMode && !finalCategory.includes('INDIVIDUAL POOMSAE')) {
+          finalCategory = finalCategory ? `${finalCategory} (INDIVIDUAL POOMSAE)` : 'INDIVIDUAL POOMSAE';
+        }
+
         return {
           ...m,
           ring: Number(inferredRing) || 1,
           blue_name: (m.blue_name || '').toString().toUpperCase(),
           blue_club: (m.blue_club || '').toString().toUpperCase(),
-          red_name: (m.red_name || '').toString().toUpperCase(),
-          red_club: (m.red_club || '').toString().toUpperCase(),
-          category: (m.category || '').toString().toUpperCase(),
+          red_name: isPoomsaeMode ? '' : (m.red_name || '').toString().toUpperCase(),
+          red_club: isPoomsaeMode ? '' : (m.red_club || '').toString().toUpperCase(),
+          category: finalCategory,
           bout: bout,
-          privacy_mode: false
+          privacy_mode: false,
+          is_poomsae_solo: isPoomsaeMode
         };
       });
 
@@ -897,7 +903,7 @@ export function AIBracketSetup({
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-black uppercase tracking-widest text-slate-900">Poomsae Solo Mode</span>
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-900">Individual Poomsae Mode</span>
                     <button 
                       onClick={() => setIsPoomsaeMode(!isPoomsaeMode)}
                       className={cn(
@@ -1026,8 +1032,8 @@ export function AIBracketSetup({
                         <tr className="bg-slate-50 border-b border-slate-100">
                           <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Bout #</th>
                           <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Category</th>
-                          <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Blue Player</th>
-                          <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Red Player</th>
+                          <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{isPoomsaeMode ? 'Performer' : 'Blue Player'}</th>
+                          {!isPoomsaeMode && <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Red Player</th>}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
@@ -1054,33 +1060,41 @@ export function AIBracketSetup({
                                 type="text" 
                                 value={m.blue_name} 
                                 onChange={(e) => handleMatchEdit(i, 'blue_name', e.target.value)}
-                                placeholder="Blue Name"
-                                className="w-full text-sm font-black text-blue-600 bg-transparent border-b border-transparent hover:border-blue-300 focus:border-blue-500 outline-none transition-colors mb-1"
+                                placeholder={isPoomsaeMode ? "Performer Name" : "Blue Name"}
+                                className={cn(
+                                  "w-full text-sm font-black bg-transparent border-b border-transparent outline-none transition-colors mb-1",
+                                  isPoomsaeMode ? "text-slate-900 hover:border-slate-300 focus:border-slate-500" : "text-blue-600 hover:border-blue-300 focus:border-blue-500"
+                                )}
                               />
                               <input 
                                 type="text" 
                                 value={m.blue_club} 
                                 onChange={(e) => handleMatchEdit(i, 'blue_club', e.target.value)}
-                                placeholder="Blue Club"
-                                className="w-full text-[10px] font-bold text-slate-400 uppercase bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none transition-colors"
+                                placeholder={isPoomsaeMode ? "Performer Club" : "Blue Club"}
+                                className={cn(
+                                  "w-full text-[10px] font-bold uppercase bg-transparent border-b border-transparent outline-none transition-colors",
+                                  isPoomsaeMode ? "text-slate-500 hover:border-slate-300 focus:border-slate-500" : "text-slate-400 hover:border-slate-300 focus:border-blue-500"
+                                )}
                               />
                             </td>
-                            <td className="px-6 py-4">
-                              <input 
-                                type="text" 
-                                value={m.red_name} 
-                                onChange={(e) => handleMatchEdit(i, 'red_name', e.target.value)}
-                                placeholder="Red Name"
-                                className="w-full text-sm font-black text-red-600 bg-transparent border-b border-transparent hover:border-red-300 focus:border-red-500 outline-none transition-colors mb-1"
-                              />
-                              <input 
-                                type="text" 
-                                value={m.red_club} 
-                                onChange={(e) => handleMatchEdit(i, 'red_club', e.target.value)}
-                                placeholder="Red Club"
-                                className="w-full text-[10px] font-bold text-slate-400 uppercase bg-transparent border-b border-transparent hover:border-slate-300 focus:border-red-500 outline-none transition-colors"
-                              />
-                            </td>
+                            {!isPoomsaeMode && (
+                              <td className="px-6 py-4">
+                                <input 
+                                  type="text" 
+                                  value={m.red_name} 
+                                  onChange={(e) => handleMatchEdit(i, 'red_name', e.target.value)}
+                                  placeholder="Red Name"
+                                  className="w-full text-sm font-black text-red-600 bg-transparent border-b border-transparent hover:border-red-300 focus:border-red-500 outline-none transition-colors mb-1"
+                                />
+                                <input 
+                                  type="text" 
+                                  value={m.red_club} 
+                                  onChange={(e) => handleMatchEdit(i, 'red_club', e.target.value)}
+                                  placeholder="Red Club"
+                                  className="w-full text-[10px] font-bold text-slate-400 uppercase bg-transparent border-b border-transparent hover:border-slate-300 focus:border-red-500 outline-none transition-colors"
+                                />
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Edit2, X } from 'lucide-react';
 import { RingStatus, MatchData } from '../types';
-import { cn, normalizeBoutNumber, formatBoutNumber } from '../lib/utils';
+import { cn, normalizeBoutNumber, formatBoutNumber, isBoutMatch } from '../lib/utils';
 
 interface EditBoutDetailsModalProps {
   onClose: () => void;
@@ -43,24 +43,34 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
     
     // Check active bout
     const ring = rings.find(r => r.ringNumber === formData.ring);
-    if (ring?.currentBout && normalizeBoutNumber(ring.currentBout.bout) === normalizedBout) {
-      const isSolo = ring.currentBout.category?.toUpperCase().includes('POOMSAE SOLO') || false;
+    
+    let foundMatch: MatchData | null = null;
+    if (ring?.currentBout && isBoutMatch(ring.currentBout.bout, formData.bout)) {
+      foundMatch = ring.currentBout;
+    } else if (ring?.onDeck && isBoutMatch(ring.onDeck.bout, formData.bout)) {
+      foundMatch = ring.onDeck;
+    } else if (ring?.inTheHole && isBoutMatch(ring.inTheHole.bout, formData.bout)) {
+      foundMatch = ring.inTheHole;
+    }
+
+    if (foundMatch) {
+      const isSolo = foundMatch.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || false;
       setFormData(prev => ({
         ...prev,
-        blue_name: ring.currentBout!.blue_name,
-        blue_club: ring.currentBout!.blue_club,
-        red_name: ring.currentBout!.red_name,
-        red_club: ring.currentBout!.red_club,
-        category: ring.currentBout!.category,
+        blue_name: foundMatch!.blue_name,
+        blue_club: foundMatch!.blue_club,
+        red_name: foundMatch!.red_name,
+        red_club: foundMatch!.red_club,
+        category: foundMatch!.category,
         is_poomsae_solo: isSolo
       }));
       return;
     }
 
     // Check queue
-    const queuedBout = queue.find(q => q.data.ring === formData.ring && normalizeBoutNumber(q.data.bout) === normalizedBout);
+    const queuedBout = queue.find(q => q.data.ring === formData.ring && isBoutMatch(q.data.bout, formData.bout));
     if (queuedBout) {
-      const isSolo = queuedBout.data.category?.toUpperCase().includes('POOMSAE SOLO') || false;
+      const isSolo = queuedBout.data.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || false;
       setFormData(prev => ({
         ...prev,
         blue_name: queuedBout.data.blue_name,
@@ -78,10 +88,10 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
     if (!formData.bout) return;
     
     let updatedCategory = formData.category;
-    if (formData.is_poomsae_solo && !updatedCategory.toUpperCase().includes('POOMSAE SOLO')) {
-      updatedCategory = updatedCategory ? `${updatedCategory} (POOMSAE SOLO)` : 'POOMSAE SOLO';
-    } else if (!formData.is_poomsae_solo && updatedCategory.toUpperCase().includes('POOMSAE SOLO')) {
-      updatedCategory = updatedCategory.replace(/\s*\(POOMSAE SOLO\)/gi, '').replace(/POOMSAE SOLO/gi, '').trim();
+    if (formData.is_poomsae_solo && !updatedCategory.toUpperCase().includes('INDIVIDUAL POOMSAE')) {
+      updatedCategory = updatedCategory ? `${updatedCategory} (INDIVIDUAL POOMSAE)` : 'INDIVIDUAL POOMSAE';
+    } else if (!formData.is_poomsae_solo && updatedCategory.toUpperCase().includes('INDIVIDUAL POOMSAE')) {
+      updatedCategory = updatedCategory.replace(/\s*\(INDIVIDUAL POOMSAE\)/gi, '').replace(/INDIVIDUAL POOMSAE/gi, '').trim();
     }
 
     onSubmit(formData.ring, formData.bout, {
@@ -166,7 +176,7 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
 
           <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-xl">
             <div>
-              <p className="text-xs font-black text-slate-700 uppercase tracking-widest leading-none mb-1">Poomsae Solo Mode</p>
+              <p className="text-xs font-black text-slate-700 uppercase tracking-widest leading-none mb-1">Individual Poomsae Mode</p>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">One player per performance</p>
             </div>
             <button

@@ -740,7 +740,7 @@ export function TASheet({
   const actualMatchData = getActualMatchData();
   const matchKey = currentMatch ? `${currentMatch.ringNo}-${currentMatch.matchNo}` : '';
   
-  const isPoomsaeMode = currentMatch?.category?.toUpperCase().includes('POOMSAE SOLO') || 
+  const isPoomsaeMode = currentMatch?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
                         currentMatch?.category?.toUpperCase().includes('FREESTYLE') ||
                         (currentMatch?.category?.toUpperCase().includes('POOMSAE') && !actualMatchData?.red_name);
 
@@ -1122,7 +1122,7 @@ export function TASheet({
       {viewMode === 'print' && (
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 print:shadow-none print:border-none print:p-0 overflow-x-auto print:overflow-visible">
         {matchesToRender.map((match, index) => {
-          const isSoloMatch = match.category?.toUpperCase().includes('POOMSAE SOLO') || 
+          const isSoloMatch = match.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
                              match.category?.toUpperCase().includes('FREESTYLE') ||
                              (match.category?.toUpperCase().includes('POOMSAE') && !match.redName);
 
