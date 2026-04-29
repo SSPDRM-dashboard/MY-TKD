@@ -9,9 +9,10 @@ interface InspectionLogsProps {
   rings: RingStatus[];
   matchHistory: MatchHistoryItem[];
   boutNumberingMode?: 'numeric' | 'alphanumeric';
+  currentEventId?: string | null;
 }
 
-export function InspectionLogs({ boutQueue, rings, matchHistory, boutNumberingMode = 'alphanumeric' }: InspectionLogsProps) {
+export function InspectionLogs({ boutQueue, rings, matchHistory, boutNumberingMode = 'alphanumeric', currentEventId }: InspectionLogsProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Collect matches from queue and rings
@@ -29,6 +30,7 @@ export function InspectionLogs({ boutQueue, rings, matchHistory, boutNumberingMo
 
   // Filter matches that have at least one inspection
   const inspectedMatches = Array.from(allMatchesMap.values())
+    .filter(m => (!currentEventId || m.eventId === currentEventId))
     .filter(m => m.blue_inspected || m.red_inspected)
     .filter(m => {
       if (!searchQuery) return true;

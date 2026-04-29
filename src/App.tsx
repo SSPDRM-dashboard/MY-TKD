@@ -2654,7 +2654,7 @@ export default function App() {
 
           {activeTab === 'inspection-logs' && (user?.role === 'admin' || user?.role === 'ta') && (
             <div className="max-w-5xl mx-auto">
-              <InspectionLogs boutQueue={boutQueue} rings={rings} matchHistory={matchHistory} boutNumberingMode={boutNumberingMode} />
+              <InspectionLogs boutQueue={boutQueue} rings={rings} matchHistory={matchHistory} boutNumberingMode={boutNumberingMode} currentEventId={currentEventId} />
             </div>
           )}
 
