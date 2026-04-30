@@ -692,31 +692,33 @@ export function TASheet({
 
   const handlePrint = (mode: 'single' | 'all') => {
     setPrintMode(mode);
-    
-    // Mark as printed
-    setPrintedMatches(prev => {
-      const newSet = new Set(prev);
-      if (mode === 'single' && currentMatch) {
-        newSet.add(`${currentMatch.ringNo}-${currentMatch.matchNo}`);
-      } else if (mode === 'all') {
-        ringMatches.forEach(m => {
-          if (getMatchStatus(m).isSigned) {
-            newSet.add(`${m.ringNo}-${m.matchNo}`);
-          }
-        });
-      }
-      return newSet;
-    });
-
-    // Clear selection after printing single match
-    if (mode === 'single') {
-      setSelectedMatchNo('');
-    }
 
     setTimeout(() => {
       window.print();
-      // Reset back to single after printing
-      setTimeout(() => setPrintMode('single'), 100);
+      // Reset back to single after printing and mark as printed
+      setTimeout(() => {
+        setPrintMode('single');
+
+        // Mark as printed
+        setPrintedMatches(prev => {
+          const newSet = new Set(prev);
+          if (mode === 'single' && currentMatch) {
+            newSet.add(`${currentMatch.ringNo}-${currentMatch.matchNo}`);
+          } else if (mode === 'all') {
+            ringMatches.forEach(m => {
+              if (getMatchStatus(m).isSigned) {
+                newSet.add(`${m.ringNo}-${m.matchNo}`);
+              }
+            });
+          }
+          return newSet;
+        });
+
+        // Clear selection after printing single match
+        if (mode === 'single') {
+          setSelectedMatchNo('');
+        }
+      }, 100);
     }, 100);
   };
 
