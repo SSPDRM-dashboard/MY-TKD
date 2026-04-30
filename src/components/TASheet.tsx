@@ -774,7 +774,6 @@ export function TASheet({
           * { 
             box-shadow: none !important; 
             -webkit-box-shadow: none !important; 
-            border-color: #000 !important; 
           }
           .page-break { 
             page-break-after: always; 
@@ -1127,7 +1126,7 @@ export function TASheet({
       )}
 
       {viewMode === 'print' && (
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 print:shadow-none print:border-none print:p-0 overflow-x-auto print:overflow-visible">
+      <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 print:shadow-none print:border-0 print:border-transparent print:p-0 overflow-x-auto print:overflow-visible">
         {matchesToRender.map((match, index) => {
           const isSoloMatch = match.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
                              match.category?.toUpperCase().includes('FREESTYLE') ||
