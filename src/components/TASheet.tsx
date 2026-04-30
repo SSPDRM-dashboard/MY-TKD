@@ -1224,13 +1224,13 @@ export function TASheet({
           <table className="w-full border-collapse border border-black mb-[7px] print:mb-[7px] text-sm text-center font-bold table-fixed">
             <colgroup>
               <col style={{ width: '13.5%' }} />
-              <col style={{ width: '11.25%' }} />
-              <col style={{ width: '11.25%' }} />
+              <col style={{ width: '16%' }} />
+              <col style={{ width: '6.5%' }} />
               <col style={{ width: '10%' }} />
               <col style={{ width: '8%' }} />
               <col style={{ width: '10%' }} />
-              <col style={{ width: '11.25%' }} />
-              <col style={{ width: '11.25%' }} />
+              <col style={{ width: '6.5%' }} />
+              <col style={{ width: '16%' }} />
               <col style={{ width: '13.5%' }} />
             </colgroup>
             <thead>
