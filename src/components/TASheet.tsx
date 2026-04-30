@@ -631,6 +631,11 @@ export function TASheet({
   };
 
   const filteredMatches = matches.filter(m => {
+    // ALWAYS include the currently selected match so it doesn't disappear during reprint
+    if (m.ringNo === selectedRing && m.matchNo === selectedMatchNo && selectedMatchNo) {
+      return true;
+    }
+
     const isPrinted = printedMatches.has(`${m.ringNo}-${m.matchNo}`);
     const status = getMatchStatus(m);
     const isSigned = status.isSigned;
