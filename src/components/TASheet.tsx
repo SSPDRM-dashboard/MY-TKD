@@ -764,7 +764,7 @@ export function TASheet({
       <style type="text/css" media="print">
         {`
           @page { 
-            size: ${sheetType === 'virtual' ? 'A5 landscape' : 'A4 portrait'}; 
+            size: ${sheetType === 'virtual' ? 'A5 portrait' : 'A4 portrait'}; 
             margin: 5mm; 
           }
           body { 
@@ -1144,16 +1144,17 @@ export function TASheet({
           return (
             <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full page-break mb-8 print:mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
               {sheetType === 'virtual' ? (
-                <div className="virtual-ta-sheet text-black flex flex-col min-h-[600px] print:h-[99vh] w-full relative pt-8 pb-12 print:pt-2 print:pb-2 justify-between">
-                  <div className="flex-1 flex flex-col">
+                <div className="virtual-ta-sheet text-black flex flex-col min-h-[600px] w-full relative pt-8 pb-12 print:pt-2 print:pb-2 justify-between">
+                  <div>
                     {/* Header */}
                     <div className="flex justify-between items-center mb-4 print:mb-2 text-black relative">
-                      <div className="w-48 flex gap-2 items-center flex-col absolute left-0 top-0">
+                      <div className="w-24 flex gap-2 items-center flex-col absolute left-0 top-0">
                          {/* World Taekwondo and TM logos would go here */}
                       </div>
                       <div className="text-center flex-1">
                         <h1 className="text-2xl print:text-xl font-black uppercase tracking-widest mt-2">VIRTUAL TAEKWONDO TA SHEET</h1>
-                        <div className="text-xs font-bold mt-1 uppercase tracking-wider">{match.eventName || 'Event Name'}</div>
+                        <div className="text-sm font-bold uppercase tracking-widest mt-1">REFEREE</div>
+                        <div className="text-[10px] font-bold mt-1 uppercase tracking-wider">{match.eventName || 'Event Name'}</div>
                       </div>
                     </div>
 
@@ -1185,7 +1186,7 @@ export function TASheet({
                     </table>
 
                     {/* Players */}
-                    <div className="flex gap-4 mb-4 print:mb-2 flex-1">
+                    <div className="flex gap-4 mb-4 print:mb-2">
                       <table className="w-[49%] border-collapse border border-black text-[10px] font-bold text-left table-fixed">
                         <colgroup>
                           <col style={{ width: '15%' }} />
@@ -1197,11 +1198,11 @@ export function TASheet({
                           </tr>
                         </thead>
                         <tbody>
-                          <tr className="h-[25px]">
+                          <tr className="h-[20px]">
                             <td className="border border-black p-1 text-center">NAME</td>
                             <td className="border border-black p-1">{match.blueName}</td>
                           </tr>
-                          <tr className="h-[25px]">
+                          <tr className="h-[20px]">
                             <td className="border border-black p-1 text-center">NOC</td>
                             <td className="border border-black p-1">{match.blueClub}</td>
                           </tr>
@@ -1219,11 +1220,11 @@ export function TASheet({
                           </tr>
                         </thead>
                         <tbody>
-                          <tr className="h-[25px]">
+                          <tr className="h-[20px]">
                             <td className="border border-black p-1 text-center">NAME</td>
                             <td className="border border-black p-1">{match.redName}</td>
                           </tr>
-                          <tr className="h-[25px]">
+                          <tr className="h-[20px]">
                             <td className="border border-black p-1 text-center">NOC</td>
                             <td className="border border-black p-1">{match.redClub}</td>
                           </tr>
@@ -1232,14 +1233,14 @@ export function TASheet({
                     </div>
 
                     {/* Round Scores */}
-                    <div className="flex-1 flex flex-col justify-end">
+                    <div>
                     <table className="w-full border-collapse border border-black mb-4 print:mb-2 text-[10px] text-center font-bold table-fixed">
                       <colgroup>
-                        <col style={{ width: '25%' }} />
-                        <col style={{ width: '16.66%' }} />
-                        <col style={{ width: '16.68%' }} />
-                        <col style={{ width: '16.66%' }} />
-                        <col style={{ width: '25%' }} />
+                        <col style={{ width: '15%' }} />
+                        <col style={{ width: '20%' }} />
+                        <col style={{ width: '30%' }} />
+                        <col style={{ width: '20%' }} />
+                        <col style={{ width: '15%' }} />
                       </colgroup>
                       <thead>
                         <tr className="h-[20px]">
@@ -1252,22 +1253,22 @@ export function TASheet({
                       </thead>
                       <tbody>
                         {[1, 2, 3].map((round) => (
-                          <tr key={round} className="h-[30px]">
-                            <td className="border border-black"></td>
-                            <td className="border border-black"></td>
+                          <tr key={round} className="h-[25px]">
+                            <td className="border border-black p-1"></td>
+                            <td className="border border-black p-1"></td>
                             <td className="border border-black p-0 h-full">
                               <table className="w-full h-full text-center border-collapse">
                                 <tbody>
                                   <tr>
-                                    <td className="w-1/3 text-[#00a2e8] border-r border-black p-1 h-full">CHUNG</td>
-                                    <td className="w-1/3 border-r border-black p-1 font-black h-full">R{round}</td>
-                                    <td className="w-1/3 text-[#ed1c24] p-1 h-full">HONG</td>
+                                    <td className="w-[38%] text-[#00a2e8] border-r border-black p-1 h-full">CHUNG</td>
+                                    <td className="w-[24%] border-r border-black p-1 font-black h-full">R{round}</td>
+                                    <td className="w-[38%] text-[#ed1c24] p-1 h-full">HONG</td>
                                   </tr>
                                 </tbody>
                               </table>
                             </td>
-                            <td className="border border-black"></td>
-                            <td className="border border-black"></td>
+                            <td className="border border-black p-1"></td>
+                            <td className="border border-black p-1"></td>
                           </tr>
                         ))}
                       </tbody>
