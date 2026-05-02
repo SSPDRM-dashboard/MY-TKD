@@ -764,7 +764,7 @@ export function TASheet({
       <style type="text/css" media="print">
         {`
           @page { 
-            size: A4 portrait; 
+            size: ${sheetType === 'virtual' ? 'A5 landscape' : 'A4 portrait'}; 
             margin: 5mm; 
           }
           body { 
@@ -1144,95 +1144,96 @@ export function TASheet({
           return (
             <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full page-break mb-8 print:mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
               {sheetType === 'virtual' ? (
-                <div className="virtual-ta-sheet text-black flex flex-col h-[1000px] print:h-screen w-full relative pt-8 pb-12 print:pt-4 print:pb-4 justify-between">
-                  <div className="flex-1">
+                <div className="virtual-ta-sheet text-black flex flex-col min-h-[600px] print:h-[99vh] w-full relative pt-8 pb-12 print:pt-2 print:pb-2 justify-between">
+                  <div className="flex-1 flex flex-col">
                     {/* Header */}
-                    <div className="flex justify-between items-center mb-8 print:mb-6 text-black relative">
+                    <div className="flex justify-between items-center mb-4 print:mb-2 text-black relative">
                       <div className="w-48 flex gap-2 items-center flex-col absolute left-0 top-0">
                          {/* World Taekwondo and TM logos would go here */}
                       </div>
                       <div className="text-center flex-1">
-                        <h1 className="text-3xl font-black uppercase tracking-widest mt-4">VIRTUAL TAEKWONDO TA SHEET</h1>
-                        <div className="text-sm font-bold mt-1 uppercase tracking-wider">{match.eventName || 'Event Name'}</div>
+                        <h1 className="text-2xl print:text-xl font-black uppercase tracking-widest mt-2">VIRTUAL TAEKWONDO TA SHEET</h1>
+                        <div className="text-xs font-bold mt-1 uppercase tracking-wider">{match.eventName || 'Event Name'}</div>
                       </div>
                     </div>
 
-                    <div className="flex justify-end mb-4 print:mb-4 w-full">
-                        <div className="font-bold text-sm">Best of 3</div>
+                    <div className="flex justify-end mb-2 print:mb-1 w-full">
+                        <div className="font-bold text-[10px]">Best of 3</div>
                     </div>
 
                     {/* Match Info */}
-                    <table className="w-full border-collapse border border-black mb-8 print:mb-6 text-sm font-bold table-fixed text-left">
+                    <table className="w-full border-collapse border border-black mb-4 print:mb-2 text-[10px] font-bold table-fixed text-left">
                       <colgroup>
                         <col style={{ width: '33.33%' }} />
                         <col style={{ width: '33.33%' }} />
                         <col style={{ width: '33.33%' }} />
                       </colgroup>
                       <tbody>
-                        <tr className="h-[45px]">
-                          <td className="border border-black p-2"><span className="inline-block w-16">Date :</span> <span className="font-normal">{sheetDate}</span></td>
-                          <td className="border border-black p-2"><span className="inline-block w-16">Day No:</span> <span className="font-normal">{sheetDayNo}</span></td>
-                          <td className="border border-black p-2 text-center align-top relative" rowSpan={2}>
-                            <div className="font-bold w-full text-center mb-2">Age & Gender Category</div>
-                            <div className="font-normal w-full text-center px-2">{match.category}</div>
+                        <tr className="h-[25px]">
+                          <td className="border border-black p-1"><span className="inline-block w-12">Date :</span> <span className="font-normal">{sheetDate}</span></td>
+                          <td className="border border-black p-1"><span className="inline-block w-12">Day No:</span> <span className="font-normal">{sheetDayNo}</span></td>
+                          <td className="border border-black p-1 text-center align-top relative" rowSpan={2}>
+                            <div className="font-bold w-full text-center mb-1">Age & Gender Category</div>
+                            <div className="font-normal w-full text-center px-1">{match.category}</div>
                           </td>
                         </tr>
-                        <tr className="h-[45px]">
-                          <td className="border border-black p-2"><span className="inline-block w-16">Match No:</span> <span className="font-bold text-lg">{formatBoutNumber(Number(match.ringNo), match.matchNo, boutNumberingMode)}</span></td>
-                          <td className="border border-black p-2"><span className="inline-block w-16">Court No:</span> <span className="font-bold text-lg">{isNaN(Number(match.ringNo)) ? String(match.ringNo).toUpperCase() : String.fromCharCode(64 + Number(match.ringNo))}</span></td>
+                        <tr className="h-[25px]">
+                          <td className="border border-black p-1"><span className="inline-block w-12">Match No:</span> <span className="font-bold text-sm">{formatBoutNumber(Number(match.ringNo), match.matchNo, boutNumberingMode)}</span></td>
+                          <td className="border border-black p-1"><span className="inline-block w-12">Court No:</span> <span className="font-bold text-sm">{isNaN(Number(match.ringNo)) ? String(match.ringNo).toUpperCase() : String.fromCharCode(64 + Number(match.ringNo))}</span></td>
                         </tr>
                       </tbody>
                     </table>
 
                     {/* Players */}
-                    <div className="flex gap-4 mb-8 print:mb-6">
-                      <table className="w-[49%] border-collapse border border-black text-sm font-bold text-left table-fixed">
+                    <div className="flex gap-4 mb-4 print:mb-2 flex-1">
+                      <table className="w-[49%] border-collapse border border-black text-[10px] font-bold text-left table-fixed">
                         <colgroup>
-                          <col style={{ width: '18%' }} />
-                          <col style={{ width: '82%' }} />
+                          <col style={{ width: '15%' }} />
+                          <col style={{ width: '85%' }} />
                         </colgroup>
                         <thead>
-                          <tr className="h-[35px]">
-                            <th colSpan={2} className="bg-[#00a2e8] text-white border border-black p-2 text-xl tracking-widest text-center uppercase">CHUNG</th>
+                          <tr className="h-[20px]">
+                            <th colSpan={2} className="bg-[#00a2e8] text-white border border-black p-1 text-sm tracking-widest text-center uppercase">CHUNG</th>
                           </tr>
                         </thead>
                         <tbody>
-                          <tr className="h-[45px]">
-                            <td className="border border-black p-2 text-center">NAME</td>
-                            <td className="border border-black p-2">{match.blueName}</td>
+                          <tr className="h-[25px]">
+                            <td className="border border-black p-1 text-center">NAME</td>
+                            <td className="border border-black p-1">{match.blueName}</td>
                           </tr>
-                          <tr className="h-[45px]">
-                            <td className="border border-black p-2 text-center">NOC</td>
-                            <td className="border border-black p-2">{match.blueClub}</td>
+                          <tr className="h-[25px]">
+                            <td className="border border-black p-1 text-center">NOC</td>
+                            <td className="border border-black p-1">{match.blueClub}</td>
                           </tr>
                         </tbody>
                       </table>
 
-                      <table className="w-[49%] ml-auto border-collapse border border-black text-sm font-bold text-left table-fixed">
+                      <table className="w-[49%] ml-auto border-collapse border border-black text-[10px] font-bold text-left table-fixed">
                         <colgroup>
-                          <col style={{ width: '18%' }} />
-                          <col style={{ width: '82%' }} />
+                          <col style={{ width: '15%' }} />
+                          <col style={{ width: '85%' }} />
                         </colgroup>
                         <thead>
-                          <tr className="h-[35px]">
-                            <th colSpan={2} className="bg-[#ed1c24] text-white border border-black p-2 text-xl tracking-widest text-center uppercase">HONG</th>
+                          <tr className="h-[20px]">
+                            <th colSpan={2} className="bg-[#ed1c24] text-white border border-black p-1 text-sm tracking-widest text-center uppercase">HONG</th>
                           </tr>
                         </thead>
                         <tbody>
-                          <tr className="h-[45px]">
-                            <td className="border border-black p-2 text-center">NAME</td>
-                            <td className="border border-black p-2">{match.redName}</td>
+                          <tr className="h-[25px]">
+                            <td className="border border-black p-1 text-center">NAME</td>
+                            <td className="border border-black p-1">{match.redName}</td>
                           </tr>
-                          <tr className="h-[45px]">
-                            <td className="border border-black p-2 text-center">NOC</td>
-                            <td className="border border-black p-2">{match.redClub}</td>
+                          <tr className="h-[25px]">
+                            <td className="border border-black p-1 text-center">NOC</td>
+                            <td className="border border-black p-1">{match.redClub}</td>
                           </tr>
                         </tbody>
                       </table>
                     </div>
 
                     {/* Round Scores */}
-                    <table className="w-full border-collapse border border-black mb-8 print:mb-6 text-sm text-center font-bold table-fixed">
+                    <div className="flex-1 flex flex-col justify-end">
+                    <table className="w-full border-collapse border border-black mb-4 print:mb-2 text-[10px] text-center font-bold table-fixed">
                       <colgroup>
                         <col style={{ width: '25%' }} />
                         <col style={{ width: '16.66%' }} />
@@ -1241,26 +1242,26 @@ export function TASheet({
                         <col style={{ width: '25%' }} />
                       </colgroup>
                       <thead>
-                        <tr className="h-[45px]">
-                          <th className="border border-black p-2">Gam-Jeom</th>
-                          <th className="border border-black p-2">Deuk-jeom</th>
-                          <th className="border border-black p-2">Round Winner</th>
-                          <th className="border border-black p-2">Deuk-jeom</th>
-                          <th className="border border-black p-2">Gam-Jeom</th>
+                        <tr className="h-[20px]">
+                          <th className="border border-black p-1">Gam-Jeom</th>
+                          <th className="border border-black p-1">Deuk-jeom</th>
+                          <th className="border border-black p-1">Round Winner</th>
+                          <th className="border border-black p-1">Deuk-jeom</th>
+                          <th className="border border-black p-1">Gam-Jeom</th>
                         </tr>
                       </thead>
                       <tbody>
                         {[1, 2, 3].map((round) => (
-                          <tr key={round} className="h-[60px]">
+                          <tr key={round} className="h-[30px]">
                             <td className="border border-black"></td>
                             <td className="border border-black"></td>
                             <td className="border border-black p-0 h-full">
-                              <table className="w-full h-[60px] text-center border-collapse">
+                              <table className="w-full h-full text-center border-collapse">
                                 <tbody>
                                   <tr>
-                                    <td className="w-1/3 text-[#00a2e8] border-r border-black p-2 h-full">CHUNG</td>
-                                    <td className="w-1/3 border-r border-black p-2 font-black h-full">R{round}</td>
-                                    <td className="w-1/3 text-[#ed1c24] p-2 h-full">HONG</td>
+                                    <td className="w-1/3 text-[#00a2e8] border-r border-black p-1 h-full">CHUNG</td>
+                                    <td className="w-1/3 border-r border-black p-1 font-black h-full">R{round}</td>
+                                    <td className="w-1/3 text-[#ed1c24] p-1 h-full">HONG</td>
                                   </tr>
                                 </tbody>
                               </table>
@@ -1273,7 +1274,7 @@ export function TASheet({
                     </table>
 
                     {/* Win Types */}
-                    <table className="w-full border-collapse border border-black text-sm text-center font-bold table-fixed mb-8">
+                    <table className="w-full border-collapse border border-black text-[10px] text-center font-bold table-fixed">
                       <colgroup>
                         <col style={{ width: '20%' }} />
                         <col style={{ width: '20%' }} />
@@ -1282,7 +1283,7 @@ export function TASheet({
                         <col style={{ width: '20%' }} />
                       </colgroup>
                       <tbody>
-                        <tr className="h-[50px]">
+                        <tr className="h-[25px]">
                           <td className="border border-black">PTF</td>
                           <td className="border border-black">PUN</td>
                           <td className="border border-black">WDR</td>
@@ -1291,10 +1292,11 @@ export function TASheet({
                         </tr>
                       </tbody>
                     </table>
+                    </div>
                   </div>
 
                   {/* Footer Signatures */}
-                  <div className="flex justify-between items-end mt-4 text-sm font-bold w-full pt-8">
+                  <div className="flex justify-between items-end mt-2 text-[10px] font-bold w-full pt-4">
                      <div>Referee Number : <span className="inline-block border-b border-black w-40"></span></div>
                      <div>Name : <span className="inline-block border-b border-black w-56"></span></div>
                      <div>Signature: <span className="inline-block border-b border-black w-56"></span></div>
