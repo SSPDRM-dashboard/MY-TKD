@@ -764,7 +764,7 @@ export function TASheet({
       <style type="text/css" media="print">
         {`
           @page { 
-            size: ${sheetType === 'virtual' ? 'A5 portrait' : 'A4 portrait'}; 
+            size: A4 portrait; 
             margin: 5mm; 
           }
           body { 
@@ -780,14 +780,17 @@ export function TASheet({
             page-break-after: always; 
             break-inside: avoid;
             width: 100% !important;
-            max-height: 280mm !important;
             margin: 0 !important;
             padding: 0 !important;
             box-sizing: border-box;
-            overflow: hidden !important;
-            display: flex;
-            flex-direction: column;
             background: #ffffff !important;
+          }
+          .virtual-half-page {
+            height: 140mm; /* Roughly half of A4's 297mm height minus margins */
+            box-sizing: border-box;
+            overflow: hidden;
+            page-break-inside: avoid;
+            margin-bottom: 2mm;
           }
           .page-break:last-child { page-break-after: auto; }
           table { 
@@ -1141,10 +1144,12 @@ export function TASheet({
                              match.category?.toUpperCase().includes('FREESTYLE') ||
                              (match.category?.toUpperCase().includes('POOMSAE') && !match.redName);
 
+          const isPageBreak = sheetType === 'virtual' ? index % 2 === 1 : true;
+
           return (
-            <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:w-full print:max-w-none page-break mb-8 print:mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
+            <div key={`${match.ringNo}-${match.matchNo}-${index}`} className={`w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:w-full print:max-w-none mb-8 print:mb-0 ${isPageBreak ? 'page-break' : ''} ${sheetType === 'virtual' ? 'print:virtual-half-page' : ''}`} style={{ fontFamily: 'Arial, sans-serif' }}>
               {sheetType === 'virtual' ? (
-                <div className="virtual-ta-sheet text-black flex flex-col min-h-[600px] w-full relative pt-8 pb-12 print:pt-2 print:pb-2 justify-between">
+                <div className="virtual-ta-sheet text-black flex flex-col min-h-[600px] print:min-h-0 print:h-full w-full relative pt-8 pb-12 print:pt-2 print:pb-2 justify-between">
                   <div>
                     {/* Header */}
                     <div className="flex justify-between items-center mb-4 print:mb-2 text-black relative">
