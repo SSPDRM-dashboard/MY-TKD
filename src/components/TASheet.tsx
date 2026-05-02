@@ -1142,7 +1142,7 @@ export function TASheet({
                              (match.category?.toUpperCase().includes('POOMSAE') && !match.redName);
 
           return (
-            <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:max-w-none print:w-full page-break mb-8 print:mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
+            <div key={`${match.ringNo}-${match.matchNo}-${index}`} className="w-full min-w-[700px] max-w-[1000px] mx-auto bg-white print:min-w-0 print:w-full print:max-w-none page-break mb-8 print:mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
               {sheetType === 'virtual' ? (
                 <div className="virtual-ta-sheet text-black flex flex-col min-h-[600px] w-full relative pt-8 pb-12 print:pt-2 print:pb-2 justify-between">
                   <div>
@@ -1153,8 +1153,7 @@ export function TASheet({
                       </div>
                       <div className="text-center flex-1">
                         <h1 className="text-2xl print:text-xl font-black uppercase tracking-widest mt-2">VIRTUAL TAEKWONDO TA SHEET</h1>
-                        <div className="text-sm font-bold uppercase tracking-widest mt-1">REFEREE</div>
-                        <div className="text-[10px] font-bold mt-1 uppercase tracking-wider">{match.eventName || 'Event Name'}</div>
+                        <div className="text-xs font-bold mt-1 uppercase tracking-wider">{match.eventName || 'Event Name'}</div>
                       </div>
                     </div>
 
@@ -1186,61 +1185,67 @@ export function TASheet({
                     </table>
 
                     {/* Players */}
-                    <div className="flex gap-4 mb-4 print:mb-2">
-                      <table className="w-[49%] border-collapse border border-black text-[10px] font-bold text-left table-fixed">
-                        <colgroup>
-                          <col style={{ width: '15%' }} />
-                          <col style={{ width: '85%' }} />
-                        </colgroup>
-                        <thead>
-                          <tr className="h-[20px]">
-                            <th colSpan={2} className="bg-[#00a2e8] text-white border border-black p-1 text-sm tracking-widest text-center uppercase">CHUNG</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr className="h-[20px]">
-                            <td className="border border-black p-1 text-center">NAME</td>
-                            <td className="border border-black p-1">{match.blueName}</td>
-                          </tr>
-                          <tr className="h-[20px]">
-                            <td className="border border-black p-1 text-center">NOC</td>
-                            <td className="border border-black p-1">{match.blueClub}</td>
-                          </tr>
-                        </tbody>
-                      </table>
+                    <div className="flex w-full mb-4 print:mb-2 text-[10px] print:text-[9px]">
+                      <div className="w-[49%]">
+                        <table className="w-full border-collapse border border-black font-bold text-left table-fixed">
+                          <colgroup>
+                            <col style={{ width: '22%' }} />
+                            <col style={{ width: '78%' }} />
+                          </colgroup>
+                          <thead>
+                            <tr className="h-[20px]">
+                              <th colSpan={2} className="bg-[#00a2e8] text-white border border-black p-1 text-sm tracking-widest text-center uppercase">CHUNG</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr className="h-[20px]">
+                              <td className="border border-black p-1 text-center">NAME</td>
+                              <td className="border border-black p-1 whitespace-nowrap overflow-hidden text-ellipsis">{match.blueName}</td>
+                            </tr>
+                            <tr className="h-[20px]">
+                              <td className="border border-black p-1 text-center">NOC</td>
+                              <td className="border border-black p-1">{match.blueClub}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      
+                      <div className="w-[2%]"></div>
 
-                      <table className="w-[49%] ml-auto border-collapse border border-black text-[10px] font-bold text-left table-fixed">
-                        <colgroup>
-                          <col style={{ width: '15%' }} />
-                          <col style={{ width: '85%' }} />
-                        </colgroup>
-                        <thead>
-                          <tr className="h-[20px]">
-                            <th colSpan={2} className="bg-[#ed1c24] text-white border border-black p-1 text-sm tracking-widest text-center uppercase">HONG</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr className="h-[20px]">
-                            <td className="border border-black p-1 text-center">NAME</td>
-                            <td className="border border-black p-1">{match.redName}</td>
-                          </tr>
-                          <tr className="h-[20px]">
-                            <td className="border border-black p-1 text-center">NOC</td>
-                            <td className="border border-black p-1">{match.redClub}</td>
-                          </tr>
-                        </tbody>
-                      </table>
+                      <div className="w-[49%]">
+                        <table className="w-full border-collapse border border-black font-bold text-left table-fixed">
+                          <colgroup>
+                            <col style={{ width: '22%' }} />
+                            <col style={{ width: '78%' }} />
+                          </colgroup>
+                          <thead>
+                            <tr className="h-[20px]">
+                              <th colSpan={2} className="bg-[#ed1c24] text-white border border-black p-1 text-sm tracking-widest text-center uppercase">HONG</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr className="h-[20px]">
+                              <td className="border border-black p-1 text-center">NAME</td>
+                              <td className="border border-black p-1 whitespace-nowrap overflow-hidden text-ellipsis">{match.redName}</td>
+                            </tr>
+                            <tr className="h-[20px]">
+                              <td className="border border-black p-1 text-center">NOC</td>
+                              <td className="border border-black p-1">{match.redClub}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
 
                     {/* Round Scores */}
                     <div>
-                    <table className="w-full border-collapse border border-black mb-4 print:mb-2 text-[10px] text-center font-bold table-fixed">
+                    <table className="w-full border-collapse border border-black mb-4 print:mb-2 text-[10px] print:text-[8px] text-center font-bold table-fixed">
                       <colgroup>
-                        <col style={{ width: '15%' }} />
-                        <col style={{ width: '20%' }} />
-                        <col style={{ width: '30%' }} />
-                        <col style={{ width: '20%' }} />
-                        <col style={{ width: '15%' }} />
+                        <col style={{ width: '16%' }} />
+                        <col style={{ width: '16%' }} />
+                        <col style={{ width: '36%' }} />
+                        <col style={{ width: '16%' }} />
+                        <col style={{ width: '16%' }} />
                       </colgroup>
                       <thead>
                         <tr className="h-[20px]">
