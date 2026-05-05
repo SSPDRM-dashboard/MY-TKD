@@ -35,6 +35,14 @@ export interface MatchData {
   blue_checklist?: string[];
   red_checklist?: string[];
   inspectedAt?: number;
+  points?: {
+    r1Blue?: string;
+    r1Red?: string;
+    r2Blue?: string;
+    r2Red?: string;
+    r3Blue?: string;
+    r3Red?: string;
+  };
 }
 
 export interface RingStatus {
