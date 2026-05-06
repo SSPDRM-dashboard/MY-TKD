@@ -208,6 +208,39 @@ export async function updateWinnerInGoogleSheets(url: string, ring: number, bout
   }
 }
 
+export async function updatePointsInGoogleSheets(url: string, ring: number, bout: string | number, points: any, eventName: string = '') {
+  const targetUrl = url?.trim();
+  if (!targetUrl) return false;
+
+  try {
+    const payload = {
+      action: 'updatePoints',
+      ring: ring,
+      bout: formatBout(ring, bout).toUpperCase(),
+      points: points,
+      timestamp: getMalaysiaTimestamp(),
+      event_name: (eventName || '-').toUpperCase()
+    };
+
+    console.log('>>> GOOGLE SHEETS SYNC START (Update Points) <<<');
+    
+    await fetch(targetUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      cache: 'no-cache',
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    return true;
+  } catch (error) {
+    console.error('Points sync error:', error);
+    return false;
+  }
+}
+
 export async function testSync(url: string) {
   const targetUrl = url?.trim();
   if (!targetUrl) return { success: false, message: 'No URL provided' };

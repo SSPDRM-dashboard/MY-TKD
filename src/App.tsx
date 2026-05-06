@@ -45,7 +45,7 @@ import { AIBracketSetup } from './components/AIBracketSetup';
 import { TournamentAssistant } from './components/TournamentAssistant';
 import { SearchWinner } from './components/SearchWinner';
 import { EventReport } from './components/EventReport';
-import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateBoutDetailsInGoogleSheets, testSync } from './services/googleSheets';
+import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateBoutDetailsInGoogleSheets, updatePointsInGoogleSheets, testSync } from './services/googleSheets';
 import { cn, normalizeBoutNumber, normalizeBoutWithRing, getBoutNumber, formatBoutNumber, isBoutMatch } from './lib/utils';
 import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, getDocFromServer, where } from 'firebase/firestore';
 import { db } from './firebase';
@@ -619,7 +619,7 @@ export default function App() {
   const [boutNumberingMode, setBoutNumberingMode] = useSyncedState<'numeric' | 'alphanumeric'>('tkd_bout_numbering_mode', 'alphanumeric');
   const [categories, setCategories] = useSyncedState<string[]>('tkd_categories', ["Junior Male -45kg", "Junior Female -42kg", "Senior Male -54kg", "INDIVIDUAL POOMSAE"]);
   const [clubs, setClubs] = useSyncedState<string[]>('tkd_clubs', ["KST", "TKT", "PST", "MTA"]);
-  const [googleSheetUrl, setGoogleSheetUrl] = useSyncedState<string>('tkd_sheet_url', 'https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/edit?usp=sharing');
+  const [googleSheetUrl, setGoogleSheetUrl] = useSyncedState<string>('tkd_sheet_url', 'https://script.google.com/macros/s/AKfycbykWTnkJwZ649ntvetGSL793ZNFPJE9yhjnNpTWpoS8NmVPjMDGp2PAb12dWK8KWLfm/exec');
   const [isSheetSaved, setIsSheetSaved] = useState(false);
   const [showTotalBoutsPublic, setShowTotalBoutsPublic] = useSyncedState<boolean>('tkd_show_total_bouts_public', true);
   const [showOnlyActiveRings, setShowOnlyActiveRings] = useSyncedState<boolean>('tkd_show_only_active_rings', false);
@@ -1623,6 +1623,21 @@ export default function App() {
     }
   };
 
+  const handlePointsUpdateApp = async (ringNumber: number, boutNumber: string | number, newPoints: any) => {
+    setRings(prev => {
+      const updated = prev.map(r => r.ringNumber === ringNumber && r.currentBout && isBoutMatch(r.currentBout.bout, boutNumber) ? { 
+        ...r, 
+        currentBout: { ...r.currentBout, points: newPoints }
+      } : r);
+      localStorage.setItem('tkd_rings', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (googleSheetUrl && currentEventId) {
+      updatePointsInGoogleSheets(googleSheetUrl, ringNumber, boutNumber, newPoints, getCurrentEventName());
+    }
+  };
+
   const handleBoutUpdate = async (ringNumber: number, newData: MatchData) => {
     // Capitalize all letters for ring controller and normalize bout number
     const capitalizedData: MatchData = {
@@ -2347,6 +2362,7 @@ export default function App() {
                             clubs={clubs}
                             queueCount={getFilteredQueue(ring.ringNumber).length}
                             onUpdate={(data) => handleBoutUpdate(ring.ringNumber, data)}
+                            onPointsUpdate={(points) => handlePointsUpdateApp(ring.ringNumber, ring.currentBout?.bout || '', points)}
                             onUpdateTotalBouts={(total) => handleUpdateTotalBouts(ring.ringNumber, total)}
                             onStart={() => startRing(ring.ringNumber)}
                             onDelete={user?.role === 'admin' ? () => deleteRing(ring.ringNumber) : undefined}
@@ -2501,6 +2517,7 @@ export default function App() {
                       clubs={clubs}
                       queueCount={getFilteredQueue(ring.ringNumber).length}
                       onUpdate={(data) => handleBoutUpdate(ring.ringNumber, data)}
+                      onPointsUpdate={(points) => handlePointsUpdateApp(ring.ringNumber, ring.currentBout?.bout || '', points)}
                       onUpdateTotalBouts={(total) => handleUpdateTotalBouts(ring.ringNumber, total)}
                       onStart={() => startRing(ring.ringNumber)}
                       onDelete={() => deleteRing(ring.ringNumber)}
@@ -2526,6 +2543,7 @@ export default function App() {
                           clubs={clubs}
                           queueCount={getFilteredQueue(ring.ringNumber).length}
                           onUpdate={(data) => handleBoutUpdate(ring.ringNumber, data)}
+                          onPointsUpdate={(points) => handlePointsUpdateApp(ring.ringNumber, ring.currentBout?.bout || '', points)}
                           onUpdateTotalBouts={(total) => handleUpdateTotalBouts(ring.ringNumber, total)}
                           onStart={() => startRing(ring.ringNumber)}
                           onWinnerSelect={(winner) => handleWinnerSelect(ring.ringNumber, ring.currentBout?.bout || 0, winner)}
@@ -3354,6 +3372,31 @@ export default function App() {
             </button>
           </>
         )}
+        {user?.role === 'viewer' && (
+          <>
+            <button 
+              onClick={() => setActiveTab('general')}
+              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'general' ? "text-red-600" : "text-slate-400")}
+            >
+              <Monitor size={24} />
+              <span className="text-[10px] font-bold">Onsite</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('standby')}
+              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'standby' ? "text-red-600" : "text-slate-400")}
+            >
+              <LayoutDashboard size={24} />
+              <span className="text-[10px] font-bold">Standby</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('points')}
+              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'points' ? "text-red-600" : "text-slate-400")}
+            >
+              <LayoutDashboard size={24} />
+              <span className="text-[10px] font-bold">Points</span>
+            </button>
+          </>
+        )}
       </nav>
 
       {user?.role === 'admin' && (
@@ -3637,6 +3680,7 @@ interface RingCardProps {
   clubs: string[];
   queueCount?: number;
   onUpdate: (data: MatchData) => void;
+  onPointsUpdate?: (points: any) => void;
   onUpdateTotalBouts?: (total: number) => void;
   onStart?: () => void;
   onDelete?: () => void;
@@ -4306,7 +4350,7 @@ function AddRingModal({ onClose, onAdd, existingRings, namingMode }: AddRingModa
   );
 }
 
-function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, currentEventId, onForceSync, isAutoPull, onToggleAutoPull, user, boutNumberingMode = 'alphanumeric', layout = 'winner' }: RingCardProps & { currentEventId?: string | null, onForceSync?: (data: MatchData) => void }) {
+function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onPointsUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, currentEventId, onForceSync, isAutoPull, onToggleAutoPull, user, boutNumberingMode = 'alphanumeric', layout = 'winner' }: RingCardProps & { currentEventId?: string | null, onForceSync?: (data: MatchData) => void }) {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isFinalBoutSelection, setIsFinalBoutSelection] = useState(false);
   const [isSyncingLocal, setIsSyncingLocal] = useState(false);
@@ -4335,10 +4379,22 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
     }
   }, [ring.currentBout?.bout, ring.currentBout?.points]);
 
-  const handlePointsUpdate = (newPoints: typeof points) => {
-    if (ring.currentBout) {
-      onUpdate({ ...ring.currentBout, points: newPoints });
-    }
+  const latestPointsRef = React.useRef(points);
+  useEffect(() => {
+    latestPointsRef.current = points;
+  }, [points]);
+
+  const handlePointsUpdate = () => {
+    if (pointsDebounceRef.current) clearTimeout(pointsDebounceRef.current);
+    pointsDebounceRef.current = setTimeout(() => {
+      if (ring.currentBout) {
+        if (onPointsUpdate) {
+          onPointsUpdate(latestPointsRef.current);
+        } else {
+          onUpdate({ ...ring.currentBout, points: latestPointsRef.current });
+        }
+      }
+    }, 1000); // 1s debounce to avoid spamming Google Sheets
   };
   
   // Only show current bout if it belongs to the current event
@@ -4535,14 +4591,14 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                           <div className="text-center text-[10px] font-black uppercase text-slate-500">R3</div>
                           
                           <div className="flex items-center justify-center font-black text-[#00a2e8] text-sm uppercase">Blue</div>
-                          <input type="number" className="w-full text-center border-2 border-[#00a2e8] rounded-lg py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8]" value={points.r1Blue} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r1Blue: val})); handlePointsUpdate({...points, r1Blue: val}); }} />
-                          <input type="number" className="w-full text-center border-2 border-[#00a2e8] rounded-lg py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8]" value={points.r2Blue} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r2Blue: val})); handlePointsUpdate({...points, r2Blue: val}); }} />
-                          <input type="number" className="w-full text-center border-2 border-[#00a2e8] rounded-lg py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8]" value={points.r3Blue} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r3Blue: val})); handlePointsUpdate({...points, r3Blue: val}); }} />
+                          <input type="number" className={cn("w-full text-center border-2 border-[#00a2e8] transition-all py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8]", points.r1Blue !== '' && points.r1Red !== '' && parseInt(points.r1Blue) > parseInt(points.r1Red) ? "bg-[#00a2e8] text-white rounded-full scale-105 shadow-md" : "bg-white text-slate-800 rounded-lg")} value={points.r1Blue} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r1Blue: val})); handlePointsUpdate(); }} />
+                          <input type="number" className={cn("w-full text-center border-2 border-[#00a2e8] transition-all py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8]", points.r2Blue !== '' && points.r2Red !== '' && parseInt(points.r2Blue) > parseInt(points.r2Red) ? "bg-[#00a2e8] text-white rounded-full scale-105 shadow-md" : "bg-white text-slate-800 rounded-lg")} value={points.r2Blue} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r2Blue: val})); handlePointsUpdate(); }} />
+                          <input type="number" className={cn("w-full text-center border-2 border-[#00a2e8] transition-all py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8]", points.r3Blue !== '' && points.r3Red !== '' && parseInt(points.r3Blue) > parseInt(points.r3Red) ? "bg-[#00a2e8] text-white rounded-full scale-105 shadow-md" : "bg-white text-slate-800 rounded-lg")} value={points.r3Blue} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r3Blue: val})); handlePointsUpdate(); }} />
                           
                           <div className="flex items-center justify-center font-black text-[#ed1c24] text-sm uppercase">Red</div>
-                          <input type="number" className="w-full text-center border-2 border-[#ed1c24] rounded-lg py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24]" value={points.r1Red} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r1Red: val})); handlePointsUpdate({...points, r1Red: val}); }} />
-                          <input type="number" className="w-full text-center border-2 border-[#ed1c24] rounded-lg py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24]" value={points.r2Red} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r2Red: val})); handlePointsUpdate({...points, r2Red: val}); }} />
-                          <input type="number" className="w-full text-center border-2 border-[#ed1c24] rounded-lg py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24]" value={points.r3Red} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r3Red: val})); handlePointsUpdate({...points, r3Red: val}); }} />
+                          <input type="number" className={cn("w-full text-center border-2 border-[#ed1c24] transition-all py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24]", points.r1Red !== '' && points.r1Blue !== '' && parseInt(points.r1Red) > parseInt(points.r1Blue) ? "bg-[#ed1c24] text-white rounded-full scale-105 shadow-md" : "bg-white text-slate-800 rounded-lg")} value={points.r1Red} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r1Red: val})); handlePointsUpdate(); }} />
+                          <input type="number" className={cn("w-full text-center border-2 border-[#ed1c24] transition-all py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24]", points.r2Red !== '' && points.r2Blue !== '' && parseInt(points.r2Red) > parseInt(points.r2Blue) ? "bg-[#ed1c24] text-white rounded-full scale-105 shadow-md" : "bg-white text-slate-800 rounded-lg")} value={points.r2Red} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r2Red: val})); handlePointsUpdate(); }} />
+                          <input type="number" className={cn("w-full text-center border-2 border-[#ed1c24] transition-all py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24]", points.r3Red !== '' && points.r3Blue !== '' && parseInt(points.r3Red) > parseInt(points.r3Blue) ? "bg-[#ed1c24] text-white rounded-full scale-105 shadow-md" : "bg-white text-slate-800 rounded-lg")} value={points.r3Red} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r3Red: val})); handlePointsUpdate(); }} />
                         </div>
                         <div className="flex gap-4">
                           <button 
@@ -6210,7 +6266,7 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
     e.preventDefault();
     
     // Auto-detect and handle plain docs URLs for the Web App field if needed (though it should be /exec)
-    const finalSheetUrl = sheetUrl.trim() || 'https://script.google.com/macros/s/AKfycbxj_LHC3MLU7IHjMSwklvIuXZxbsk1jhNTdU23piVTdx8kC6DhVD5EAHe7z72wYb774/exec';
+    const finalSheetUrl = sheetUrl.trim() || 'https://script.google.com/macros/s/AKfycbykWTnkJwZ649ntvetGSL793ZNFPJE9yhjnNpTWpoS8NmVPjMDGp2PAb12dWK8KWLfm/exec';
     const finalWinnerUrl = winnerSheetUrl.trim();
 
     onAdd({
