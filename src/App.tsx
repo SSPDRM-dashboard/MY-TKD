@@ -625,6 +625,7 @@ export default function App() {
   const [showOnlyActiveRings, setShowOnlyActiveRings] = useSyncedState<boolean>('tkd_show_only_active_rings', false);
   const [showEmptyBoutAsInactive, setShowEmptyBoutAsInactive] = useSyncedState<boolean>('tkd_show_empty_bout_inactive', false);
   const [ringControlLayout, setRingControlLayout] = useSyncedState<'winner' | 'point'>('tkd_ring_control_layout', 'winner');
+  const [publicViewLayout, setPublicViewLayout] = useSyncedState<'standard' | 'point'>('tkd_public_view_layout', 'standard');
   const [showPublicStandbyQueue, setShowPublicStandbyQueue] = useSyncedState<boolean>('tkd_show_public_standby_queue', true);
 
   // Persistence & Cross-tab Sync handled by useSyncedState
@@ -1950,6 +1951,7 @@ export default function App() {
         showOnlyActiveRings={showOnlyActiveRings}
         showEmptyBoutAsInactive={showEmptyBoutAsInactive}
         showPublicStandbyQueue={showPublicStandbyQueue}
+        publicViewLayout={publicViewLayout}
       />
     );
   }
@@ -1966,6 +1968,7 @@ export default function App() {
         showOnlyActiveRings={showOnlyActiveRings}
         showEmptyBoutAsInactive={showEmptyBoutAsInactive}
         showPublicStandbyQueue={showPublicStandbyQueue}
+        publicViewLayout={publicViewLayout}
       />
     );
   }
@@ -2846,6 +2849,32 @@ export default function App() {
                           )}
                         >
                           Active Only
+                        </button>
+                      </div>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-slate-700">Public View Layout</p>
+                        <p className="text-[10px] text-slate-500">Default vs Live Points</p>
+                      </div>
+                      <div className="flex bg-slate-200 p-1 rounded-lg">
+                        <button 
+                          onClick={() => setPublicViewLayout('standard')}
+                          className={cn(
+                            "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                            publicViewLayout === 'standard' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                          )}
+                        >
+                          Standard
+                        </button>
+                        <button 
+                          onClick={() => setPublicViewLayout('point')}
+                          className={cn(
+                            "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                            publicViewLayout === 'point' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                          )}
+                        >
+                          Points
                         </button>
                       </div>
                     </div>
@@ -4863,6 +4892,7 @@ interface PublicRingCardProps {
   ringQueue?: {id: string, data: MatchData}[];
   showPublicStandbyQueue?: boolean;
   showEmptyBoutAsInactive?: boolean;
+  publicViewLayout?: 'standard' | 'point';
 }
 
 function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean }) {
@@ -5640,7 +5670,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
   );
 }
 
-function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator, showTotalBouts = true, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, showPublicStandbyQueue = true }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', onBack: () => void, isSpectator?: boolean, showTotalBouts?: boolean, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, showPublicStandbyQueue?: boolean }) {
+function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator, showTotalBouts = true, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, showPublicStandbyQueue = true, publicViewLayout = 'standard' }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', onBack: () => void, isSpectator?: boolean, showTotalBouts?: boolean, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, showPublicStandbyQueue?: boolean, publicViewLayout?: 'standard' | 'point' }) {
   const [logoClicks, setLogoClicks] = React.useState(0);
   const clickTimer = React.useRef<NodeJS.Timeout | null>(null);
 
@@ -5720,6 +5750,7 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
                     ringQueue={rQueue}
                     showPublicStandbyQueue={showPublicStandbyQueue}
                     showEmptyBoutAsInactive={showEmptyBoutAsInactive}
+                    publicViewLayout={publicViewLayout}
                   />
                 );
               })}
@@ -5752,7 +5783,7 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
   );
 }
 
-function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, boutNumberingMode = 'alphanumeric', ringQueue, showPublicStandbyQueue = true, showEmptyBoutAsInactive = false }: PublicRingCardProps) {
+function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, boutNumberingMode = 'alphanumeric', ringQueue, showPublicStandbyQueue = true, showEmptyBoutAsInactive = false, publicViewLayout = 'standard' }: PublicRingCardProps) {
   const current = ring.currentBout;
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
   const isRingInactive = showEmptyBoutAsInactive && (!current || !hasPlayers(current));
@@ -5824,17 +5855,78 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
               <span className="text-[20px] font-black text-white uppercase tracking-widest text-center leading-tight">{current ? cleanPlaceholder(formatCategoryName(current.category)) : "---"}</span>
             </div>
             
-            <div className="flex items-start gap-6">
-              <PublicFighterSide color="blue" name={current ? cleanPlaceholder(current.blue_name) : ""} club={current ? cleanPlaceholder(current.blue_club) : ""} privacy={current ? current.privacy_mode : false} />
-              {!current?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') && 
-                !current?.category?.toUpperCase().includes('FREESTYLE') && 
-                !(current?.category?.toUpperCase().includes('POOMSAE') && !current?.red_name) && (
-                <>
-                  <div className="text-xl font-black text-white italic mt-4">VS</div>
-                  <PublicFighterSide color="red" name={current ? cleanPlaceholder(current.red_name) : ""} club={current ? cleanPlaceholder(current.red_club) : ""} privacy={current ? current.privacy_mode : false} />
-                </>
-              )}
-            </div>
+            {publicViewLayout === 'standard' ? (
+              <div className="flex items-start gap-6">
+                <PublicFighterSide color="blue" name={current ? cleanPlaceholder(current.blue_name) : ""} club={current ? cleanPlaceholder(current.blue_club) : ""} privacy={current ? current.privacy_mode : false} />
+                {!current?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') && 
+                  !current?.category?.toUpperCase().includes('FREESTYLE') && 
+                  !(current?.category?.toUpperCase().includes('POOMSAE') && !current?.red_name) && (
+                  <>
+                    <div className="text-xl font-black text-white italic mt-4">VS</div>
+                    <PublicFighterSide color="red" name={current ? cleanPlaceholder(current.red_name) : ""} club={current ? cleanPlaceholder(current.red_club) : ""} privacy={current ? current.privacy_mode : false} />
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="mt-4 space-y-6">
+                {/* Points Table */}
+                <div className="mx-auto w-full max-w-sm grid grid-cols-3 divide-x divide-slate-800 border border-slate-700 bg-slate-800/80">
+                  <div className="col-span-3 grid grid-cols-3 divide-x divide-slate-700 bg-white text-black font-black text-center py-2 text-sm uppercase">
+                    <div>R1</div>
+                    <div>R2</div>
+                    <div>R3</div>
+                  </div>
+                  <div className="col-span-3 grid grid-cols-3 divide-x divide-black/20 bg-[#00a2e8] text-white font-black text-center py-3 text-2xl border-t border-slate-800">
+                    <div className={cn((parseInt(current?.points?.r1Blue||'0')||0) > (parseInt(current?.points?.r1Red||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r1Blue || '0'}</div>
+                    <div className={cn((parseInt(current?.points?.r2Blue||'0')||0) > (parseInt(current?.points?.r2Red||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r2Blue || '0'}</div>
+                    <div className={cn((parseInt(current?.points?.r3Blue||'0')||0) > (parseInt(current?.points?.r3Red||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r3Blue || '0'}</div>
+                  </div>
+                  <div className="col-span-3 grid grid-cols-3 divide-x divide-black/20 bg-[#ed1c24] text-white font-black text-center py-3 text-2xl border-t border-slate-800">
+                    <div className={cn((parseInt(current?.points?.r1Red||'0')||0) > (parseInt(current?.points?.r1Blue||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r1Red || '0'}</div>
+                    <div className={cn((parseInt(current?.points?.r2Red||'0')||0) > (parseInt(current?.points?.r2Blue||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r2Red || '0'}</div>
+                    <div className={cn((parseInt(current?.points?.r3Red||'0')||0) > (parseInt(current?.points?.r3Blue||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r3Red || '0'}</div>
+                  </div>
+                </div>
+
+                {!current?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') && 
+                  !current?.category?.toUpperCase().includes('FREESTYLE') && 
+                  !(current?.category?.toUpperCase().includes('POOMSAE') && !current?.red_name) ? (
+                  <div className="grid grid-cols-[1fr,auto,1fr] gap-4 items-start pb-2">
+                    <div className="flex flex-col">
+                      <div className="h-1.5 w-full bg-[#00a2e8] rounded-full mb-3 shadow-[0_0_8px_rgba(0,162,232,0.8)]" />
+                      <span className="font-bold text-white text-lg leading-tight line-clamp-2 break-words text-left">
+                        {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_name)) : ""}
+                      </span>
+                      <span className="font-bold text-[#00a2e8] text-sm leading-tight line-clamp-1 break-words text-left mt-1">
+                        {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_club)) : ""}
+                      </span>
+                    </div>
+
+                    <div className="text-xl font-black text-white italic pt-4">VS</div>
+
+                    <div className="flex flex-col">
+                      <div className="h-1.5 w-full bg-[#ed1c24] rounded-full mb-3 shadow-[0_0_8px_rgba(237,28,36,0.8)]" />
+                      <span className="font-bold text-white text-lg leading-tight line-clamp-2 break-words text-left">
+                        {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.red_name)) : ""}
+                      </span>
+                      <span className="font-bold text-[#ed1c24] text-sm leading-tight line-clamp-1 break-words text-left mt-1">
+                        {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.red_club)) : ""}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col max-w-sm mx-auto">
+                    <div className="h-1.5 w-full bg-[#00a2e8] rounded-full mb-3 shadow-[0_0_8px_rgba(0,162,232,0.8)]" />
+                    <span className="font-bold text-white text-lg leading-tight line-clamp-2 break-words text-center">
+                      {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_name)) : ""}
+                    </span>
+                    <span className="font-bold text-[#00a2e8] text-sm leading-tight line-clamp-1 break-words text-center mt-1">
+                      {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_club)) : ""}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
