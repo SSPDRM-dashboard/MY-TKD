@@ -82,7 +82,7 @@ export function SearchWinner({ matchHistory, currentEventId }: SearchWinnerProps
                   </div>
                   <p className="text-[10px] font-black text-yellow-600 uppercase tracking-widest mb-1">Winner</p>
                   <p className="text-3xl font-black text-slate-900 mb-2 uppercase">{result.winner}</p>
-                  <p className="text-lg font-bold text-slate-500 uppercase">{result.winnerClub || 'UNKNOWN CLUB'}</p>
+                  <p className="text-lg font-bold text-yellow-200 uppercase">{result.winnerClub || 'UNKNOWN CLUB'}</p>
                 </div>
               </div>
             ) : (

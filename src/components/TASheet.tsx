@@ -1083,7 +1083,7 @@ export function TASheet({
           <div className="flex-1 flex flex-col">
             <div className="mb-4 text-center">
               <h3 className="text-lg font-black text-[#00a2e8] uppercase">{actualMatchData?.blue_name || 'Blue Player'}</h3>
-              <p className="text-sm font-bold text-slate-500 uppercase">{actualMatchData?.blue_club || 'Blue Club'}</p>
+              <p className="text-sm font-bold text-yellow-200 uppercase">{actualMatchData?.blue_club || 'Blue Club'}</p>
             </div>
             <SignaturePad 
               color="blue" 
@@ -1110,7 +1110,7 @@ export function TASheet({
               <div className="flex-1 flex flex-col">
                 <div className="mb-4 text-center">
                   <h3 className="text-lg font-black text-[#ed1c24] uppercase">{actualMatchData?.red_name || 'Red Player'}</h3>
-                  <p className="text-sm font-bold text-slate-500 uppercase">{actualMatchData?.red_club || 'Red Club'}</p>
+                  <p className="text-sm font-bold text-yellow-200 uppercase">{actualMatchData?.red_club || 'Red Club'}</p>
                 </div>
                 <SignaturePad 
                   color="red" 

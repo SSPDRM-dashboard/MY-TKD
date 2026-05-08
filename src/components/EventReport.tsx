@@ -529,7 +529,7 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
                         {c.gold ? (
                           <div>
                             <div className="font-bold text-slate-900">{c.gold.name}</div>
-                            <div className="text-xs text-slate-500 font-medium">{c.gold.club}</div>
+                            <div className="text-xs text-yellow-200 font-medium">{c.gold.club}</div>
                           </div>
                         ) : <span className="text-slate-400 text-sm italic">Pending Finish</span>}
                       </td>
@@ -537,7 +537,7 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
                         {c.silver ? (
                           <div>
                             <div className="font-bold text-slate-700">{c.silver.name}</div>
-                            <div className="text-xs text-slate-500 font-medium">{c.silver.club}</div>
+                            <div className="text-xs text-yellow-200 font-medium">{c.silver.club}</div>
                           </div>
                         ) : <span className="text-slate-400">-</span>}
                       </td>
@@ -547,7 +547,7 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
                             {c.bronzes.map((b, bi) => (
                               <div key={bi} className="bg-amber-50 px-2 py-1 rounded border border-amber-100 inline-block w-max">
                                 <div className="font-bold text-slate-800 text-sm flex gap-2"><span>{b.name}</span><span className="text-amber-700/60 font-black">#3</span></div>
-                                <div className="text-xs text-slate-600 font-medium">{b.club}</div>
+                                <div className="text-xs text-yellow-200 font-medium">{b.club}</div>
                               </div>
                             ))}
                           </div>
@@ -596,7 +596,7 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
                           {i + 1}
                         </div>
                       </td>
-                      <td className="p-4 font-bold text-slate-800 text-lg flex items-center gap-3">
+                      <td className="p-4 font-bold text-yellow-200 text-lg flex items-center gap-3">
                         <Building2 size={20} className="text-slate-400" />
                         {c.club || 'Unknown Club'}
                       </td>

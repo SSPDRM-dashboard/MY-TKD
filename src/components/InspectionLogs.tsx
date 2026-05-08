@@ -131,7 +131,7 @@ export function InspectionLogs({ boutQueue, rings, matchHistory, boutNumberingMo
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h4 className="text-lg font-black text-[#00a2e8] uppercase">{match.blue_name}</h4>
-                      <p className="text-xs font-bold text-slate-500 uppercase">{match.blue_club}</p>
+                      <p className="text-xs font-bold text-yellow-200 uppercase">{match.blue_club}</p>
                     </div>
                     {match.blue_inspected ? (
                       <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-[10px] font-black uppercase tracking-widest flex items-center gap-1">
@@ -165,7 +165,7 @@ export function InspectionLogs({ boutQueue, rings, matchHistory, boutNumberingMo
                     <div className="flex items-center justify-between mb-4">
                       <div>
                         <h4 className="text-lg font-black text-[#ed1c24] uppercase">{match.red_name}</h4>
-                        <p className="text-xs font-bold text-slate-500 uppercase">{match.red_club}</p>
+                        <p className="text-xs font-bold text-yellow-200 uppercase">{match.red_club}</p>
                       </div>
                       {match.red_inspected ? (
                         <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-[10px] font-black uppercase tracking-widest flex items-center gap-1">

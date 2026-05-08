@@ -3101,7 +3101,7 @@ export default function App() {
                 category: cat,
                 winner: winName,
                 winnerClub: winClub,
-                winnerSide: winner,
+                winnerSide: (winner === 'Blue' || winner === 'Red') ? winner : undefined,
                 eventId: currentEventId
               };
               
@@ -4804,7 +4804,7 @@ function FighterSide({ color, name, club, privacy, inspected }: { color: 'blue' 
       )}>
         {privacy ? "---" : cleanPlaceholder(name)}
       </p>
-      <p className="text-[15px] font-bold text-slate-400 uppercase">{cleanPlaceholder(club)}</p>
+      <p className="text-[15px] font-bold text-yellow-200 uppercase">{cleanPlaceholder(club)}</p>
     </div>
   );
 }
@@ -4818,7 +4818,7 @@ function QueueItem({ label, data }: { label: string, data: MatchData | null }) {
           <p className="text-[10px] font-bold text-slate-700 truncate">
             {data.privacy_mode ? "---" : data.blue_name} vs {data.privacy_mode ? "---" : data.red_name}
           </p>
-          <p className="text-[8px] font-medium text-slate-400 uppercase">{data.blue_club} / {data.red_club}</p>
+          <p className="text-[8px] font-medium text-yellow-200 uppercase">{data.blue_club} / {data.red_club}</p>
         </div>
       ) : (
         <p className="text-[10px] font-medium text-slate-300">TBD</p>
@@ -4863,7 +4863,7 @@ function AthleteRow({ name, ic, club, category, status }: AthleteRowProps) {
         </div>
       </td>
       <td className="py-4 font-mono text-xs text-slate-500">{ic}</td>
-      <td className="py-4 font-bold text-slate-600">{club}</td>
+      <td className="py-4 font-bold text-yellow-200">{club}</td>
       <td className="py-4 text-xs font-medium text-slate-500">{category}</td>
       <td className="py-4">
         <span className={cn(
@@ -5026,12 +5026,12 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                           "flex-1 bg-blue-600/90 flex flex-col justify-center px-4 relative",
                           !isPoomsaeModeCurrent && "border-b border-white/10"
                         )}>
-                          <p className="text-[15px] font-bold text-black uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
+                          <p className="text-[15px] font-bold text-yellow-200 uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
                           <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.blue_name || "") : "---"}</h4>
                         </div>
                         {!isPoomsaeModeCurrent && (
                           <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
-                            <p className="text-[15px] font-bold text-black uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
+                            <p className="text-[15px] font-bold text-yellow-200 uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
                             <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.red_name || "") : "---"}</h4>
                           </div>
                         )}
@@ -5065,10 +5065,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                         isPoomsaeItem ? "col-span-9" : "col-span-5 border-r border-white/10",
                         isRingInactive ? "bg-slate-800" : "bg-blue-600/80"
                       )}>
-                        <span className={cn(
-                          "text-[13px] font-bold uppercase leading-none",
-                          isRingInactive ? "text-slate-500" : "text-black"
-                        )}>{cleanPlaceholder(b?.data.blue_club || "")}</span>
+                        <span className="text-[13px] font-bold text-yellow-200 uppercase leading-none">{cleanPlaceholder(b?.data.blue_club || "")}</span>
                         <span className={cn(
                           "text-[16px] font-black uppercase truncate leading-tight",
                           isRingInactive ? "text-slate-400" : "text-white"
@@ -5087,10 +5084,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                           "col-span-4 flex flex-col justify-center px-3 relative",
                           isRingInactive ? "bg-slate-800" : "bg-red-600/80"
                         )}>
-                          <span className={cn(
-                            "text-[13px] font-bold uppercase leading-none",
-                            isRingInactive ? "text-slate-500" : "text-black"
-                          )}>{cleanPlaceholder(b?.data.red_club || "")}</span>
+                          <span className="text-[13px] font-bold text-yellow-200 uppercase leading-none">{cleanPlaceholder(b?.data.red_club || "")}</span>
                           <span className={cn(
                             "text-[16px] font-black uppercase truncate leading-tight",
                             isRingInactive ? "text-slate-400" : "text-white"
@@ -5250,12 +5244,12 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                             "flex-1 bg-blue-600/90 flex flex-col justify-center px-4 relative",
                             !isPoomsaeModeCurrent && "border-b border-white/10"
                           )}>
-                            <p className="text-[15px] font-bold text-black uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
+                            <p className="text-[15px] font-bold text-yellow-200 uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
                             <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.blue_name || "") : "---"}</h4>
                           </div>
                           {!isPoomsaeModeCurrent && (
                             <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
-                              <p className="text-[15px] font-bold text-black uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
+                              <p className="text-[15px] font-bold text-yellow-200 uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
                               <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.red_name || "") : "---"}</h4>
                             </div>
                           )}
@@ -5309,10 +5303,7 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                         isPoomsaeItem ? "col-span-9" : "col-span-5 border-r border-white/10",
                         isRingInactive ? "bg-slate-800" : "bg-blue-600/80"
                       )}>
-                        <span className={cn(
-                          "text-[13px] font-bold uppercase leading-none",
-                          isRingInactive ? "text-slate-500" : "text-black"
-                        )}>{cleanPlaceholder(b?.data.blue_club || "")}</span>
+                        <span className="text-[13px] font-bold text-yellow-200 uppercase leading-none">{cleanPlaceholder(b?.data.blue_club || "")}</span>
                         <span className={cn(
                           "text-[16px] font-black uppercase truncate leading-tight",
                           isRingInactive ? "text-slate-400" : "text-white"
@@ -5324,10 +5315,7 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                           "col-span-4 flex flex-col justify-center px-3 relative",
                           isRingInactive ? "bg-slate-800" : "bg-red-600/80"
                         )}>
-                          <span className={cn(
-                            "text-[13px] font-bold uppercase leading-none",
-                            isRingInactive ? "text-slate-500" : "text-black"
-                          )}>{cleanPlaceholder(b?.data.red_club || "")}</span>
+                          <span className="text-[13px] font-bold text-yellow-200 uppercase leading-none">{cleanPlaceholder(b?.data.red_club || "")}</span>
                           <span className={cn(
                             "text-[16px] font-black uppercase truncate leading-tight",
                             isRingInactive ? "text-slate-400" : "text-white"
@@ -5524,7 +5512,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                         )}>
                           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/20 to-transparent pointer-events-none" />
                           <div className="absolute -right-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">{(!current || !hasPlayers(current)) ? 'BLURRED' : 'BLUE'}</div>
-                          <p className="text-[15px] font-black text-black uppercase tracking-[0.2em] mb-1 relative z-10">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
+                          <p className="text-[15px] font-black text-yellow-200 uppercase tracking-[0.2em] mb-1 relative z-10">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
                           <h4 className={cn(
                             "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
                             getDynamicFontSize(current?.blue_name || "")
@@ -5548,7 +5536,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                           <div className="flex-1 h-full bg-red-600 flex flex-col justify-center px-10 text-right relative overflow-hidden group">
                             <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/20 to-transparent pointer-events-none" />
                             <div className="absolute -left-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">{(!current || !hasPlayers(current)) ? 'BLURRED' : 'RED'}</div>
-                            <p className="text-[15px] font-black text-black uppercase tracking-[0.2em] mb-1 relative z-10">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
+                            <p className="text-[15px] font-black text-yellow-200 uppercase tracking-[0.2em] mb-1 relative z-10">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
                             <h4 className={cn(
                               "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
                               getDynamicFontSize(current?.red_name || "")
@@ -5594,10 +5582,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                           isRingInactive ? "bg-slate-800" : "bg-blue-600/90"
                         )}>
                           {!isRingInactive && <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />}
-                          <p className={cn(
-                            "text-[13px] font-bold uppercase leading-none mb-0.5 relative z-10",
-                            isRingInactive ? "text-slate-500" : "text-black"
-                          )}>
+                          <p className="text-[13px] font-bold text-yellow-200 uppercase leading-none mb-0.5 relative z-10">
                             {bout ? cleanPlaceholder(bout.data.blue_club) : ""}
                           </p>
                           <p className={cn(
@@ -5625,10 +5610,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                             isRingInactive ? "bg-slate-800" : "bg-red-600/90"
                           )}>
                             {!isRingInactive && <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/10 to-transparent pointer-events-none" />}
-                            <p className={cn(
-                              "text-[13px] font-bold uppercase leading-none mb-0.5 relative z-10",
-                              isRingInactive ? "text-slate-500" : "text-black"
-                            )}>
+                            <p className="text-[13px] font-bold text-yellow-200 uppercase leading-none mb-0.5 relative z-10">
                               {bout ? cleanPlaceholder(bout.data.red_club) : ""}
                             </p>
                             <p className={cn(
@@ -5856,14 +5838,32 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
             </div>
             
             {publicViewLayout === 'standard' ? (
-              <div className="flex items-start gap-6">
-                <PublicFighterSide color="blue" name={current ? cleanPlaceholder(current.blue_name) : ""} club={current ? cleanPlaceholder(current.blue_club) : ""} privacy={current ? current.privacy_mode : false} />
+              <div className="flex flex-col items-center justify-center gap-6 py-4">
+                {/* BLUE SIDE */}
+                <div className="text-center space-y-1">
+                  <p className="text-[28px] font-black text-white leading-tight uppercase tracking-tight">
+                    {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_name)) : ""}
+                  </p>
+                  <p className="text-[#00a2e8] font-black text-sm uppercase tracking-widest">
+                    {current ? cleanPlaceholder(current.blue_club) : ""}
+                  </p>
+                </div>
+
                 {!current?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') && 
                   !current?.category?.toUpperCase().includes('FREESTYLE') && 
                   !(current?.category?.toUpperCase().includes('POOMSAE') && !current?.red_name) && (
                   <>
-                    <div className="text-xl font-black text-white italic mt-4">VS</div>
-                    <PublicFighterSide color="red" name={current ? cleanPlaceholder(current.red_name) : ""} club={current ? cleanPlaceholder(current.red_club) : ""} privacy={current ? current.privacy_mode : false} />
+                    <div className="text-2xl font-black text-white italic">VS</div>
+
+                    {/* RED SIDE */}
+                    <div className="text-center space-y-1">
+                      <p className="text-[28px] font-black text-white leading-tight uppercase tracking-tight">
+                        {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.red_name)) : ""}
+                      </p>
+                      <p className="text-[#ed1c24] font-black text-sm uppercase tracking-widest">
+                        {current ? cleanPlaceholder(current.red_club) : ""}
+                      </p>
+                    </div>
                   </>
                 )}
               </div>
