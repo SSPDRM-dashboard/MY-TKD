@@ -34,12 +34,14 @@ import {
   Database,
   Download,
   ArrowLeft,
-  ClipboardCheck
+  ClipboardCheck,
+  PieChart
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MatchData, RingStatus, EventData, BoutMapping, MatchHistoryItem } from './types';
 import { TASheet } from './components/TASheet';
 import { InspectionLogs } from './components/InspectionLogs';
+import { RingSummary } from './components/RingSummary';
 import { AdminMapping } from './components/AdminMapping';
 import { AIBracketSetup } from './components/AIBracketSetup';
 import { TournamentAssistant } from './components/TournamentAssistant';
@@ -627,6 +629,7 @@ export default function App() {
   const [ringControlLayout, setRingControlLayout] = useSyncedState<'winner' | 'point'>('tkd_ring_control_layout', 'winner');
   const [publicViewLayout, setPublicViewLayout] = useSyncedState<'standard' | 'point'>('tkd_public_view_layout', 'standard');
   const [showPublicStandbyQueue, setShowPublicStandbyQueue] = useSyncedState<boolean>('tkd_show_public_standby_queue', true);
+  const [showInspectionPopupSetting, setShowInspectionPopupSetting] = useSyncedState<boolean>('tkd_show_inspection_popup_setting', true);
 
   // Persistence & Cross-tab Sync handled by useSyncedState
 
@@ -2005,7 +2008,7 @@ export default function App() {
           </div>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 overflow-y-auto p-4 space-y-1">
           {user?.role === 'admin' && (
             <>
               <NavItem 
@@ -2136,6 +2139,12 @@ export default function App() {
                 onClick={() => setActiveTab('report')} 
               />
               <NavItem 
+                icon={<PieChart size={20} />} 
+                label="Ring Summary" 
+                active={activeTab === 'ring-summary'} 
+                onClick={() => setActiveTab('ring-summary')} 
+              />
+              <NavItem 
                 icon={<ClipboardCheck size={20} />} 
                 label="Inspection Logs" 
                 active={activeTab === 'inspection-logs'} 
@@ -2149,34 +2158,35 @@ export default function App() {
               />
             </>
           )}
-          <div className="pt-4 mt-4 border-t border-slate-100 space-y-2">
-            <div className="px-4 py-2 bg-slate-50 rounded-xl flex items-center gap-3">
-              <div className="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-slate-600 font-bold text-xs">
-                {user?.username.charAt(0).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-slate-800 truncate">{user?.username}</p>
-                <p className="text-[10px] text-slate-500 uppercase font-black">{user?.role}</p>
-              </div>
-              <button 
-                onClick={handleLogout}
-                className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-colors"
-                title="Logout"
-              >
-                <LogOut size={16} />
-              </button>
-            </div>
-            {(user?.role === 'admin' || user?.role === 'viewer') && (
-              <button 
-                onClick={() => setIsPublicView(true)}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-red-50 hover:text-red-600 transition-all group"
-              >
-                <QrCode size={20} className="group-hover:scale-110 transition-transform" />
-                Public View
-              </button>
-            )}
-          </div>
         </nav>
+
+        <div className="p-4 border-t border-slate-100 space-y-2">
+          <div className="px-4 py-2 bg-slate-50 rounded-xl flex items-center gap-3">
+            <div className="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-slate-600 font-bold text-xs flex-shrink-0">
+              {user?.username.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-slate-800 truncate">{user?.username}</p>
+              <p className="text-[10px] text-slate-500 uppercase font-black">{user?.role}</p>
+            </div>
+            <button 
+              onClick={handleLogout}
+              className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-colors flex-shrink-0"
+              title="Logout"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+          {(user?.role === 'admin' || user?.role === 'viewer') && (
+            <button 
+              onClick={() => setIsPublicView(true)}
+              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 hover:bg-red-50 hover:text-red-600 transition-all group"
+            >
+              <QrCode size={20} className="group-hover:scale-110 transition-transform" />
+              Public View
+            </button>
+          )}
+        </div>
 
         <div className="p-4 border-t border-slate-100">
           <div className="bg-slate-50 rounded-xl p-4">
@@ -2377,6 +2387,7 @@ export default function App() {
                             user={user}
                             boutNumberingMode={boutNumberingMode}
                             layout={ringControlLayout}
+                            showInspectionPopupSetting={showInspectionPopupSetting}
                           />
                         ))
                       )}
@@ -2450,6 +2461,7 @@ export default function App() {
               boutNumberingMode={boutNumberingMode}
               showOnlyActiveRings={showOnlyActiveRings}
               showEmptyBoutAsInactive={showEmptyBoutAsInactive}
+              isAdmin={user?.role === 'admin'}
             />
           )}
 
@@ -2464,6 +2476,7 @@ export default function App() {
               boutNumberingMode={boutNumberingMode}
               showOnlyActiveRings={showOnlyActiveRings}
               showEmptyBoutAsInactive={showEmptyBoutAsInactive}
+              isAdmin={user?.role === 'admin'}
             />
           )}
 
@@ -2478,6 +2491,7 @@ export default function App() {
               boutNumberingMode={boutNumberingMode}
               showOnlyActiveRings={showOnlyActiveRings}
               showEmptyBoutAsInactive={showEmptyBoutAsInactive}
+              isAdmin={user?.role === 'admin'}
             />
           )}
 
@@ -2532,6 +2546,7 @@ export default function App() {
                       user={user}
                       boutNumberingMode={boutNumberingMode}
                       layout={ringControlLayout}
+                      showInspectionPopupSetting={showInspectionPopupSetting}
                     />
                   ))
                 ) : (
@@ -2557,6 +2572,7 @@ export default function App() {
                           user={user}
                           boutNumberingMode={boutNumberingMode}
                           layout={ringControlLayout}
+                          showInspectionPopupSetting={showInspectionPopupSetting}
                         />
                       ))}
                     </div>
@@ -2701,6 +2717,19 @@ export default function App() {
               setBoutQueue={setBoutQueue}
               boutNumberingMode={boutNumberingMode}
             />
+          )}
+
+          {activeTab === 'ring-summary' && user?.role === 'admin' && (
+            <div className="max-w-6xl mx-auto">
+              <RingSummary 
+                rings={rings} 
+                boutQueue={boutQueue} 
+                matchHistory={matchHistory} 
+                boutNumberingMode={boutNumberingMode} 
+                ringNamingMode={ringNamingMode}
+                currentEventId={currentEventId}
+              />
+            </div>
           )}
 
           {activeTab === 'inspection-logs' && (user?.role === 'admin' || user?.role === 'ta') && (
@@ -2953,6 +2982,32 @@ export default function App() {
                           )}
                         >
                           Hide
+                        </button>
+                      </div>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-slate-700">Ring View Inspection Warning</p>
+                        <p className="text-[10px] text-slate-500">Show pop-up warning in ring controls if competitor has not passed inspection</p>
+                      </div>
+                      <div className="flex bg-slate-200 p-1 rounded-lg">
+                        <button 
+                          onClick={() => setShowInspectionPopupSetting(true)}
+                          className={cn(
+                            "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                            showInspectionPopupSetting ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                          )}
+                        >
+                          Enable
+                        </button>
+                        <button 
+                          onClick={() => setShowInspectionPopupSetting(false)}
+                          className={cn(
+                            "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                            !showInspectionPopupSetting ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                          )}
+                        >
+                          Disable
                         </button>
                       </div>
                     </div>
@@ -3356,6 +3411,13 @@ export default function App() {
               <span className="text-[10px] font-bold">Rings</span>
             </button>
             <button 
+              onClick={() => setActiveTab('ring-summary')}
+              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'ring-summary' ? "text-red-600" : "text-slate-400")}
+            >
+              <PieChart size={20} />
+              <span className="text-[10px] font-bold">Summary</span>
+            </button>
+            <button 
               onClick={() => setActiveTab('ai-setup')}
               className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'ai-setup' ? "text-red-600" : "text-slate-400")}
             >
@@ -3719,6 +3781,7 @@ interface RingCardProps {
   user?: UserAccount | null;
   boutNumberingMode?: 'numeric' | 'alphanumeric';
   layout?: 'winner' | 'point';
+  showInspectionPopupSetting?: boolean;
 }
 
 interface EditResultModalProps {
@@ -4379,7 +4442,7 @@ function AddRingModal({ onClose, onAdd, existingRings, namingMode }: AddRingModa
   );
 }
 
-function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onPointsUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, currentEventId, onForceSync, isAutoPull, onToggleAutoPull, user, boutNumberingMode = 'alphanumeric', layout = 'winner' }: RingCardProps & { currentEventId?: string | null, onForceSync?: (data: MatchData) => void }) {
+function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onPointsUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, currentEventId, onForceSync, isAutoPull, onToggleAutoPull, user, boutNumberingMode = 'alphanumeric', layout = 'winner', showInspectionPopupSetting = true }: RingCardProps & { currentEventId?: string | null, onForceSync?: (data: MatchData) => void }) {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isFinalBoutSelection, setIsFinalBoutSelection] = useState(false);
   const [isSyncingLocal, setIsSyncingLocal] = useState(false);
@@ -4742,7 +4805,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
         )}
       </div>
 
-      {showInspectionWarning && (
+      {showInspectionPopupSetting && showInspectionWarning && (
         <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
@@ -4804,7 +4867,10 @@ function FighterSide({ color, name, club, privacy, inspected }: { color: 'blue' 
       )}>
         {privacy ? "---" : cleanPlaceholder(name)}
       </p>
-      <p className="text-[15px] font-bold text-yellow-200 uppercase">{cleanPlaceholder(club)}</p>
+      <p className={cn(
+        "text-[15px] font-bold uppercase",
+        color === 'blue' ? "text-[#00a2e8]" : "text-[#ed1c24]"
+      )}>{cleanPlaceholder(club)}</p>
     </div>
   );
 }
@@ -4895,11 +4961,14 @@ interface PublicRingCardProps {
   publicViewLayout?: 'standard' | 'point';
 }
 
-function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean }) {
+function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, isAdmin = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, isAdmin?: boolean }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
-  const ringsPerPage = 4;
+  const [ringsPerPage, setRingsPerPage] = React.useState<number>(() => {
+    const saved = localStorage.getItem('tkd_standby_rings_per_page');
+    return saved ? parseInt(saved, 10) : 4;
+  });
   
   const effectiveRings = showOnlyActiveRings ? rings.filter(r => r.currentBout && hasPlayers(r.currentBout)) : rings;
   const totalPages = Math.ceil(effectiveRings.length / ringsPerPage);
@@ -4937,9 +5006,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
     };
   }, [isFullscreen, totalPages]);
 
-  const displayedRings = isFullscreen 
-    ? effectiveRings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
-    : effectiveRings;
+  const displayedRings = effectiveRings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage);
 
   return (
     <div 
@@ -4965,6 +5032,47 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
           </div>
         </div>
         <div className="flex items-center gap-6">
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2 bg-[#0d1526] border border-white/10 px-3 py-1.5 rounded-2xl">
+              <button
+                onClick={() => setCurrentPage(prev => (prev - 1 + totalPages) % totalPages)}
+                className="p-1 hover:bg-slate-800 text-white rounded transition-colors"
+                title="Previous Page"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest px-1">
+                {currentPage + 1}/{totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(prev => (prev + 1) % totalPages)}
+                className="p-1 hover:bg-slate-800 text-white rounded transition-colors"
+                title="Next Page"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          )}
+          {isAdmin && (
+            <div className="flex items-center gap-2 bg-[#0d1526]/80 text-white rounded-2xl border border-white/10 px-3 py-1.5">
+              <span className="text-[11px] font-black uppercase text-slate-400 tracking-[0.15em] leading-none select-none">Show Layout:</span>
+              <select
+                value={ringsPerPage === 999 ? 'all' : ringsPerPage}
+                onChange={(e) => {
+                  const val = e.target.value === 'all' ? 999 : parseInt(e.target.value, 10);
+                  setRingsPerPage(val);
+                  localStorage.setItem('tkd_standby_rings_per_page', val.toString());
+                  setCurrentPage(0);
+                }}
+                className="bg-transparent text-white text-xs font-black outline-none border-none focus:ring-0 cursor-pointer pr-1"
+              >
+                {[1, 2, 3, 4, 5, 6, 8].map(n => (
+                  <option key={n} value={n} className="bg-[#1a2235] text-white font-bold">{n} Court{n > 1 ? 's' : ''}</option>
+                ))}
+                <option value="all" className="bg-[#1a2235] text-white font-bold">All Courts</option>
+              </select>
+            </div>
+          )}
           <button 
             onClick={toggleFullScreen}
             className="p-3 bg-slate-900 text-white hover:bg-slate-800 rounded-2xl border border-slate-800 transition-all group"
@@ -5112,11 +5220,14 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
   );
 }
 
-function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean }) {
+function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, isAdmin = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, isAdmin?: boolean }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
-  const ringsPerPage = 4;
+  const [ringsPerPage, setRingsPerPage] = React.useState<number>(() => {
+    const saved = localStorage.getItem('tkd_points_rings_per_page');
+    return saved ? parseInt(saved, 10) : 4;
+  });
   
   const effectiveRings = showOnlyActiveRings ? rings.filter(r => r.currentBout && hasPlayers(r.currentBout)) : rings;
   const totalPages = Math.ceil(effectiveRings.length / ringsPerPage);
@@ -5154,9 +5265,7 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
     };
   }, [isFullscreen, totalPages]);
 
-  const displayedRings = isFullscreen 
-    ? effectiveRings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
-    : effectiveRings;
+  const displayedRings = effectiveRings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage);
 
   return (
     <div 
@@ -5182,6 +5291,47 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
           </div>
         </div>
         <div className="flex items-center gap-6">
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2 bg-[#0d1526] border border-white/10 px-3 py-1.5 rounded-2xl">
+              <button
+                onClick={() => setCurrentPage(prev => (prev - 1 + totalPages) % totalPages)}
+                className="p-1 hover:bg-slate-800 text-white rounded transition-colors"
+                title="Previous Page"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest px-1">
+                {currentPage + 1}/{totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(prev => (prev + 1) % totalPages)}
+                className="p-1 hover:bg-slate-800 text-white rounded transition-colors"
+                title="Next Page"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          )}
+          {isAdmin && (
+            <div className="flex items-center gap-2 bg-[#0d1526]/80 text-white rounded-2xl border border-white/10 px-3 py-1.5">
+              <span className="text-[11px] font-black uppercase text-slate-400 tracking-[0.15em] leading-none select-none">Show Layout:</span>
+              <select
+                value={ringsPerPage === 999 ? 'all' : ringsPerPage}
+                onChange={(e) => {
+                  const val = e.target.value === 'all' ? 999 : parseInt(e.target.value, 10);
+                  setRingsPerPage(val);
+                  localStorage.setItem('tkd_points_rings_per_page', val.toString());
+                  setCurrentPage(0);
+                }}
+                className="bg-transparent text-white text-xs font-black outline-none border-none focus:ring-0 cursor-pointer pr-1"
+              >
+                {[1, 2, 3, 4, 5, 6, 8].map(n => (
+                  <option key={n} value={n} className="bg-[#1a2235] text-white font-bold">{n} Ring{n > 1 ? 's' : ''}</option>
+                ))}
+                <option value="all" className="bg-[#1a2235] text-white font-bold">All Rings</option>
+              </select>
+            </div>
+          )}
           <button 
             onClick={toggleFullScreen}
             className="p-3 bg-slate-900 text-white hover:bg-slate-800 rounded-2xl border border-slate-800 transition-all group"
@@ -5338,11 +5488,14 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
 
 
 
-function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean }) {
+function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, isAdmin = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, isAdmin?: boolean }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
-  const ringsPerPage = 3;
+  const [ringsPerPage, setRingsPerPage] = React.useState<number>(() => {
+    const saved = localStorage.getItem('tkd_onsite_rings_per_page');
+    return saved ? parseInt(saved, 10) : 3;
+  });
 
   const effectiveRings = showOnlyActiveRings ? rings.filter(r => r.currentBout && hasPlayers(r.currentBout)) : rings;
   const totalPages = Math.ceil(effectiveRings.length / ringsPerPage);
@@ -5381,9 +5534,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
     };
   }, [isFullscreen, totalPages]);
 
-  const displayedRings = isFullscreen 
-    ? effectiveRings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage)
-    : effectiveRings;
+  const displayedRings = effectiveRings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage);
 
   const getDynamicFontSize = (name: string) => {
     const len = name.length;
@@ -5414,6 +5565,47 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
             </div>
           </div>
           <div className="flex items-center gap-6">
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-2xl">
+                <button
+                  onClick={() => setCurrentPage(prev => (prev - 1 + totalPages) % totalPages)}
+                  className="p-1 hover:bg-slate-800 text-white rounded transition-colors"
+                  title="Previous Page"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest px-1">
+                  {currentPage + 1}/{totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(prev => (prev + 1) % totalPages)}
+                  className="p-1 hover:bg-slate-800 text-white rounded transition-colors"
+                  title="Next Page"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            )}
+            {isAdmin && (
+              <div className="flex items-center gap-2 bg-slate-900 text-white rounded-2xl border border-slate-850 px-3 py-1.5">
+                <span className="text-[11px] font-black uppercase text-slate-400 tracking-[0.15em] leading-none select-none">Show Layout:</span>
+                <select
+                  value={ringsPerPage === 999 ? 'all' : ringsPerPage}
+                  onChange={(e) => {
+                    const val = e.target.value === 'all' ? 999 : parseInt(e.target.value, 10);
+                    setRingsPerPage(val);
+                    localStorage.setItem('tkd_onsite_rings_per_page', val.toString());
+                    setCurrentPage(0);
+                  }}
+                  className="bg-transparent text-white text-xs font-black outline-none border-none focus:ring-0 cursor-pointer pr-1"
+                >
+                  {[1, 2, 3, 4, 5, 6, 8].map(n => (
+                    <option key={n} value={n} className="bg-slate-900 text-white font-bold">{n} Court{n > 1 ? 's' : ''}</option>
+                  ))}
+                  <option value="all" className="bg-slate-900 text-white font-bold">All Courts</option>
+                </select>
+              </div>
+            )}
             <div className="flex flex-col items-end">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
@@ -5743,8 +5935,52 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
 
       <footer className="p-8 bg-slate-800 border-t border-slate-700 mt-12 text-center space-y-4">
         <div className="flex flex-col items-center gap-2">
-          <div className="w-12 h-12 bg-white p-1 rounded-lg">
-            <QrCode size={40} className="text-slate-900" />
+          <div className="w-12 h-12 bg-white p-1 rounded-lg flex items-center justify-center">
+            <svg viewBox="0 0 29 29" className="w-10 h-10 fill-slate-900" style={{ shapeRendering: 'crispEdges' }}>
+              {[
+                [1,1,1,1,1,1,1,0,1,0,0,1,0,1,1,0,1,0,1,0,0,0,1,1,1,1,1,1,1],
+                [1,0,0,0,0,0,1,0,0,1,0,1,0,1,0,1,0,1,0,1,0,1,1,0,0,0,0,0,1],
+                [1,0,1,1,1,0,1,0,0,1,0,1,1,0,1,0,1,1,0,1,1,0,1,0,1,1,1,0,1],
+                [1,0,1,1,1,0,1,0,0,1,1,1,0,1,0,1,1,0,1,1,0,0,1,0,1,1,1,0,1],
+                [1,0,1,1,1,0,1,0,1,0,0,1,1,0,1,1,1,1,0,1,0,0,1,0,1,1,1,0,1],
+                [1,0,0,0,0,0,1,0,0,0,1,0,1,0,0,0,0,1,0,1,1,1,1,0,0,0,0,0,1],
+                [1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1],
+                [0,0,0,0,0,0,0,0,1,0,0,0,1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
+                [1,1,0,0,1,1,0,1,1,1,1,0,0,1,0,0,0,1,1,0,0,0,0,1,1,0,1,0,0],
+                [0,1,0,1,0,0,1,1,1,0,0,1,1,0,1,1,1,1,0,1,0,1,0,1,1,0,1,1,1],
+                [0,1,0,1,1,0,1,0,1,1,1,0,1,1,0,0,1,1,0,1,1,1,0,1,0,1,1,1,1],
+                [0,0,0,1,1,1,0,1,0,0,0,1,0,0,0,1,1,1,0,1,0,0,1,1,1,0,1,0,1],
+                [1,0,0,1,1,1,1,1,0,1,1,0,1,0,1,1,1,1,1,0,0,0,1,1,1,0,0,1,0],
+                [1,1,0,0,1,0,0,1,1,1,0,1,0,0,1,1,1,0,0,1,1,1,1,1,0,0,1,1,0],
+                [0,1,1,1,1,1,0,0,1,0,1,0,1,1,0,1,0,1,1,1,0,1,1,1,1,1,0,1,1],
+                [0,1,1,1,1,1,1,0,1,0,0,1,1,0,1,1,0,0,0,0,1,0,0,0,1,1,0,1,1],
+                [0,1,1,1,0,0,1,1,0,1,0,1,1,0,1,1,0,1,0,0,0,0,1,0,1,0,1,1,0],
+                [1,0,0,0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,1,0,1,1,1,1,1,0,0,1,0],
+                [0,1,1,1,0,0,1,0,1,0,0,0,1,1,1,1,0,0,1,1,1,1,0,0,0,0,1,0,0],
+                [0,0,0,0,0,1,1,0,0,1,0,0,1,1,1,1,1,0,1,0,0,1,1,1,1,1,0,1,0],
+                [0,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,0,1,1,0,0,1],
+                [0,0,0,0,0,0,0,0,1,1,0,0,1,1,0,1,1,1,0,0,1,0,1,1,0,1,1,1,1],
+                [1,1,1,1,1,1,1,0,1,0,1,0,0,0,0,0,0,1,1,1,1,1,0,0,1,0,1,1,0],
+                [1,0,0,0,0,0,1,0,1,1,0,1,0,1,1,1,0,0,1,0,1,0,0,1,0,0,1,0,0],
+                [1,0,1,1,1,0,1,0,0,1,0,1,1,0,0,1,1,1,0,1,1,0,0,1,1,1,1,1,0],
+                [1,0,1,1,1,0,1,0,1,1,1,1,0,1,0,0,1,0,1,0,1,0,1,1,0,1,0,0,1],
+                [1,0,1,1,1,0,1,0,1,1,0,1,0,1,0,1,1,0,1,0,1,0,0,0,0,0,1,1,0],
+                [1,0,0,0,0,0,1,0,1,1,1,0,1,0,1,1,0,1,0,0,0,1,1,1,1,0,1,0,1],
+                [1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,0,0,1,0,0,0,1,1,0,0,1,1]
+              ].map((row, rIdx) =>
+                row.map((cell, cIdx) =>
+                  cell ? (
+                    <rect
+                      key={`${rIdx}-${cIdx}`}
+                      x={cIdx}
+                      y={rIdx}
+                      width="1"
+                      height="1"
+                    />
+                  ) : null
+                )
+              )}
+            </svg>
           </div>
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Scan for Live Updates</p>
         </div>
