@@ -38,6 +38,7 @@ import {
   PieChart
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { QRCodeSVG } from 'qrcode.react';
 import { MatchData, RingStatus, EventData, BoutMapping, MatchHistoryItem } from './types';
 import { TASheet } from './components/TASheet';
 import { InspectionLogs } from './components/InspectionLogs';
@@ -5871,30 +5872,30 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
   return (
     <div className="min-h-[100dvh] bg-slate-900 text-white font-sans overflow-x-hidden flex flex-col">
       {/* Public Header */}
-      <header className="p-6 bg-slate-800 border-b border-slate-700 flex items-center justify-between sticky top-0 z-50 transition-all">
+      <header className="p-4 sm:p-5 bg-slate-800 border-b border-slate-700 flex items-center justify-between sticky top-0 z-50 transition-all">
         <div 
-          className="flex items-center gap-3 cursor-pointer select-none"
+          className="flex items-center gap-2.5 cursor-pointer select-none"
           onClick={handleLogoClick}
         >
-          <div className="w-10 h-10 bg-red-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-red-900/20">
-            <Trophy size={24} />
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-red-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-red-900/20">
+            <Trophy className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div>
-            <h1 className="font-black text-xl leading-tight tracking-tighter">MY-TKD LIVE</h1>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Web View Dashboard</p>
+            <h1 className="font-black text-lg sm:text-xl leading-tight tracking-tighter">MY-TKD LIVE</h1>
+            <p className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-widest">Web View Dashboard</p>
           </div>
         </div>
       </header>
 
-      <div className="p-4 md:p-8 space-y-8 max-w-[1600px] mx-auto flex-1 w-full">
-        <div className="grid grid-cols-1 gap-8">
+      <div className="p-3 sm:p-6 md:p-8 space-y-6 md:space-y-8 max-w-[1600px] mx-auto flex-1 w-full">
+        <div className="grid grid-cols-1 gap-6 md:gap-8">
           {/* Mats Grid */}
-          <div className="space-y-6">
-            <h3 className="text-lg font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-              <LayoutDashboard size={20} className="text-red-500" />
+          <div className="space-y-4 md:space-y-6">
+            <h3 className="text-sm sm:text-base md:text-lg font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+              <LayoutDashboard size={18} className="text-red-500" />
               Live Ring Status
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4 md:gap-6">
               {displayedRings.map((ring) => {
                 const ringQueueAll = boutQueue
                   .filter(q => q.data.ring === ring.ringNumber)
@@ -5933,64 +5934,26 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
         </div>
       </div>
 
-      <footer className="p-8 bg-slate-800 border-t border-slate-700 mt-12 text-center space-y-4">
+      <footer className="p-6 bg-slate-800 border-t border-slate-700 mt-8 text-center space-y-4">
         <div className="flex flex-col items-center gap-2">
-          <div className="w-12 h-12 bg-white p-1 rounded-lg flex items-center justify-center">
-            <svg viewBox="0 0 29 29" className="w-10 h-10 fill-slate-900" style={{ shapeRendering: 'crispEdges' }}>
-              {[
-                [1,1,1,1,1,1,1,0,1,0,0,1,0,1,1,0,1,0,1,0,0,0,1,1,1,1,1,1,1],
-                [1,0,0,0,0,0,1,0,0,1,0,1,0,1,0,1,0,1,0,1,0,1,1,0,0,0,0,0,1],
-                [1,0,1,1,1,0,1,0,0,1,0,1,1,0,1,0,1,1,0,1,1,0,1,0,1,1,1,0,1],
-                [1,0,1,1,1,0,1,0,0,1,1,1,0,1,0,1,1,0,1,1,0,0,1,0,1,1,1,0,1],
-                [1,0,1,1,1,0,1,0,1,0,0,1,1,0,1,1,1,1,0,1,0,0,1,0,1,1,1,0,1],
-                [1,0,0,0,0,0,1,0,0,0,1,0,1,0,0,0,0,1,0,1,1,1,1,0,0,0,0,0,1],
-                [1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1],
-                [0,0,0,0,0,0,0,0,1,0,0,0,1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
-                [1,1,0,0,1,1,0,1,1,1,1,0,0,1,0,0,0,1,1,0,0,0,0,1,1,0,1,0,0],
-                [0,1,0,1,0,0,1,1,1,0,0,1,1,0,1,1,1,1,0,1,0,1,0,1,1,0,1,1,1],
-                [0,1,0,1,1,0,1,0,1,1,1,0,1,1,0,0,1,1,0,1,1,1,0,1,0,1,1,1,1],
-                [0,0,0,1,1,1,0,1,0,0,0,1,0,0,0,1,1,1,0,1,0,0,1,1,1,0,1,0,1],
-                [1,0,0,1,1,1,1,1,0,1,1,0,1,0,1,1,1,1,1,0,0,0,1,1,1,0,0,1,0],
-                [1,1,0,0,1,0,0,1,1,1,0,1,0,0,1,1,1,0,0,1,1,1,1,1,0,0,1,1,0],
-                [0,1,1,1,1,1,0,0,1,0,1,0,1,1,0,1,0,1,1,1,0,1,1,1,1,1,0,1,1],
-                [0,1,1,1,1,1,1,0,1,0,0,1,1,0,1,1,0,0,0,0,1,0,0,0,1,1,0,1,1],
-                [0,1,1,1,0,0,1,1,0,1,0,1,1,0,1,1,0,1,0,0,0,0,1,0,1,0,1,1,0],
-                [1,0,0,0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,1,0,1,1,1,1,1,0,0,1,0],
-                [0,1,1,1,0,0,1,0,1,0,0,0,1,1,1,1,0,0,1,1,1,1,0,0,0,0,1,0,0],
-                [0,0,0,0,0,1,1,0,0,1,0,0,1,1,1,1,1,0,1,0,0,1,1,1,1,1,0,1,0],
-                [0,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,0,1,1,0,0,1],
-                [0,0,0,0,0,0,0,0,1,1,0,0,1,1,0,1,1,1,0,0,1,0,1,1,0,1,1,1,1],
-                [1,1,1,1,1,1,1,0,1,0,1,0,0,0,0,0,0,1,1,1,1,1,0,0,1,0,1,1,0],
-                [1,0,0,0,0,0,1,0,1,1,0,1,0,1,1,1,0,0,1,0,1,0,0,1,0,0,1,0,0],
-                [1,0,1,1,1,0,1,0,0,1,0,1,1,0,0,1,1,1,0,1,1,0,0,1,1,1,1,1,0],
-                [1,0,1,1,1,0,1,0,1,1,1,1,0,1,0,0,1,0,1,0,1,0,1,1,0,1,0,0,1],
-                [1,0,1,1,1,0,1,0,1,1,0,1,0,1,0,1,1,0,1,0,1,0,0,0,0,0,1,1,0],
-                [1,0,0,0,0,0,1,0,1,1,1,0,1,0,1,1,0,1,0,0,0,1,1,1,1,0,1,0,1],
-                [1,1,1,1,1,1,1,0,1,0,1,0,1,1,1,0,1,0,0,1,0,0,0,1,1,0,0,1,1]
-              ].map((row, rIdx) =>
-                row.map((cell, cIdx) =>
-                  cell ? (
-                    <rect
-                      key={`${rIdx}-${cIdx}`}
-                      x={cIdx}
-                      y={rIdx}
-                      width="1"
-                      height="1"
-                    />
-                  ) : null
-                )
-              )}
-            </svg>
+          <div className="w-32 h-32 bg-white p-3 rounded-2xl flex items-center justify-center shadow-xl transition-all duration-300 hover:scale-105 border border-slate-700/50">
+            <QRCodeSVG 
+              value={`${window.location.protocol}//${window.location.host}${window.location.pathname}?view=public`}
+              size={104}
+              bgColor="#ffffff"
+              fgColor="#0f172a"
+              level="H"
+            />
           </div>
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Scan for Live Updates</p>
+          <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-300 mt-1">Scan for Live Updates</p>
         </div>
         <div className="flex flex-col items-center gap-2">
-          <p className="text-xs text-slate-500 font-medium">© 2026 MY-TKD Tournament Management System</p>
+          <p className="text-[11px] text-slate-500 font-medium">© 2026 MY-TKD Tournament Management System</p>
           {/* Hide back button in strict public mode */}
           {!isStrictPublic && (
             <button 
               onClick={onBack}
-              className="px-4 py-2 bg-slate-700/30 hover:bg-slate-700 text-[10px] text-slate-400 hover:text-white uppercase font-black tracking-widest transition-all mt-4 rounded-lg border border-slate-700/50"
+              className="px-3.5 py-1.5 bg-slate-700/30 hover:bg-slate-700 text-[10px] text-slate-400 hover:text-white uppercase font-black tracking-widest transition-all mt-2 rounded-lg border border-slate-700/50"
             >
               {isSpectator ? "Operator Access" : "Exit Public View"}
             </button>
@@ -6030,30 +5993,30 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
   }, [ringQueue]);
   
   return (
-    <div className="bg-slate-800 border border-slate-700 rounded-3xl overflow-hidden shadow-2xl">
-      <div className="p-4 bg-slate-700/50 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center font-black text-xl shadow-lg shadow-red-900/20">
+    <div className="bg-slate-800 border border-slate-700 rounded-xl md:rounded-3xl overflow-hidden shadow-2xl">
+      <div className="p-2 sm:p-4 bg-slate-700/50 flex items-center justify-between">
+        <div className="flex items-center gap-1.5 sm:gap-4">
+          <div className="w-8 h-8 sm:w-12 sm:h-12 bg-red-600 rounded-lg sm:rounded-2xl flex items-center justify-center font-black text-sm sm:text-xl shadow-lg shadow-red-900/20">
             {ringName}
           </div>
           <div>
-            <h4 className="font-black text-[20px] uppercase tracking-widest text-white">Ring {ringName}</h4>
+            <h4 className="font-black text-xs sm:text-[20px] uppercase tracking-wider sm:tracking-widest text-white">Ring {ringName}</h4>
             {!isRingInactive && (
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                <span className="text-[10px] font-bold text-green-500 uppercase tracking-widest">Live Match</span>
+              <div className="flex items-center gap-1.5">
+                <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-green-500 rounded-full animate-pulse" />
+                <span className="text-[7px] sm:text-[10px] font-bold text-green-500 uppercase tracking-wider sm:tracking-widest">Live Match</span>
               </div>
             )}
           </div>
         </div>
         {current && (
           <div className="text-right">
-            <p className="text-[40px] font-black text-white leading-none">
+            <p className="text-base sm:text-3xl md:text-[40px] font-black text-white leading-none">
               {hasPlayers(current) ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
               {showTotalBouts && (
                 <>
-                  <span className="mx-2 text-white/40">/</span>
-                  {ring.totalBouts || queueCount || 0}
+                  <span className="mx-1 sm:mx-2 text-white/40">/</span>
+                  <span className="text-xs sm:text-2xl md:text-[30px]">{ring.totalBouts || queueCount || 0}</span>
                 </>
               )}
             </p>
@@ -6061,26 +6024,28 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
         )}
       </div>
       
-      <div className="p-6 space-y-4">
+      <div className="p-2.5 sm:p-6 space-y-2.5 sm:space-y-4">
         {(!current || !hasPlayers(current)) && showEmptyBoutAsInactive ? (
-          <div className="py-8 flex flex-col items-center justify-center text-slate-600 space-y-4">
-            <AlertCircle size={48} />
-            <p className="text-sm font-black uppercase tracking-widest">Ring Inactive</p>
+          <div className="py-4 sm:py-8 flex flex-col items-center justify-center text-slate-600 space-y-2 sm:space-y-4">
+            <AlertCircle className="w-8 h-8 sm:w-12 sm:h-12" />
+            <p className="text-[10px] sm:text-sm font-black uppercase tracking-widest">Ring Inactive</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-2.5 sm:space-y-4">
             <div className="flex items-center justify-center">
-              <span className="text-[20px] font-black text-white uppercase tracking-widest text-center leading-tight">{current ? cleanPlaceholder(formatCategoryName(current.category)) : "---"}</span>
+              <span className="text-[11px] sm:text-base md:text-[20px] font-black text-white uppercase tracking-widest text-center leading-tight">
+                {current ? cleanPlaceholder(formatCategoryName(current.category)) : "---"}
+              </span>
             </div>
             
             {publicViewLayout === 'standard' ? (
-              <div className="flex flex-col items-center justify-center gap-6 py-4">
+              <div className="flex flex-col items-center justify-center gap-2 sm:gap-6 py-1 sm:py-4">
                 {/* BLUE SIDE */}
-                <div className="text-center space-y-1">
-                  <p className="text-[28px] font-black text-white leading-tight uppercase tracking-tight">
+                <div className="text-center space-y-0.5 w-full px-1 sm:px-2">
+                  <p className="text-xs sm:text-xl md:text-[28px] font-black text-white leading-tight uppercase tracking-tight break-words mx-auto max-w-[280px] sm:max-w-none">
                     {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_name)) : ""}
                   </p>
-                  <p className="text-[#00a2e8] font-black text-sm uppercase tracking-widest">
+                  <p className="text-[#00a2e8] font-black text-[8px] sm:text-sm uppercase tracking-widest leading-none">
                     {current ? cleanPlaceholder(current.blue_club) : ""}
                   </p>
                 </div>
@@ -6089,14 +6054,14 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                   !current?.category?.toUpperCase().includes('FREESTYLE') && 
                   !(current?.category?.toUpperCase().includes('POOMSAE') && !current?.red_name) && (
                   <>
-                    <div className="text-2xl font-black text-white italic">VS</div>
+                    <div className="text-[10px] sm:text-xl font-black text-white italic leading-none my-0.5">VS</div>
 
                     {/* RED SIDE */}
-                    <div className="text-center space-y-1">
-                      <p className="text-[28px] font-black text-white leading-tight uppercase tracking-tight">
+                    <div className="text-center space-y-0.5 w-full px-1 sm:px-2">
+                      <p className="text-xs sm:text-xl md:text-[28px] font-black text-white leading-tight uppercase tracking-tight break-words mx-auto max-w-[280px] sm:max-w-none">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.red_name)) : ""}
                       </p>
-                      <p className="text-[#ed1c24] font-black text-sm uppercase tracking-widest">
+                      <p className="text-[#ed1c24] font-black text-[8px] sm:text-sm uppercase tracking-widest leading-none">
                         {current ? cleanPlaceholder(current.red_club) : ""}
                       </p>
                     </div>
@@ -6104,20 +6069,20 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                 )}
               </div>
             ) : (
-              <div className="mt-4 space-y-6">
+              <div className="mt-3 sm:mt-4 space-y-4 sm:space-y-6">
                 {/* Points Table */}
-                <div className="mx-auto w-full max-w-sm grid grid-cols-3 divide-x divide-slate-800 border border-slate-700 bg-slate-800/80">
-                  <div className="col-span-3 grid grid-cols-3 divide-x divide-slate-700 bg-white text-black font-black text-center py-2 text-sm uppercase">
+                <div className="mx-auto w-full max-w-sm grid grid-cols-3 divide-x divide-slate-800 border border-slate-700 bg-slate-800/80 rounded-lg overflow-hidden">
+                  <div className="col-span-3 grid grid-cols-3 divide-x divide-slate-700 bg-white text-black font-black text-center py-1 sm:py-2 text-[11px] sm:text-sm uppercase">
                     <div>R1</div>
                     <div>R2</div>
                     <div>R3</div>
                   </div>
-                  <div className="col-span-3 grid grid-cols-3 divide-x divide-black/20 bg-[#00a2e8] text-white font-black text-center py-3 text-2xl border-t border-slate-800">
+                  <div className="col-span-3 grid grid-cols-3 divide-x divide-black/20 bg-[#00a2e8] text-white font-black text-center py-2 sm:py-3 text-xl sm:text-2xl border-t border-slate-800">
                     <div className={cn((parseInt(current?.points?.r1Blue||'0')||0) > (parseInt(current?.points?.r1Red||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r1Blue || '0'}</div>
                     <div className={cn((parseInt(current?.points?.r2Blue||'0')||0) > (parseInt(current?.points?.r2Red||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r2Blue || '0'}</div>
                     <div className={cn((parseInt(current?.points?.r3Blue||'0')||0) > (parseInt(current?.points?.r3Red||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r3Blue || '0'}</div>
                   </div>
-                  <div className="col-span-3 grid grid-cols-3 divide-x divide-black/20 bg-[#ed1c24] text-white font-black text-center py-3 text-2xl border-t border-slate-800">
+                  <div className="col-span-3 grid grid-cols-3 divide-x divide-black/20 bg-[#ed1c24] text-white font-black text-center py-2 sm:py-3 text-xl sm:text-2xl border-t border-slate-800">
                     <div className={cn((parseInt(current?.points?.r1Red||'0')||0) > (parseInt(current?.points?.r1Blue||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r1Red || '0'}</div>
                     <div className={cn((parseInt(current?.points?.r2Red||'0')||0) > (parseInt(current?.points?.r2Blue||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r2Red || '0'}</div>
                     <div className={cn((parseInt(current?.points?.r3Red||'0')||0) > (parseInt(current?.points?.r3Blue||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r3Red || '0'}</div>
@@ -6127,36 +6092,36 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                 {!current?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') && 
                   !current?.category?.toUpperCase().includes('FREESTYLE') && 
                   !(current?.category?.toUpperCase().includes('POOMSAE') && !current?.red_name) ? (
-                  <div className="grid grid-cols-[1fr,auto,1fr] gap-4 items-start pb-2">
-                    <div className="flex flex-col">
-                      <div className="h-1.5 w-full bg-[#00a2e8] rounded-full mb-3 shadow-[0_0_8px_rgba(0,162,232,0.8)]" />
-                      <span className="font-bold text-white text-lg leading-tight line-clamp-2 break-words text-left">
+                  <div className="grid grid-cols-[1fr,auto,1fr] gap-1.5 sm:gap-4 items-start pb-1">
+                    <div className="flex flex-col min-w-0">
+                      <div className="h-0.5 w-full bg-[#00a2e8] rounded-full mb-1 sm:mb-2 shadow-[0_0_8px_rgba(0,162,232,0.8)]" />
+                      <span className="font-bold text-white text-xs sm:text-lg leading-tight line-clamp-2 break-words text-left">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_name)) : ""}
                       </span>
-                      <span className="font-bold text-[#00a2e8] text-sm leading-tight line-clamp-1 break-words text-left mt-1">
+                      <span className="font-bold text-[#00a2e8] text-[9px] sm:text-sm leading-tight line-clamp-1 break-words text-left mt-0.5">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_club)) : ""}
                       </span>
                     </div>
 
-                    <div className="text-xl font-black text-white italic pt-4">VS</div>
+                    <div className="text-[10px] sm:text-xl font-black text-white italic pt-1">VS</div>
 
-                    <div className="flex flex-col">
-                      <div className="h-1.5 w-full bg-[#ed1c24] rounded-full mb-3 shadow-[0_0_8px_rgba(237,28,36,0.8)]" />
-                      <span className="font-bold text-white text-lg leading-tight line-clamp-2 break-words text-left">
+                    <div className="flex flex-col min-w-0">
+                      <div className="h-0.5 w-full bg-[#ed1c24] rounded-full mb-1 sm:mb-2 shadow-[0_0_8px_rgba(237,28,36,0.8)]" />
+                      <span className="font-bold text-white text-xs sm:text-lg leading-tight line-clamp-2 break-words text-left">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.red_name)) : ""}
                       </span>
-                      <span className="font-bold text-[#ed1c24] text-sm leading-tight line-clamp-1 break-words text-left mt-1">
+                      <span className="font-bold text-[#ed1c24] text-[9px] sm:text-sm leading-tight line-clamp-1 break-words text-left mt-0.5">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.red_club)) : ""}
                       </span>
                     </div>
                   </div>
                 ) : (
-                  <div className="flex flex-col max-w-sm mx-auto">
-                    <div className="h-1.5 w-full bg-[#00a2e8] rounded-full mb-3 shadow-[0_0_8px_rgba(0,162,232,0.8)]" />
-                    <span className="font-bold text-white text-lg leading-tight line-clamp-2 break-words text-center">
+                  <div className="flex flex-col max-w-sm mx-auto w-full px-1">
+                    <div className="h-0.5 w-full bg-[#00a2e8] rounded-full mb-1 sm:mb-2 shadow-[0_0_8px_rgba(0,162,232,0.8)]" />
+                    <span className="font-bold text-white text-xs sm:text-lg leading-tight line-clamp-2 break-words text-center">
                       {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_name)) : ""}
                     </span>
-                    <span className="font-bold text-[#00a2e8] text-sm leading-tight line-clamp-1 break-words text-center mt-1">
+                    <span className="font-bold text-[#00a2e8] text-[9px] sm:text-sm leading-tight line-clamp-1 break-words text-center mt-0.5">
                       {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_club)) : ""}
                     </span>
                   </div>
@@ -6168,49 +6133,49 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
 
         {/* Public Standby Queue */}
         {!isRingInactive && showPublicStandbyQueue && ringQueue && ringQueue.length > 0 && (
-          <div className="mt-6 border-t border-slate-700 pt-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+          <div className="mt-4 sm:mt-6 border-t border-slate-700 pt-3 sm:pt-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] sm:tracking-[0.2em] flex items-center gap-1.5">
                 <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full" />
                 Standby Queue
               </span>
-              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Next {ringQueue.length} Bouts</span>
+              <span className="text-[8px] sm:text-[9px] font-bold text-slate-500 uppercase tracking-widest">Next {ringQueue.length} Bouts</span>
             </div>
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               {groupedQueue.map((group, groupIdx) => (
                 <div key={groupIdx} className="space-y-1">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2 py-0.5 bg-slate-800 rounded-md border border-slate-700 w-fit mb-2">
+                  <div className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1.5 sm:px-2 py-0.5 bg-slate-800 rounded border border-slate-700 w-fit mb-1.5">
                     {formatCategoryName(group.category)}
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5 sm:space-y-2">
                     {group.bouts.map((bout, idx) => {
                       const isPoomsaeItem = bout?.data?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
                                             bout?.data?.category?.toUpperCase().includes('FREESTYLE') ||
                                             (bout?.data?.category?.toUpperCase().includes('POOMSAE') && !bout?.data?.red_name);
                       return (
-                        <div key={idx} className="flex items-center bg-slate-900 rounded-xl border border-slate-700 overflow-hidden min-h-[3rem] shadow-sm">
+                        <div key={idx} className="flex items-center bg-slate-900 rounded-lg sm:rounded-xl border border-slate-700 overflow-hidden min-h-[2.5rem] sm:min-h-[3rem] shadow-sm">
                           {/* Bout Num */}
-                          <div className="w-12 h-full bg-slate-800 flex items-center justify-center border-r border-slate-700 flex-shrink-0">
-                            <span className="text-[12px] font-black text-white">
+                          <div className="w-10 sm:w-12 h-full bg-slate-800 flex items-center justify-center border-r border-slate-700 flex-shrink-0">
+                            <span className="text-[10px] sm:text-[12px] font-black text-white">
                               {hasPlayers(bout?.data) ? formatBoutNumber(ring.ringNumber, bout!.data.bout, boutNumberingMode) : "---"}
                             </span>
                           </div>
 
                           {/* Blue Side */}
                           <div className={cn(
-                            "self-stretch flex flex-col justify-center px-4 relative transition-all duration-500 border-l-[4px] min-w-0 overflow-hidden",
+                            "self-stretch flex flex-col justify-center px-2.5 sm:px-4 relative transition-all duration-500 border-l-[3px] sm:border-l-[4px] min-w-0 overflow-hidden",
                             isPoomsaeItem ? "flex-[10]" : "flex-1 basis-1/2 border-r border-slate-700/50",
                             isRingInactive ? "border-slate-600" : "border-[#00a2e8]"
                           )}>
                             {!isRingInactive && <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-blue-900/10 to-transparent pointer-events-none" />}
                             <p className={cn(
-                              "text-[13px] font-bold uppercase leading-none mb-0.5 truncate",
+                              "text-[9px] sm:text-[13px] font-bold uppercase leading-none mb-0.5 truncate",
                               isRingInactive ? "text-slate-400" : "text-[#00a2e8]"
                             )}>
                               {bout ? cleanPlaceholder(bout.data.blue_club) : ""}
                             </p>
                             <p className={cn(
-                              "text-[17px] font-black uppercase tracking-[0.5px] leading-tight truncate w-full",
+                              "text-[12px] sm:text-[17px] font-black uppercase tracking-[0.5px] leading-tight truncate w-full",
                               isRingInactive ? "text-slate-500" : "text-slate-200"
                             )}>
                               {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.blue_name)) : ""}
@@ -6220,18 +6185,18 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                           {/* Red Side */}
                           {!isPoomsaeItem && (
                             <div className={cn(
-                              "flex-1 basis-1/2 self-stretch flex flex-col justify-center px-4 relative border-l-[4px] min-w-0 overflow-hidden",
+                              "flex-1 basis-1/2 self-stretch flex flex-col justify-center px-2.5 sm:px-4 relative border-l-[3px] sm:border-l-[4px] min-w-0 overflow-hidden",
                               isRingInactive ? "border-slate-600" : "border-[#ed1c24]"
                             )}>
                               {!isRingInactive && <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-red-900/10 to-transparent pointer-events-none" />}
                               <p className={cn(
-                                "text-[13px] font-bold uppercase leading-none mb-0.5 truncate",
+                                "text-[9px] sm:text-[13px] font-bold uppercase leading-none mb-0.5 truncate",
                                 isRingInactive ? "text-slate-400" : "text-[#ed1c24]"
                               )}>
                                 {bout ? cleanPlaceholder(bout.data.red_club) : ""}
                               </p>
                               <p className={cn(
-                                "text-[17px] font-black uppercase tracking-[0.5px] leading-tight truncate w-full",
+                                "text-[12px] sm:text-[17px] font-black uppercase tracking-[0.5px] leading-tight truncate w-full",
                                 isRingInactive ? "text-slate-500" : "text-slate-200"
                               )}>
                                 {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.red_name)) : ""}
