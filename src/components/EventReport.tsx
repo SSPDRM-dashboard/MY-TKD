@@ -155,7 +155,10 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
       
       if (!winMatch) return { name: trimmed, club: fallbackClub };
       
-      const sourceBoutStr = winMatch[1].trim();
+      let sourceBoutStr = winMatch[1].trim();
+      if (sourceBoutStr.toUpperCase().startsWith("BOUT ")) {
+        sourceBoutStr = sourceBoutStr.substring(5).trim();
+      }
       
       if (visited.has(sourceBoutStr)) return { name: trimmed, club: fallbackClub }; // prevent infinite loops
       visited.add(sourceBoutStr);

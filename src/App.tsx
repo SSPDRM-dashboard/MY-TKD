@@ -49,7 +49,7 @@ import { TournamentAssistant } from './components/TournamentAssistant';
 import { SearchWinner } from './components/SearchWinner';
 import { EventReport } from './components/EventReport';
 import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateBoutDetailsInGoogleSheets, updatePointsInGoogleSheets, testSync } from './services/googleSheets';
-import { cn, normalizeBoutNumber, normalizeBoutWithRing, getBoutNumber, formatBoutNumber, isBoutMatch } from './lib/utils';
+import { cn, normalizeBoutNumber, normalizeBoutWithRing, getBoutNumber, formatBoutNumber, isBoutMatch, parseRingNumber, extractWinnerOfBout } from './lib/utils';
 import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, getDocFromServer, where } from 'firebase/firestore';
 import { db } from './firebase';
 import Papa from 'papaparse';
@@ -383,10 +383,10 @@ export default function App() {
         const currentEvtName = (currentEvt ? currentEvt.name : '').trim().toLowerCase();
 
         // 1. Try to fulfill "WINNER OF X" placeholders using matchHistory
-        const blueMatch = bout.blue_name?.toUpperCase().match(/WINNER(?: OF)?\s+([\w-]+)/);
-        if (blueMatch && blueMatch[1]) {
+        const blueBoutId = extractWinnerOfBout(bout.blue_name);
+        if (blueBoutId) {
           const historyMatch = matchHistory.find((h: MatchHistoryItem) => 
-            isBoutMatch(h.bout, blueMatch[1]) && 
+            isBoutMatch(h.bout, blueBoutId) && 
             (h.eventId === currentEventId || h.eventId === currentEvtName)
           );
           if (historyMatch && historyMatch.winner && historyMatch.winner !== '-' && historyMatch.winner.trim() !== '') {
@@ -396,10 +396,10 @@ export default function App() {
           }
         }
         
-        const redMatch = bout.red_name?.toUpperCase().match(/WINNER(?: OF)?\s+([\w-]+)/);
-        if (redMatch && redMatch[1]) {
+        const redBoutId = extractWinnerOfBout(bout.red_name);
+        if (redBoutId) {
           const historyMatch = matchHistory.find((h: MatchHistoryItem) => 
-            isBoutMatch(h.bout, redMatch[1]) && 
+            isBoutMatch(h.bout, redBoutId) && 
             (h.eventId === currentEventId || h.eventId === currentEvtName)
           );
           if (historyMatch && historyMatch.winner && historyMatch.winner !== '-' && historyMatch.winner.trim() !== '') {
@@ -732,8 +732,17 @@ export default function App() {
 
     setIsImportingBouts(true);
     try {
-      const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv";
-      const response = await fetch(SHEET_CSV_URL);
+      let activeUrl = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv";
+      if (currentEventId && events.length > 0) {
+        const event = events.find(e => e.id === currentEventId);
+        if (event && event.sheetUrl && event.sheetUrl.includes('docs.google.com/spreadsheets')) {
+          activeUrl = event.sheetUrl;
+          if (!activeUrl.includes('/export?')) {
+            activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
+          }
+        }
+      }
+      const response = await fetch(activeUrl);
       if (!response.ok) throw new Error("Failed to fetch sheet data.");
       
       const csvText = await response.text();
@@ -751,10 +760,10 @@ export default function App() {
       const dataRows = rows.slice(1);
       const currentEventName = getCurrentEventName();
 
-      // Filter by event name AND assigned ring
+       // Filter by event name AND assigned ring
       const ringBouts = dataRows.filter(row => {
-        const rowEventName = row[0]?.trim();
-        const rowRingNo = parseInt(row[1]);
+        const rowEventName = row[1]?.trim(); // Column B
+        const rowRingNo = parseRingNumber(row[2]); // Column C
         return rowEventName === currentEventName && rowRingNo === Number(user.assignedRing);
       });
       
@@ -764,27 +773,29 @@ export default function App() {
       }
 
       const newBouts = ringBouts.filter(row => {
-        const boutNo = normalizeBoutNumber(row[2]?.trim());
+        const ringNo = parseRingNumber(row[2]);
+        const boutNo = normalizeBoutWithRing(row[3]?.trim(), ringNo);
         // Check if bout already exists in queue or rings
-        const existsInQueue = boutQueue.some(q => normalizeBoutNumber(q.data.bout) === boutNo);
+        const existsInQueue = boutQueue.some(q => normalizeBoutWithRing(q.data.bout, q.data.ring) === boutNo);
         const existsInRings = rings.some(r => 
-          (r.currentBout && normalizeBoutNumber(r.currentBout.bout) === boutNo) ||
-          (r.onDeck && normalizeBoutNumber(r.onDeck.bout) === boutNo) ||
-          (r.inTheHole && normalizeBoutNumber(r.inTheHole.bout) === boutNo)
+          (r.currentBout && normalizeBoutWithRing(r.currentBout.bout, r.ringNumber) === boutNo) ||
+          (r.onDeck && normalizeBoutWithRing(r.onDeck.bout, r.ringNumber) === boutNo) ||
+          (r.inTheHole && normalizeBoutWithRing(r.inTheHole.bout, r.ringNumber) === boutNo)
         );
         return !existsInQueue && !existsInRings;
       }).map(row => {
-        const normalizedBout = normalizeBoutNumber(row[2]?.trim());
+        const ringNo = parseRingNumber(row[2]);
+        const normalizedBout = normalizeBoutWithRing(row[3]?.trim(), ringNo);
         return {
           id: Math.random().toString(36).substr(2, 9),
           data: {
-            ring: parseInt(row[1]),
+            ring: ringNo, // Column C
             bout: normalizedBout,
-            category: row[3],
-            blue_name: row[4],
-            blue_club: row[5],
-            red_name: row[6],
-            red_club: row[7],
+            category: row[4], // Column E
+            blue_name: row[5], // Column F
+            blue_club: row[6], // Column G
+            red_name: row[7], // Column H
+            red_club: row[8], // Column I
             privacy_mode: false,
             eventId: currentEventId || null
           } as MatchData
@@ -809,8 +820,17 @@ export default function App() {
   const handleAdminImportBouts = async () => {
     setIsImportingBouts(true);
     try {
-      const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv";
-      const response = await fetch(SHEET_CSV_URL);
+      let activeUrl = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv";
+      if (currentEventId && events.length > 0) {
+        const event = events.find(e => e.id === currentEventId);
+        if (event && event.sheetUrl && event.sheetUrl.includes('docs.google.com/spreadsheets')) {
+          activeUrl = event.sheetUrl;
+          if (!activeUrl.includes('/export?')) {
+            activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
+          }
+        }
+      }
+      const response = await fetch(activeUrl);
       if (!response.ok) throw new Error("Failed to fetch sheet data.");
       
       const csvText = await response.text();
@@ -828,7 +848,7 @@ export default function App() {
       const currentEventName = getCurrentEventName();
 
       const eventBouts = dataRows.filter(row => {
-        const rowEventName = row[0]?.trim();
+        const rowEventName = row[1]?.trim(); // Column B
         return rowEventName === currentEventName;
       });
       
@@ -838,26 +858,28 @@ export default function App() {
       }
 
       const newBouts = eventBouts.filter(row => {
-        const boutNo = normalizeBoutNumber(row[2]?.trim());
-        const existsInQueue = boutQueue.some(q => normalizeBoutNumber(q.data.bout) === boutNo);
+        const ringNo = parseRingNumber(row[2]);
+        const boutNo = normalizeBoutWithRing(row[3]?.trim(), ringNo);
+        const existsInQueue = boutQueue.some(q => normalizeBoutWithRing(q.data.bout, q.data.ring) === boutNo);
         const existsInRings = rings.some(r => 
-          (r.currentBout && normalizeBoutNumber(r.currentBout.bout) === boutNo) ||
-          (r.onDeck && normalizeBoutNumber(r.onDeck.bout) === boutNo) ||
-          (r.inTheHole && normalizeBoutNumber(r.inTheHole.bout) === boutNo)
+          (r.currentBout && normalizeBoutWithRing(r.currentBout.bout, r.ringNumber) === boutNo) ||
+          (r.onDeck && normalizeBoutWithRing(r.onDeck.bout, r.ringNumber) === boutNo) ||
+          (r.inTheHole && normalizeBoutWithRing(r.inTheHole.bout, r.ringNumber) === boutNo)
         );
         return !existsInQueue && !existsInRings;
       }).map(row => {
-        const normalizedBout = normalizeBoutNumber(row[2]?.trim());
+        const ringNo = parseRingNumber(row[2]);
+        const normalizedBout = normalizeBoutWithRing(row[3]?.trim(), ringNo);
         return {
           id: Math.random().toString(36).substr(2, 9),
           data: {
-            ring: parseInt(row[1]) || 1,
+            ring: ringNo, // Column C
             bout: normalizedBout,
-            category: row[3],
-            blue_name: row[4],
-            blue_club: row[5],
-            red_name: row[6],
-            red_club: row[7],
+            category: row[4], // Column E
+            blue_name: row[5], // Column F
+            blue_club: row[6], // Column G
+            red_name: row[7], // Column H
+            red_club: row[8], // Column I
             privacy_mode: false,
             eventId: currentEventId || null
           } as MatchData
@@ -906,15 +928,25 @@ export default function App() {
   };
 
   const syncResultsFromSheet = async () => {
-    const RESULTS_SHEET_URL = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv";
     if (!currentEventId) {
       console.log('Sync skipped: No currentEventId');
       return;
     }
+    let activeUrl = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv";
+    if (events.length > 0) {
+      const event = events.find(e => e.id === currentEventId);
+      if (event && event.sheetUrl && event.sheetUrl.includes('docs.google.com/spreadsheets')) {
+        activeUrl = event.sheetUrl;
+        if (!activeUrl.includes('/export?')) {
+          activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
+        }
+      }
+    }
+    const currentEventName = getCurrentEventName();
     setIsSyncing(true);
-    console.log('Starting sync from sheet...', RESULTS_SHEET_URL);
+    console.log('Starting sync from sheet...', activeUrl);
     try {
-      const response = await fetch(RESULTS_SHEET_URL);
+      const response = await fetch(activeUrl);
       const csvText = await response.text();
       console.log('Fetched CSV text length:', csvText.length);
       
@@ -928,9 +960,16 @@ export default function App() {
               for (let i = 1; i < rows.length; i++) {
                 const row = rows[i];
                 if (row.length >= 10) {
-                  const rawMatchNo = row[2]?.trim();
-                  const matchNo = normalizeBoutNumber(rawMatchNo);
-                  const category = row[3]?.trim();
+                  // Filter by Event Name (Column B)
+                  const rowEventName = row[1]?.trim();
+                  if (currentEventName && rowEventName && rowEventName.toLowerCase() !== currentEventName.toLowerCase()) {
+                    continue; // Skip bouts that belong to a different event
+                  }
+
+                  const ringNo = parseRingNumber(row[2]); // Column C
+                  const rawMatchNo = row[3]?.trim(); // Column D
+                  const matchNo = normalizeBoutWithRing(rawMatchNo, ringNo);
+                  const category = row[4]?.trim(); // Column E
                   const winner = row[9]?.trim(); // Column J
 
                   if (matchNo && category && winner && winner !== '-' && winner !== '') {
@@ -1159,9 +1198,8 @@ export default function App() {
       if (!boutData) return;
       const checkWinnerStr = (nameStr: string, slot: 'blue' | 'red') => {
         if (!nameStr) return;
-        const match = nameStr.toUpperCase().match(/WINNER OF ([\w-]+)/);
-        if (match && match[1]) {
-          const sourceBoutStr = match[1];
+        const sourceBoutStr = extractWinnerOfBout(nameStr);
+        if (sourceBoutStr) {
           const historyMatch = matchHistory.find(h => 
             isBoutMatch(h.bout, sourceBoutStr) && 
             (h.eventId === currentEventId || h.eventId === getCurrentEventName())
@@ -2139,12 +2177,7 @@ export default function App() {
                 active={activeTab === 'report'} 
                 onClick={() => setActiveTab('report')} 
               />
-              <NavItem 
-                icon={<PieChart size={20} />} 
-                label="Ring Summary" 
-                active={activeTab === 'ring-summary'} 
-                onClick={() => setActiveTab('ring-summary')} 
-              />
+
               <NavItem 
                 icon={<ClipboardCheck size={20} />} 
                 label="Inspection Logs" 
@@ -2316,29 +2349,6 @@ export default function App() {
 
             return (
               <>
-                {/* Bout Summary - Admin Only */}
-                {user?.role === 'admin' && (
-                  <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
-                        <Trophy size={16} className="text-red-600" />
-                        Bout Summary
-                      </h3>
-                      <div className="bg-red-50 text-red-600 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest">
-                        Total: {rings.reduce((acc, r) => acc + (r.totalBouts || 0), 0)} Bouts
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                      {rings.map(ring => (
-                        <div key={ring.ringNumber} className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Ring {getRingName(ring.ringNumber)}</p>
-                          <p className="text-lg font-black text-slate-800">{ring.totalBouts || 0} <span className="text-[10px] text-slate-500">Bouts</span></p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                   {/* Live Rings */}
                   <div className="lg:col-span-2 space-y-6">
@@ -2720,18 +2730,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'ring-summary' && user?.role === 'admin' && (
-            <div className="max-w-6xl mx-auto">
-              <RingSummary 
-                rings={rings} 
-                boutQueue={boutQueue} 
-                matchHistory={matchHistory} 
-                boutNumberingMode={boutNumberingMode} 
-                ringNamingMode={ringNamingMode}
-                currentEventId={currentEventId}
-              />
-            </div>
-          )}
+
 
           {activeTab === 'inspection-logs' && (user?.role === 'admin' || user?.role === 'ta') && (
             <div className="max-w-5xl mx-auto">
@@ -3411,13 +3410,7 @@ export default function App() {
               <Monitor size={20} />
               <span className="text-[10px] font-bold">Rings</span>
             </button>
-            <button 
-              onClick={() => setActiveTab('ring-summary')}
-              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'ring-summary' ? "text-red-600" : "text-slate-400")}
-            >
-              <PieChart size={20} />
-              <span className="text-[10px] font-bold">Summary</span>
-            </button>
+
             <button 
               onClick={() => setActiveTab('ai-setup')}
               className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'ai-setup' ? "text-red-600" : "text-slate-400")}
@@ -4696,15 +4689,15 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                         <div className="flex gap-4">
                           <button 
                             onClick={() => onWinnerSelect('Blue')}
-                            className="flex-[1] py-3 bg-[#00a2e8] text-white rounded-xl font-black text-sm uppercase transition-all shadow-md hover:shadow-lg active:scale-95"
+                            className="flex-[1] py-3 bg-[#00a2e8] text-white rounded-xl font-black text-sm uppercase transition-all shadow-md hover:shadow-lg active:scale-95 px-2 break-words text-center"
                           >
-                            Mark Blue Win
+                            Mark {cleanPlaceholder(current.blue_name) || 'Blue'} Win
                           </button>
                           <button 
                             onClick={() => onWinnerSelect('Red')}
-                            className="flex-[1] py-3 bg-[#ed1c24] text-white rounded-xl font-black text-sm uppercase transition-all shadow-md hover:shadow-lg active:scale-95"
+                            className="flex-[1] py-3 bg-[#ed1c24] text-white rounded-xl font-black text-sm uppercase transition-all shadow-md hover:shadow-lg active:scale-95 px-2 break-words text-center"
                           >
-                            Mark Red Win
+                            Mark {cleanPlaceholder(current.red_name) || 'Red'} Win
                           </button>
                         </div>
                       </>
@@ -4714,15 +4707,15 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                         <div className="flex gap-4 mb-4">
                           <button 
                             onClick={() => onWinnerSelect('Blue')}
-                            className="flex-[1.2] py-8 md:py-6 bg-blue-50 text-[#00a2e8] hover:bg-[#00a2e8] hover:text-white rounded-[1.5rem] font-black text-[26px] md:text-[22px] uppercase transition-all border-2 border-blue-200 hover:border-[#00a2e8] active:scale-95 px-4 truncate shadow-sm hover:shadow-xl hover:shadow-blue-200/50"
+                            className="flex-[1.2] min-h-[4.5rem] sm:min-h-[6rem] py-3 sm:py-4 bg-blue-50 text-[#00a2e8] hover:bg-[#00a2e8] hover:text-white rounded-[1.5rem] font-black text-sm sm:text-lg md:text-[20px] uppercase transition-all border-2 border-blue-200 hover:border-[#00a2e8] active:scale-95 px-2 sm:px-4 break-words whitespace-normal flex items-center justify-center text-center leading-tight shadow-sm hover:shadow-xl hover:shadow-blue-200/50"
                           >
-                            {cleanPlaceholder(current.blue_name) || 'Blue'} Wins
+                            <span>{cleanPlaceholder(current.blue_name) || 'Blue'} Wins</span>
                           </button>
                           <button 
                             onClick={() => onWinnerSelect('Red')}
-                            className="flex-[1.2] py-8 md:py-6 bg-red-50 text-[#ed1c24] hover:bg-[#ed1c24] hover:text-white rounded-[1.5rem] font-black text-[26px] md:text-[22px] uppercase transition-all border-2 border-red-200 hover:border-[#ed1c24] active:scale-95 px-4 truncate shadow-sm hover:shadow-xl hover:shadow-red-200/50"
+                            className="flex-[1.2] min-h-[4.5rem] sm:min-h-[6rem] py-3 sm:py-4 bg-red-50 text-[#ed1c24] hover:bg-[#ed1c24] hover:text-white rounded-[1.5rem] font-black text-sm sm:text-lg md:text-[20px] uppercase transition-all border-2 border-red-200 hover:border-[#ed1c24] active:scale-95 px-2 sm:px-4 break-words whitespace-normal flex items-center justify-center text-center leading-tight shadow-sm hover:shadow-xl hover:shadow-red-200/50"
                           >
-                            {cleanPlaceholder(current.red_name) || 'Red'} Wins
+                            <span>{cleanPlaceholder(current.red_name) || 'Red'} Wins</span>
                           </button>
                         </div>
                       </>
@@ -5174,9 +5167,9 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                         isPoomsaeItem ? "col-span-9" : "col-span-5 border-r border-white/10",
                         isRingInactive ? "bg-slate-800" : "bg-blue-600/80"
                       )}>
-                        <span className="text-[13px] font-bold text-yellow-200 uppercase leading-none">{cleanPlaceholder(b?.data.blue_club || "")}</span>
+                        <span className="text-[13px] font-bold text-yellow-200 uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.blue_club || "")}</span>
                         <span className={cn(
-                          "text-[16px] font-black uppercase truncate leading-tight",
+                          "text-[16px] font-black uppercase leading-tight break-words whitespace-normal w-full mt-0.5",
                           isRingInactive ? "text-slate-400" : "text-white"
                         )}>{cleanPlaceholder(b?.data.blue_name || "")}</span>
                         {b?.data.blue_inspected && (
@@ -5193,9 +5186,9 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                           "col-span-4 flex flex-col justify-center px-3 relative",
                           isRingInactive ? "bg-slate-800" : "bg-red-600/80"
                         )}>
-                          <span className="text-[13px] font-bold text-yellow-200 uppercase leading-none">{cleanPlaceholder(b?.data.red_club || "")}</span>
+                          <span className="text-[13px] font-bold text-yellow-200 uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.red_club || "")}</span>
                           <span className={cn(
-                            "text-[16px] font-black uppercase truncate leading-tight",
+                            "text-[16px] font-black uppercase leading-tight break-words whitespace-normal w-full mt-0.5",
                             isRingInactive ? "text-slate-400" : "text-white"
                           )}>{cleanPlaceholder(b?.data.red_name || "")}</span>
                           {b?.data.red_inspected && (
@@ -5895,7 +5888,7 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
               <LayoutDashboard size={18} className="text-red-500" />
               Live Ring Status
             </h3>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4 md:gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               {displayedRings.map((ring) => {
                 const ringQueueAll = boutQueue
                   .filter(q => q.data.ring === ring.ringNumber)
@@ -6042,7 +6035,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
               <div className="flex flex-col items-center justify-center gap-2 sm:gap-6 py-1 sm:py-4">
                 {/* BLUE SIDE */}
                 <div className="text-center space-y-0.5 w-full px-1 sm:px-2">
-                  <p className="text-xs sm:text-xl md:text-[28px] font-black text-white leading-tight uppercase tracking-tight break-words mx-auto max-w-[280px] sm:max-w-none">
+                  <p className="text-[18px] sm:text-[26px] md:text-[34px] font-black text-[#00a2e8] leading-tight uppercase tracking-tight break-words mx-auto max-w-[280px] sm:max-w-none">
                     {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_name)) : ""}
                   </p>
                   <p className="text-[#00a2e8] font-black text-[8px] sm:text-sm uppercase tracking-widest leading-none">
@@ -6058,7 +6051,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
 
                     {/* RED SIDE */}
                     <div className="text-center space-y-0.5 w-full px-1 sm:px-2">
-                      <p className="text-xs sm:text-xl md:text-[28px] font-black text-white leading-tight uppercase tracking-tight break-words mx-auto max-w-[280px] sm:max-w-none">
+                      <p className="text-[18px] sm:text-[26px] md:text-[34px] font-black text-[#ed1c24] leading-tight uppercase tracking-tight break-words mx-auto max-w-[280px] sm:max-w-none">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.red_name)) : ""}
                       </p>
                       <p className="text-[#ed1c24] font-black text-[8px] sm:text-sm uppercase tracking-widest leading-none">
@@ -6095,7 +6088,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                   <div className="grid grid-cols-[1fr,auto,1fr] gap-1.5 sm:gap-4 items-start pb-1">
                     <div className="flex flex-col min-w-0">
                       <div className="h-0.5 w-full bg-[#00a2e8] rounded-full mb-1 sm:mb-2 shadow-[0_0_8px_rgba(0,162,232,0.8)]" />
-                      <span className="font-bold text-white text-xs sm:text-lg leading-tight line-clamp-2 break-words text-left">
+                      <span className="font-bold text-[#00a2e8] text-[18px] sm:text-[24px] leading-tight line-clamp-2 break-words text-left">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_name)) : ""}
                       </span>
                       <span className="font-bold text-[#00a2e8] text-[9px] sm:text-sm leading-tight line-clamp-1 break-words text-left mt-0.5">
@@ -6107,7 +6100,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
 
                     <div className="flex flex-col min-w-0">
                       <div className="h-0.5 w-full bg-[#ed1c24] rounded-full mb-1 sm:mb-2 shadow-[0_0_8px_rgba(237,28,36,0.8)]" />
-                      <span className="font-bold text-white text-xs sm:text-lg leading-tight line-clamp-2 break-words text-left">
+                      <span className="font-bold text-[#ed1c24] text-[18px] sm:text-[24px] leading-tight line-clamp-2 break-words text-left">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.red_name)) : ""}
                       </span>
                       <span className="font-bold text-[#ed1c24] text-[9px] sm:text-sm leading-tight line-clamp-1 break-words text-left mt-0.5">
@@ -6118,7 +6111,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                 ) : (
                   <div className="flex flex-col max-w-sm mx-auto w-full px-1">
                     <div className="h-0.5 w-full bg-[#00a2e8] rounded-full mb-1 sm:mb-2 shadow-[0_0_8px_rgba(0,162,232,0.8)]" />
-                    <span className="font-bold text-white text-xs sm:text-lg leading-tight line-clamp-2 break-words text-center">
+                    <span className="font-bold text-[#00a2e8] text-[18px] sm:text-[24px] leading-tight line-clamp-2 break-words text-center">
                       {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_name)) : ""}
                     </span>
                     <span className="font-bold text-[#00a2e8] text-[9px] sm:text-sm leading-tight line-clamp-1 break-words text-center mt-0.5">
@@ -6163,20 +6156,20 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
 
                           {/* Blue Side */}
                           <div className={cn(
-                            "self-stretch flex flex-col justify-center px-2.5 sm:px-4 relative transition-all duration-500 border-l-[3px] sm:border-l-[4px] min-w-0 overflow-hidden",
+                            "self-stretch py-1.5 sm:py-2.5 flex flex-col justify-center px-2.5 sm:px-4 relative transition-all duration-500 border-l-[3px] sm:border-l-[4px] min-w-0 overflow-hidden",
                             isPoomsaeItem ? "flex-[10]" : "flex-1 basis-1/2 border-r border-slate-700/50",
                             isRingInactive ? "border-slate-600" : "border-[#00a2e8]"
                           )}>
                             {!isRingInactive && <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-blue-900/10 to-transparent pointer-events-none" />}
                             <p className={cn(
-                              "text-[9px] sm:text-[13px] font-bold uppercase leading-none mb-0.5 truncate",
+                              "text-[9px] sm:text-[13px] font-bold uppercase leading-normal sm:leading-tight mb-0.5 break-words whitespace-normal",
                               isRingInactive ? "text-slate-400" : "text-[#00a2e8]"
                             )}>
                               {bout ? cleanPlaceholder(bout.data.blue_club) : ""}
                             </p>
                             <p className={cn(
-                              "text-[12px] sm:text-[17px] font-black uppercase tracking-[0.5px] leading-tight truncate w-full",
-                              isRingInactive ? "text-slate-500" : "text-slate-200"
+                              "text-[12px] sm:text-[17px] font-black uppercase tracking-[0.5px] leading-tight break-words whitespace-normal w-full",
+                              isRingInactive ? "text-slate-500" : "text-[#00a2e8]"
                             )}>
                               {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.blue_name)) : ""}
                             </p>
@@ -6185,19 +6178,19 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                           {/* Red Side */}
                           {!isPoomsaeItem && (
                             <div className={cn(
-                              "flex-1 basis-1/2 self-stretch flex flex-col justify-center px-2.5 sm:px-4 relative border-l-[3px] sm:border-l-[4px] min-w-0 overflow-hidden",
+                              "flex-1 basis-1/2 self-stretch py-1.5 sm:py-2.5 flex flex-col justify-center px-2.5 sm:px-4 relative border-l-[3px] sm:border-l-[4px] min-w-0 overflow-hidden",
                               isRingInactive ? "border-slate-600" : "border-[#ed1c24]"
                             )}>
                               {!isRingInactive && <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-red-900/10 to-transparent pointer-events-none" />}
                               <p className={cn(
-                                "text-[9px] sm:text-[13px] font-bold uppercase leading-none mb-0.5 truncate",
+                                "text-[9px] sm:text-[13px] font-bold uppercase leading-normal sm:leading-tight mb-0.5 break-words whitespace-normal",
                                 isRingInactive ? "text-slate-400" : "text-[#ed1c24]"
                               )}>
                                 {bout ? cleanPlaceholder(bout.data.red_club) : ""}
                               </p>
                               <p className={cn(
-                                "text-[12px] sm:text-[17px] font-black uppercase tracking-[0.5px] leading-tight truncate w-full",
-                                isRingInactive ? "text-slate-500" : "text-slate-200"
+                                "text-[12px] sm:text-[17px] font-black uppercase tracking-[0.5px] leading-tight break-words whitespace-normal w-full",
+                                isRingInactive ? "text-slate-500" : "text-[#ed1c24]"
                               )}>
                                 {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.red_name)) : ""}
                               </p>

@@ -17,6 +17,21 @@ export function validateIC(ic: string): boolean {
   return cleaned.length === 12;
 }
 
+export function parseRingNumber(ringVal: any): number {
+  if (!ringVal) return 1;
+  const s = ringVal.toString().trim().toUpperCase();
+  // If it is already a straight number
+  const num = parseInt(s.replace(/[^0-9]/g, ''));
+  if (!isNaN(num) && num > 0) return num;
+  
+  // Look for match with letters: Ring A, Court A, A
+  const letterMatch = s.match(/(?:RING|COURT|AISTUDIO)?\s*([A-Z])/i);
+  if (letterMatch && letterMatch[1]) {
+    return letterMatch[1].charCodeAt(0) - 'A'.charCodeAt(0) + 1;
+  }
+  return 1;
+}
+
 export function normalizeBoutNumber(bout: string | number): string {
   const s = bout.toString().trim().toUpperCase();
   if (!s) return '';
@@ -138,3 +153,31 @@ export function isUsingA01Method(data: any[]): boolean {
     return /^[A-Z]/.test(bout.toString().trim().toUpperCase());
   });
 }
+
+export function extractWinnerOfBout(nameStr: string | null | undefined): string | null {
+  if (!nameStr) return null;
+  const s = nameStr.trim().toUpperCase();
+  
+  // Match "WINNER OF BOUT [BOUT_ID]" or "WINNER BOUT [BOUT_ID]"
+  const matchBout = s.match(/(?:WINNER\s+(?:OF\s+)?BOUT\s+)([\w-]+)/i);
+  if (matchBout && matchBout[1]) {
+    return matchBout[1];
+  }
+
+  // Match "WINNER OF [BOUT_ID]" or "WINNER [BOUT_ID]"
+  const matchDirect = s.match(/(?:WINNER\s+(?:OF\s+)?\s*)([\w-]+)/i);
+  if (matchDirect && matchDirect[1]) {
+    // Ensure we didn't just capture "BOUT" because of a space in "WINNER OF BOUT 23"
+    if (matchDirect[1] === 'BOUT') {
+       // If it captured BOUT, look for the text after "BOUT"
+       const postBoutMatch = s.match(/(?:WINNER\s+(?:OF\s+)?BOUT\s+)([\w-]+)/i);
+       if (postBoutMatch && postBoutMatch[1]) {
+         return postBoutMatch[1];
+       }
+    }
+    return matchDirect[1];
+  }
+  
+  return null;
+}
+

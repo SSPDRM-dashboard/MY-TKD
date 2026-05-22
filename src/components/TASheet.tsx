@@ -3,7 +3,7 @@ import { Download, AlertCircle, RefreshCw, Eraser, Check, History, X, Search, Pr
 import { motion } from 'motion/react';
 import { MatchData, RingStatus, EventData, MatchHistoryItem } from '../types';
 import Papa from 'papaparse';
-import { cn, formatBoutNumber, normalizeBoutNumber } from '../lib/utils';
+import { cn, formatBoutNumber, normalizeBoutNumber, normalizeBoutWithRing, parseRingNumber } from '../lib/utils';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -435,7 +435,8 @@ export function TASheet({
 
               // If there's a winner, prepare to sync it globally
               if (winner && winner.trim() && winner !== '-') {
-                const normalizedMatchNo = normalizeBoutNumber(matchNo);
+                const ringNo = parseRingNumber(row[2]);
+                const normalizedMatchNo = normalizeBoutWithRing(matchNo, ringNo);
                 const winnerTrimmed = winner.trim();
                 const normWinner = winnerTrimmed.toLowerCase();
                 const normBlue = blueName.toLowerCase();
