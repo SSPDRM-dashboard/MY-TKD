@@ -350,20 +350,40 @@ export default function App() {
     return unsub;
   }, [currentEventId]);
 
-  // Real-time automatic deduplication of the Match Queue
+  // Real-time automatic deduplication and active-mats eviction from the Match Queue
   useEffect(() => {
     if (!boutQueue || boutQueue.length === 0) return;
 
     const seen = new Set<string>();
     let hasDuplicates = false;
 
+    // Build a set of all active bout numbers currently on the mats/rings
+    const activeRingBouts = new Set<string>();
+    rings.forEach(r => {
+      const ringNum = r.ringNumber;
+      ['currentBout', 'onDeck', 'inTheHole'].forEach(slot => {
+        const boutObj = r[slot as 'currentBout' | 'onDeck' | 'inTheHole'];
+        if (boutObj && boutObj.bout) {
+          const normalized = normalizeBoutWithRing(boutObj.bout, ringNum);
+          const key = `${boutObj.eventId || currentEventId || 'default'}_${ringNum}_${normalized}`;
+          activeRingBouts.add(key);
+        }
+      });
+    });
+
     const uniqueQueue = boutQueue.filter(item => {
       if (!item || !item.data) return false;
       const ringNum = item.data.ring || 1;
       const rawBout = item.data.bout;
-      const eventId = item.data.eventId || 'default';
+      const eventId = item.data.eventId || currentEventId || 'default';
       const normalizedBout = normalizeBoutWithRing(rawBout, ringNum);
       const uniqueKey = `${eventId}_${ringNum}_${normalizedBout}`;
+
+      // If already active in the ring slots, remove from the standby queue
+      if (activeRingBouts.has(uniqueKey)) {
+        hasDuplicates = true;
+        return false;
+      }
 
       if (seen.has(uniqueKey)) {
         hasDuplicates = true;
@@ -374,10 +394,11 @@ export default function App() {
     });
 
     if (hasDuplicates) {
-      console.log('tkd_match_centre: Automatically removed duplicate elements from Match Queue');
+      console.log('tkd_match_centre: Automatically removed duplicate or ring-active elements from Match Queue');
       setBoutQueue(uniqueQueue);
+      localStorage.setItem('tkd_bout_queue', JSON.stringify(uniqueQueue));
     }
-  }, [boutQueue, setBoutQueue]);
+  }, [boutQueue, rings, currentEventId, setBoutQueue]);
 
   useEffect(() => {
     const handleSyncHistory = (e: any) => {
@@ -1177,7 +1198,7 @@ export default function App() {
 
   useEffect(() => {
     // Advancement logic: Pull winners to next bouts based on mappings
-    if (!currentEventId || mappings.length === 0) {
+    if (!currentEventId) {
       return;
     }
 
@@ -4669,8 +4690,8 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
             <div className="flex items-center gap-2 mt-1">
               <span className="font-bold text-sm uppercase tracking-wider block leading-none">Ring {ringName}</span>
               {current && (
-                <span className="text-[18px] font-black text-slate-300 uppercase tracking-widest border border-slate-700 bg-slate-800 rounded px-2 py-0.5 leading-none">
-                  Bout {formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode)} {ring.totalBouts ? `/ ${ring.totalBouts}` : ''}
+                <span className="text-[26px] font-black text-slate-300 uppercase tracking-widest border border-slate-700 bg-slate-800 rounded-lg px-3 py-1 leading-none">
+                  {formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode)} {ring.totalBouts ? `/ ${ring.totalBouts}` : ''}
                 </span>
               )}
             </div>
@@ -6547,10 +6568,10 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
               <div className="flex flex-col items-center justify-center gap-2 sm:gap-6 py-1 sm:py-4">
                 {/* BLUE SIDE */}
                 <div className="text-center space-y-0.5 w-full px-1 sm:px-2">
-                  <p className="text-[18px] sm:text-[26px] md:text-[34px] font-black text-[#00a2e8] leading-tight uppercase tracking-tight break-words mx-auto max-w-[280px] sm:max-w-none">
+                  <p className="text-[18px] sm:text-[26px] md:text-[34px] font-black text-[#00a2e8] leading-tight uppercase tracking-tight break-words mx-auto w-full">
                     {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_name)) : ""}
                   </p>
-                  <p className="text-[#00a2e8] font-black text-[8px] sm:text-sm uppercase tracking-widest leading-none">
+                  <p className="text-[#00a2e8] font-black text-[8px] sm:text-sm uppercase tracking-widest leading-snug break-words whitespace-normal w-full">
                     {current ? cleanPlaceholder(current.blue_club) : ""}
                   </p>
                 </div>
@@ -6563,10 +6584,10 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
 
                     {/* RED SIDE */}
                     <div className="text-center space-y-0.5 w-full px-1 sm:px-2">
-                      <p className="text-[18px] sm:text-[26px] md:text-[34px] font-black text-[#ed1c24] leading-tight uppercase tracking-tight break-words mx-auto max-w-[280px] sm:max-w-none">
+                      <p className="text-[18px] sm:text-[26px] md:text-[34px] font-black text-[#ed1c24] leading-tight uppercase tracking-tight break-words mx-auto w-full">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.red_name)) : ""}
                       </p>
-                      <p className="text-[#ed1c24] font-black text-[8px] sm:text-sm uppercase tracking-widest leading-none">
+                      <p className="text-[#ed1c24] font-black text-[8px] sm:text-sm uppercase tracking-widest leading-snug break-words whitespace-normal w-full">
                         {current ? cleanPlaceholder(current.red_club) : ""}
                       </p>
                     </div>
@@ -6665,10 +6686,10 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                   <div className="grid grid-cols-[1fr,auto,1fr] gap-1.5 sm:gap-4 items-start pb-1">
                     <div className="flex flex-col min-w-0">
                       <div className="h-0.5 w-full bg-[#00a2e8] rounded-full mb-1 sm:mb-2 shadow-[0_0_8px_rgba(0,162,232,0.8)]" />
-                      <span className="font-bold text-[#00a2e8] text-[18px] sm:text-[24px] leading-tight line-clamp-2 break-words text-left">
+                      <span className="font-bold text-[#00a2e8] text-[18px] sm:text-[24px] leading-tight whitespace-normal break-words text-left">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_name)) : ""}
                       </span>
-                      <span className="font-bold text-[#00a2e8] text-[9px] sm:text-sm leading-tight line-clamp-1 break-words text-left mt-0.5">
+                      <span className="font-bold text-[#00a2e8] text-[9px] sm:text-sm leading-tight whitespace-normal break-words text-left mt-0.5">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_club)) : ""}
                       </span>
                     </div>
@@ -6677,10 +6698,10 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
 
                     <div className="flex flex-col min-w-0">
                       <div className="h-0.5 w-full bg-[#ed1c24] rounded-full mb-1 sm:mb-2 shadow-[0_0_8px_rgba(237,28,36,0.8)]" />
-                      <span className="font-bold text-[#ed1c24] text-[18px] sm:text-[24px] leading-tight line-clamp-2 break-words text-left">
+                      <span className="font-bold text-[#ed1c24] text-[18px] sm:text-[24px] leading-tight whitespace-normal break-words text-left">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.red_name)) : ""}
                       </span>
-                      <span className="font-bold text-[#ed1c24] text-[9px] sm:text-sm leading-tight line-clamp-1 break-words text-left mt-0.5">
+                      <span className="font-bold text-[#ed1c24] text-[9px] sm:text-sm leading-tight whitespace-normal break-words text-left mt-0.5">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.red_club)) : ""}
                       </span>
                     </div>
@@ -6688,10 +6709,10 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                 ) : (
                   <div className="flex flex-col max-w-sm mx-auto w-full px-1">
                     <div className="h-0.5 w-full bg-[#00a2e8] rounded-full mb-1 sm:mb-2 shadow-[0_0_8px_rgba(0,162,232,0.8)]" />
-                    <span className="font-bold text-[#00a2e8] text-[18px] sm:text-[24px] leading-tight line-clamp-2 break-words text-center">
+                    <span className="font-bold text-[#00a2e8] text-[18px] sm:text-[24px] leading-tight whitespace-normal break-words text-center">
                       {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_name)) : ""}
                     </span>
-                    <span className="font-bold text-[#00a2e8] text-[9px] sm:text-sm leading-tight line-clamp-1 break-words text-center mt-0.5">
+                    <span className="font-bold text-[#00a2e8] text-[9px] sm:text-sm leading-tight whitespace-normal break-words text-center mt-0.5">
                       {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_club)) : ""}
                     </span>
                   </div>
@@ -6803,13 +6824,13 @@ function PublicFighterSide({ color, name, club, privacy }: { color: 'blue' | 're
         color === 'blue' ? "bg-[#00a2e8] shadow-blue-900/50" : "bg-[#ed1c24] shadow-red-900/50"
       )} />
       <p className={cn(
-        "font-black text-white tracking-tight leading-tight line-clamp-3",
+        "font-black text-white tracking-tight leading-tight whitespace-normal break-words",
         getDynamicFontSize(privacy ? "---" : cleanPlaceholder(name))
       )}>
         {privacy ? "---" : cleanPlaceholder(name)}
       </p>
       <p className={cn(
-        "text-sm font-bold uppercase tracking-widest",
+        "text-sm font-bold uppercase tracking-widest whitespace-normal break-words",
         color === 'blue' ? "text-[#00a2e8]" : "text-[#ed1c24]"
       )}>
         {cleanPlaceholder(club)}

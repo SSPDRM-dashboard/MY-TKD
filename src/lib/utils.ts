@@ -33,8 +33,11 @@ export function parseRingNumber(ringVal: any): number {
 }
 
 export function normalizeBoutNumber(bout: string | number): string {
-  const s = bout.toString().trim().toUpperCase();
+  let s = bout.toString().replace(/\s+/g, '').toUpperCase();
   if (!s) return '';
+  
+  // Replace letter 'O' with digit '0' if it is inside the alphabetic ring prefix of a bout (e.g., "CO1" -> "C01")
+  s = s.replace(/^([A-H])O+(\d+)$/, '$10$2');
   
   // Handle A01, B01, C01 format (A=1000, B=2000, C=3000, etc.)
   const match = s.match(/^([A-Z])(\d+)$/);
@@ -53,7 +56,12 @@ export function isBoutMatch(bout1: string | number, bout2: string | number): boo
   if (bout1 === bout2) return true;
   if (!bout1 || !bout2) return false;
 
-  const normalizeLenient = (b: string | number) => b.toString().toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
+  const normalizeLenient = (b: string | number) => {
+    let s = b.toString().toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
+    // Also cover lenient "O" to "0" replacing for single letter prefixes
+    s = s.replace(/^([A-H])O+(\d+)$/, '$10$2');
+    return s;
+  };
   
   const b1 = normalizeLenient(bout1);
   const b2 = normalizeLenient(bout2);
@@ -80,8 +88,11 @@ export function isBoutMatch(bout1: string | number, bout2: string | number): boo
 }
 
 export function normalizeBoutWithRing(bout: string | number, ringNum: number): string {
-  const s = bout.toString().trim().toUpperCase();
+  let s = bout.toString().replace(/\s+/g, '').toUpperCase();
   if (!s) return '';
+  
+  // Normalize O to 0
+  s = s.replace(/^([A-H])O+(\d+)$/, '$10$2');
   
   // If it already has a letter, use standard normalization
   if (/^[A-Z]/.test(s)) return normalizeBoutNumber(s);
@@ -156,26 +167,26 @@ export function isUsingA01Method(data: any[]): boolean {
 
 export function extractWinnerOfBout(nameStr: string | null | undefined): string | null {
   if (!nameStr) return null;
-  const s = nameStr.trim().toUpperCase();
+  let s = nameStr.trim().toUpperCase();
   
-  // Match "WINNER OF BOUT [BOUT_ID]" or "WINNER BOUT [BOUT_ID]"
-  const matchBout = s.match(/(?:WINNER\s+(?:OF\s+)?BOUT\s+)([\w-]+)/i);
-  if (matchBout && matchBout[1]) {
-    return matchBout[1];
-  }
+  // Normalize variations of WINNER OF BOUT / WINNER OF MATCH / WINNER BOUT / WINNER
+  s = s.replace(/\b(?:WINNER|WINN|WINNR)\s+(?:OF\s+)?(?:BOUT\s+|MATCH\s+)?/i, 'WINNER OF ');
+  
+  // Clean letter 'O' vs number '0' typos inside alphabetic ring prefix of a bout code (e.g., "C O1" -> "C01", "CO1" -> "C01")
+  s = s.replace(/([A-H])\s*O\s*(\d+)/g, '$10$2');
+  
+  // Clean spaced bout numbers (e.g., "C 01" -> "C01")
+  s = s.replace(/([A-H])\s*(\d+)/g, '$1$2');
 
-  // Match "WINNER OF [BOUT_ID]" or "WINNER [BOUT_ID]"
-  const matchDirect = s.match(/(?:WINNER\s+(?:OF\s+)?\s*)([\w-]+)/i);
-  if (matchDirect && matchDirect[1]) {
-    // Ensure we didn't just capture "BOUT" because of a space in "WINNER OF BOUT 23"
-    if (matchDirect[1] === 'BOUT') {
-       // If it captured BOUT, look for the text after "BOUT"
-       const postBoutMatch = s.match(/(?:WINNER\s+(?:OF\s+)?BOUT\s+)([\w-]+)/i);
-       if (postBoutMatch && postBoutMatch[1]) {
-         return postBoutMatch[1];
-       }
+  // Perform extracting match
+  const matchOf = s.match(/WINNER OF\s*([\w-]+)/i);
+  if (matchOf && matchOf[1]) {
+    let extracted = matchOf[1].trim();
+    // Normalize "O" to "0" one more time inside extracted bout
+    if (/^[A-H]O+\d+$/.test(extracted)) {
+      extracted = extracted.charAt(0) + extracted.substring(1).replace(/O/g, '0');
     }
-    return matchDirect[1];
+    return extracted;
   }
   
   return null;

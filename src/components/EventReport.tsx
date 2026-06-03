@@ -444,6 +444,93 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
     (g.club && g.club.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
+  const downloadCategoryPlacings = () => {
+    const data = filteredCategories.map(c => {
+      const b1 = c.bronzes[0] || { name: '', club: '' };
+      const b2 = c.bronzes[1] || { name: '', club: '' };
+      return {
+        'Category': c.category,
+        '1st Place (Gold)': c.gold?.name || '',
+        '1st Place Club': c.gold?.club || '',
+        '2nd Place (Silver)': c.silver?.name || '',
+        '2nd Place Club': c.silver?.club || '',
+        '3rd Place (Bronze 1)': b1.name || '',
+        '3rd Place Club 1': b1.club || '',
+        '3rd Place (Bronze 2)': b2.name || '',
+        '3rd Place Club 2': b2.club || ''
+      };
+    });
+    
+    const csv = Papa.unparse(data);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', `category_placings_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const downloadOverallWinners = () => {
+    const data: any[] = [];
+    
+    filteredGolds.forEach(g => {
+      data.push({
+        'Rank': '1st Place (Gold)',
+        'Athlete Name': g.name,
+        'Club Name': g.club,
+        'Category': g.category
+      });
+    });
+    
+    filteredSilvers.forEach(s => {
+      data.push({
+        'Rank': '2nd Place (Silver)',
+        'Athlete Name': s.name,
+        'Club Name': s.club,
+        'Category': s.category
+      });
+    });
+    
+    filteredBronzes.forEach(b => {
+      data.push({
+        'Rank': '3rd Place (Bronze)',
+        'Athlete Name': b.name,
+        'Club Name': b.club,
+        'Category': b.category
+      });
+    });
+    
+    const csv = Papa.unparse(data);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', `overall_winners_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const downloadOverallStandings = () => {
+    const data = clubStandings.map((c, i) => ({
+      'Rank': i + 1,
+      'Club / State': c.club || 'Unknown Club',
+      'Gold Medals': c.gold,
+      'Silver Medals': c.silver,
+      'Bronze Medals': c.bronze,
+      'Total Points': c.points
+    }));
+    
+    const csv = Papa.unparse(data);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', `overall_standings_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   if (!currentEventId) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-slate-500">
@@ -544,89 +631,107 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         {activeTab === 'winners' && (
           <div className="p-6">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
               <h2 className="text-lg font-bold text-slate-800">Category Placings</h2>
-              <div className="relative">
-                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search Category..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none w-64"
-                />
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={downloadCategoryPlacings}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center gap-2 text-sm transition-all shadow-sm"
+                >
+                  <Download size={16} />
+                  Download Placings CSV
+                </button>
+                <div className="relative">
+                  <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search Category..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none w-64 text-sm"
+                  />
+                </div>
               </div>
             </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="p-4 font-bold text-slate-600 text-sm">Category</th>
-                    <th className="p-4 font-bold text-slate-600 text-sm"><div className="flex items-center gap-1"><Medal size={16} className="text-yellow-500"/> 1st Place (Gold)</div></th>
-                    <th className="p-4 font-bold text-slate-600 text-sm"><div className="flex items-center gap-1"><Medal size={16} className="text-slate-400"/> 2nd Place (Silver)</div></th>
-                    <th className="p-4 font-bold text-slate-600 text-sm"><div className="flex items-center gap-1"><Medal size={16} className="text-amber-700"/> 3rd Place (Bronzes)</div></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredCategories.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="p-8 text-center text-slate-500">
-                        {isLoading ? "Scanning bracket history..." : "No categories processed yet. Are bouts completed on the synced sheet?"}
-                      </td>
-                    </tr>
-                  ) : filteredCategories.map((c, i) => (
-                    <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="p-4 font-bold text-slate-800">{c.category}</td>
-                      <td className="p-4">
-                        {c.gold ? (
-                          <div>
-                            <div className="font-bold text-slate-900">{c.gold.name}</div>
-                            <div className="text-xs text-yellow-200 font-medium">{c.gold.club}</div>
-                          </div>
-                        ) : <span className="text-slate-400 text-sm italic">Pending Finish</span>}
-                      </td>
-                      <td className="p-4">
-                        {c.silver ? (
-                          <div>
-                            <div className="font-bold text-slate-700">{c.silver.name}</div>
-                            <div className="text-xs text-yellow-200 font-medium">{c.silver.club}</div>
-                          </div>
-                        ) : <span className="text-slate-400">-</span>}
-                      </td>
-                      <td className="p-4">
-                        {c.bronzes.length > 0 ? (
-                          <div className="flex flex-col gap-2">
-                            {c.bronzes.map((b, bi) => (
-                              <div key={bi} className="bg-amber-50 px-2 py-1 rounded border border-amber-100 inline-block w-max">
-                                <div className="font-bold text-slate-800 text-sm flex gap-2"><span>{b.name}</span><span className="text-amber-700/60 font-black">#3</span></div>
-                                <div className="text-xs text-yellow-200 font-medium">{b.club}</div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : <span className="text-slate-400">-</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+ 
+             <div className="overflow-x-auto">
+               <table className="w-full text-left border-collapse">
+                 <thead>
+                   <tr className="bg-slate-50 border-b border-slate-200">
+                     <th className="p-4 font-bold text-slate-600 text-sm">Category</th>
+                     <th className="p-4 font-bold text-slate-600 text-sm"><div className="flex items-center gap-1"><Medal size={16} className="text-yellow-500"/> 1st Place (Gold)</div></th>
+                     <th className="p-4 font-bold text-slate-600 text-sm"><div className="flex items-center gap-1"><Medal size={16} className="text-slate-400"/> 2nd Place (Silver)</div></th>
+                     <th className="p-4 font-bold text-slate-600 text-sm"><div className="flex items-center gap-1"><Medal size={16} className="text-amber-700"/> 3rd Place (Bronzes)</div></th>
+                   </tr>
+                 </thead>
+                 <tbody className="divide-y divide-slate-100">
+                   {filteredCategories.length === 0 ? (
+                     <tr>
+                       <td colSpan={4} className="p-8 text-center text-slate-500">
+                         {isLoading ? "Scanning bracket history..." : "No categories processed yet. Are bouts completed on the synced sheet?"}
+                       </td>
+                     </tr>
+                   ) : filteredCategories.map((c, i) => (
+                     <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                       <td className="p-4 font-bold text-slate-800">{c.category}</td>
+                       <td className="p-4">
+                         {c.gold ? (
+                           <div>
+                             <div className="font-bold text-slate-900">{c.gold.name}</div>
+                             <div className="text-xs text-blue-900 font-bold">{c.gold.club}</div>
+                           </div>
+                         ) : <span className="text-slate-400 text-sm italic">Pending Finish</span>}
+                       </td>
+                       <td className="p-4">
+                         {c.silver ? (
+                           <div>
+                             <div className="font-bold text-slate-700">{c.silver.name}</div>
+                             <div className="text-xs text-blue-900 font-bold">{c.silver.club}</div>
+                           </div>
+                         ) : <span className="text-slate-400">-</span>}
+                       </td>
+                       <td className="p-4">
+                         {c.bronzes.length > 0 ? (
+                           <div className="flex flex-col gap-2">
+                             {c.bronzes.map((b, bi) => (
+                               <div key={bi} className="bg-amber-50 px-2 py-1 rounded border border-amber-100 inline-block w-max">
+                                 <div className="font-bold text-slate-800 text-sm flex gap-2"><span>{b.name}</span><span className="text-amber-700/60 font-black">#3</span></div>
+                                 <div className="text-xs text-blue-900 font-bold">{b.club}</div>
+                               </div>
+                             ))}
+                           </div>
+                         ) : <span className="text-slate-400">-</span>}
+                       </td>
+                     </tr>
+                   ))}
+                 </tbody>
+               </table>
+             </div>
           </div>
         )}
 
         {activeTab === 'by-rank' && (
           <div className="p-6">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
               <h2 className="text-lg font-bold text-slate-800">Overall Winners categorized by rank</h2>
-              <div className="relative">
-                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search Names, Clubs..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none w-64"
-                />
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={downloadOverallWinners}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center gap-2 text-sm transition-all shadow-sm"
+                >
+                  <Download size={16} />
+                  Download Winners CSV
+                </button>
+                <div className="relative">
+                  <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search Names, Clubs..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none w-64 text-sm"
+                  />
+                </div>
               </div>
             </div>
 
@@ -642,7 +747,7 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
                   ) : filteredGolds.map((g, i) => (
                     <div key={i} className="bg-white border text-left border-yellow-200 rounded-xl max-w-sm p-4 shadow-sm hover:shadow-md transition-shadow">
                       <div className="font-black text-slate-900 text-lg leading-tight uppercase mb-1">{g.name}</div>
-                      <div className="text-sm font-bold text-yellow-600 uppercase tracking-widest">{g.club}</div>
+                      <div className="text-sm font-bold text-blue-900 uppercase tracking-widest">{g.club}</div>
                       <div className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">{g.category}</div>
                     </div>
                   ))}
@@ -660,7 +765,7 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
                   ) : filteredSilvers.map((s, i) => (
                     <div key={i} className="bg-white border text-left border-slate-200 rounded-xl max-w-sm p-4 shadow-sm hover:shadow-md transition-shadow">
                       <div className="font-black text-slate-900 text-lg leading-tight uppercase mb-1">{s.name}</div>
-                      <div className="text-sm font-bold text-slate-600 uppercase tracking-widest">{s.club}</div>
+                      <div className="text-sm font-bold text-blue-900 uppercase tracking-widest">{s.club}</div>
                       <div className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">{s.category}</div>
                     </div>
                   ))}
@@ -678,7 +783,7 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
                   ) : filteredBronzes.map((b, i) => (
                     <div key={i} className="bg-white border text-left border-amber-200 rounded-xl max-w-sm p-4 shadow-sm hover:shadow-md transition-shadow">
                       <div className="font-black text-slate-900 text-lg leading-tight uppercase mb-1">{b.name}</div>
-                      <div className="text-sm font-bold text-amber-700 uppercase tracking-widest">{b.club}</div>
+                      <div className="text-sm font-bold text-blue-900 uppercase tracking-widest">{b.club}</div>
                       <div className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">{b.category}</div>
                     </div>
                   ))}
@@ -691,7 +796,16 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
 
         {activeTab === 'summary' && (
           <div className="p-6 flex flex-col items-center">
-            <h2 className="text-lg font-bold text-slate-800 mb-6 w-full max-w-4xl">World Taekwondo Team Standings Classification</h2>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 w-full max-w-4xl">
+              <h2 className="text-lg font-bold text-slate-800">World Taekwondo Team Standings Classification</h2>
+              <button
+                onClick={downloadOverallStandings}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center gap-2 text-sm transition-all shadow-sm"
+              >
+                <Download size={16} />
+                Download Standings CSV
+              </button>
+            </div>
             
             <div className="w-full max-w-4xl border border-slate-200 rounded-xl overflow-hidden">
               <table className="w-full text-left border-collapse">
@@ -724,7 +838,7 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
                           {i + 1}
                         </div>
                       </td>
-                      <td className="p-4 font-bold text-yellow-200 text-lg flex items-center gap-3">
+                      <td className="p-4 font-bold text-blue-900 text-lg flex items-center gap-3">
                         <Building2 size={20} className="text-slate-400" />
                         {c.club || 'Unknown Club'}
                       </td>
