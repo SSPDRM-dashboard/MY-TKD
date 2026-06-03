@@ -26,6 +26,55 @@ import { db } from '../firebase';
 import { syncToGoogleSheets } from '../services/googleSheets';
 import Papa from 'papaparse';
 
+function cleanAndParseJSON(rawText: string | undefined): any {
+  if (!rawText) {
+    throw new Error("No response content was received from the AI.");
+  }
+
+  let cleaned = rawText.trim();
+
+  // 1. Remove markdown backticks if present
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```[a-zA-Z]*\n/i, "");
+    cleaned = cleaned.replace(/\n```$/, "");
+    cleaned = cleaned.trim();
+  }
+
+  // 2. Remove standard trailing commas in objects and arrays
+  cleaned = cleaned.replace(/,\s*([}\]])/g, "$1");
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (initialError: any) {
+    console.warn("Initial JSON parsing failed. Attempting deep repair of nested unescaped quotes...", initialError);
+    try {
+      // Line by line repair for unescaped nested double quotes in "key": "value" patterns
+      const lines = cleaned.split("\n");
+      const repairedLines = lines.map(line => {
+        // This matches lines like: "key": "value" with possible trailing comma and whitespace
+        const match = line.match(/^(\s*"[^"]+"\s*:\s*")([\s\S]*)("\s*,?\s*)$/);
+        if (match) {
+          const prefix = match[1];
+          const value = match[2];
+          const suffix = match[3];
+
+          // Normalize any existing escaped double quotes first, then escape all double quotes
+          const normalizedValue = value.replace(/\\"/g, '"');
+          const escapedValue = normalizedValue.replace(/"/g, '\\"');
+          return prefix + escapedValue + suffix;
+        }
+        return line;
+      });
+
+      const repairedJSON = repairedLines.join("\n");
+      return JSON.parse(repairedJSON);
+    } catch (repairErr: any) {
+      console.error("JSON repair failed:", repairErr);
+      throw new Error(`JSON format error: ${initialError.message || initialError}. Help: Ensure nicknames or special names are escaped.`);
+    }
+  }
+}
+
 interface AIBracketSetupProps {
   currentEventId: string | null;
   events: EventData[];
@@ -183,10 +232,14 @@ export function AIBracketSetup({
         ${JSON.stringify(previewData, null, 2)}
         
         Return ONLY the corrected JSON in the same format.
+
+        CRITICAL FORMATTING RULES:
+        - Do not include unescaped double quotes inside string values under any circumstances (e.g., nicknames, abbreviations, or club names). If a name has quotes like "John "The Dragon" Smith", return "John \"The Dragon\" Smith" or "John 'The Dragon' Smith".
+        - The output must be standard compliant JSON, with all property names and string values strictly enclosed in double quotes.
       `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-3.5-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -200,7 +253,7 @@ export function AIBracketSetup({
         }
       });
 
-      const result = JSON.parse(response.text);
+      const result = cleanAndParseJSON(response.text);
       setPreviewData(result);
     } catch (err: any) {
       console.error("Refinement Error:", err);
@@ -390,10 +443,14 @@ export function AIBracketSetup({
           "matches": [{"bout": "A01", "ring": 1, "category": "...", "blue_name": "...", "blue_club": "...", "red_name": "...", "red_club": "..."}],
           "mappings": [{"sourceBout": "A01", "nextBout": "A05", "slot": "Chung"}]
         }
+
+        CRITICAL FORMATTING RULES:
+        - Do not include unescaped double quotes inside string values under any circumstances (e.g., nicknames, abbreviations, or club names). If a name has quotes like "John "The Dragon" Smith", return "John \"The Dragon\" Smith" or "John 'The Dragon' Smith".
+        - The output must be standard compliant JSON, with all property names and string values strictly enclosed in double quotes.
       `;
 
       const response = await ai.models.generateContent({
-        model: isThinkingMode ? "gemini-3.1-pro-preview" : "gemini-3-flash-preview",
+        model: isThinkingMode ? "gemini-3.1-pro-preview" : "gemini-3.5-flash",
         contents: [
           {
             parts: [
@@ -447,7 +504,7 @@ export function AIBracketSetup({
         },
       });
 
-      const result = JSON.parse(response.text);
+      const result = cleanAndParseJSON(response.text);
       const normalizedResult = {
         matches: Array.isArray(result.matches) ? result.matches : [],
         mappings: Array.isArray(result.mappings) ? result.mappings : []
