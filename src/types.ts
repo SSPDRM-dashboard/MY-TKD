@@ -20,6 +20,7 @@ export interface BoutMapping {
 
 export interface MatchData {
   ring: number;
+  originalRing?: number;
   bout: string | number;
   blue_name: string;
   blue_club: string;
@@ -42,6 +43,9 @@ export interface MatchData {
     r2Red?: string;
     r3Blue?: string;
     r3Red?: string;
+    r1Winner?: 'Blue' | 'Red' | '';
+    r2Winner?: 'Blue' | 'Red' | '';
+    r3Winner?: 'Blue' | 'Red' | '';
   };
 }
 

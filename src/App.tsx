@@ -1390,18 +1390,21 @@ export default function App() {
     const currentBout = ring?.currentBout;
     const winnerName = winner === 'Blue' ? currentBout?.blue_name : currentBout?.red_name;
 
+    const targetSyncRing = currentBout?.originalRing || ringNumber;
+
     if (activeUrl) {
       setIsSyncing(true);
       setLastSyncError(null);
       updateWinnerInGoogleSheets(
         activeUrl, 
-        ringNumber, 
+        targetSyncRing, 
         boutNumber, 
         winnerName || winner,
         getCurrentEventName(),
         winner,
         currentBout?.blue_name,
-        currentBout?.red_name
+        currentBout?.red_name,
+        currentBout?.points
       ).then(() => {
         addToSyncLog('Winner', 'success', `Winner for Bout ${boutNumber} sent`);
       }).catch(e => {
@@ -1499,7 +1502,8 @@ export default function App() {
     // Sync the new current bout to Google Sheets if it exists
     const nextBoutToSyncWin = ring?.onDeck || (pulledFromQueue && nextItemToPull ? nextItemToPull.data : null);
     if (nextBoutToSyncWin && activeUrl) {
-      syncToGoogleSheets(activeUrl, nextBoutToSyncWin, getCurrentEventName());
+      const dataToSync = { ...nextBoutToSyncWin, ring: nextBoutToSyncWin.originalRing || nextBoutToSyncWin.ring };
+      syncToGoogleSheets(activeUrl, dataToSync, getCurrentEventName());
     }
 
     // If queue is empty but we haven't reached total bouts, show the missing bout prompt
@@ -1667,6 +1671,9 @@ export default function App() {
   };
 
   const handlePointsUpdateApp = async (ringNumber: number, boutNumber: string | number, newPoints: any) => {
+    const ring = rings.find(r => r.ringNumber === ringNumber);
+    const targetSyncRing = ring?.currentBout?.originalRing || ringNumber;
+
     setRings(prev => {
       const updated = prev.map(r => r.ringNumber === ringNumber && r.currentBout && isBoutMatch(r.currentBout.bout, boutNumber) ? { 
         ...r, 
@@ -1677,7 +1684,7 @@ export default function App() {
     });
 
     if (googleSheetUrl && currentEventId) {
-      updatePointsInGoogleSheets(googleSheetUrl, ringNumber, boutNumber, newPoints, getCurrentEventName());
+      updatePointsInGoogleSheets(googleSheetUrl, targetSyncRing, boutNumber, newPoints, getCurrentEventName());
     }
   };
 
@@ -1734,7 +1741,8 @@ export default function App() {
     if (activeUrl) {
       setIsSyncing(true);
       try {
-        await syncToGoogleSheets(activeUrl, capitalizedData, getCurrentEventName());
+        const dataToSync = { ...capitalizedData, ring: capitalizedData.originalRing || capitalizedData.ring };
+        await syncToGoogleSheets(activeUrl, dataToSync, getCurrentEventName());
       } catch (e) {
         console.error('Sync error:', e);
       } finally {
@@ -2420,15 +2428,35 @@ export default function App() {
                       </div>
                       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col max-h-[400px]">
                         <div className="p-4 overflow-y-auto space-y-3">
-                          {getFilteredQueue().length === 0 ? (
+                            {getFilteredQueue().length === 0 ? (
                             <p className="text-sm text-slate-500 text-center py-8">No upcoming bouts.</p>
                           ) : (
                             getFilteredQueue().map(item => (
                               <div key={item.id} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
                                 <div>
-                                  <div className="flex items-center gap-2 mb-2">
+                                  <div className="flex items-center gap-2 mb-2 flex-wrap">
                                     <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-md">Ring {item.data.ring}</span>
                                     <span className="text-[11px] font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">Bout {formatBoutNumber(item.data.ring, item.data.bout, boutNumberingMode)}</span>
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-[10px] font-bold text-slate-400">Move:</span>
+                                      <select
+                                        value={item.data.ring}
+                                        onChange={(e) => {
+                                          const targetRing = parseInt(e.target.value);
+                                          if (targetRing) {
+                                            setBoutQueue(prev => prev.map(q => q.id === item.id ? { ...q, data: { ...q.data, ring: targetRing, originalRing: q.data.originalRing || q.data.ring } } : q));
+                                            addToSyncLog("Transfer Bout Ring", "success", `Transferred Bout ${item.data.bout} from Ring ${item.data.ring} to Ring ${targetRing}`);
+                                          }
+                                        }}
+                                        className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded px-1 py-0.5 outline-none cursor-pointer hover:bg-indigo-100 transition-colors"
+                                      >
+                                        {currentRings.map(r => (
+                                          <option key={r.ringNumber} value={r.ringNumber}>
+                                            Ring {getRingName(r.ringNumber)}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
                                   </div>
                                   <p className="text-sm font-bold text-slate-800">{cleanPlaceholder(item.data.blue_name)} vs {cleanPlaceholder(item.data.red_name)}</p>
                                   <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{cleanPlaceholder(item.data.category)}</p>
@@ -2606,9 +2634,29 @@ export default function App() {
                               getFilteredQueue().map(item => (
                                 <div key={item.id} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
                                   <div>
-                                    <div className="flex items-center gap-2 mb-2">
+                                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                                       <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-md">Ring {item.data.ring}</span>
                                       <span className="text-[11px] font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">Bout {formatBoutNumber(item.data.ring, item.data.bout, boutNumberingMode)}</span>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-[10px] font-bold text-slate-400">Move:</span>
+                                        <select
+                                          value={item.data.ring}
+                                          onChange={(e) => {
+                                            const targetRing = parseInt(e.target.value);
+                                            if (targetRing) {
+                                              setBoutQueue(prev => prev.map(q => q.id === item.id ? { ...q, data: { ...q.data, ring: targetRing, originalRing: q.data.originalRing || q.data.ring } } : q));
+                                              addToSyncLog("Transfer Bout Ring", "success", `Transferred Bout ${item.data.bout} from Ring ${item.data.ring} to Ring ${targetRing}`);
+                                            }
+                                          }}
+                                          className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded px-1 py-0.5 outline-none cursor-pointer hover:bg-indigo-100 transition-colors"
+                                        >
+                                          {currentRings.map(r => (
+                                            <option key={r.ringNumber} value={r.ringNumber}>
+                                              Ring {getRingName(r.ringNumber)}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
                                     </div>
                                     <p className="text-sm font-bold text-slate-800">{cleanPlaceholder(item.data.blue_name)} vs {cleanPlaceholder(item.data.red_name)}</p>
                                     <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{cleanPlaceholder(item.data.category)}</p>
@@ -3136,15 +3184,17 @@ export default function App() {
 
             if (googleSheetUrl) {
               setIsSyncing(true);
+              const targetSyncRing = found?.originalRing || ringNumber;
               updateWinnerInGoogleSheets(
                 googleSheetUrl,
-                ringNumber,
+                targetSyncRing,
                 boutNumber,
                 winName,
                 getCurrentEventName(),
                 winner,
                 found?.blue_name,
-                found?.red_name
+                found?.red_name,
+                found?.points
               ).finally(() => setIsSyncing(false));
             }
 
@@ -3225,12 +3275,26 @@ export default function App() {
               return q;
             }));
 
+            // Find match to determine originalRing
+            let foundMatch: MatchData | null = null;
+            const targetRingObj = rings.find(r => r.ringNumber === ringNumber);
+            if (targetRingObj) {
+              if (targetRingObj.currentBout && isBoutMatch(targetRingObj.currentBout.bout, boutNumber)) foundMatch = targetRingObj.currentBout;
+              else if (targetRingObj.onDeck && isBoutMatch(targetRingObj.onDeck.bout, boutNumber)) foundMatch = targetRingObj.onDeck;
+              else if (targetRingObj.inTheHole && isBoutMatch(targetRingObj.inTheHole.bout, boutNumber)) foundMatch = targetRingObj.inTheHole;
+            }
+            if (!foundMatch) {
+              const qMatch = boutQueue.find(q => q.data.ring === ringNumber && isBoutMatch(q.data.bout, boutNumber));
+              if (qMatch) foundMatch = qMatch.data;
+            }
+            const targetSyncRing = foundMatch?.originalRing || ringNumber;
+
             // Sync to Google Sheets
             if (googleSheetUrl) {
               setIsSyncing(true);
               updateBoutDetailsInGoogleSheets(
                 googleSheetUrl,
-                ringNumber,
+                targetSyncRing,
                 boutNumber,
                 updates.blue_name || '',
                 updates.blue_club || '',
@@ -4441,7 +4505,12 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
   const [isFinalBoutSelection, setIsFinalBoutSelection] = useState(false);
   const [isSyncingLocal, setIsSyncingLocal] = useState(false);
   const [showInspectionWarning, setShowInspectionWarning] = useState(false);
-  const [points, setPoints] = useState({ r1Blue: '', r1Red: '', r2Blue: '', r2Red: '', r3Blue: '', r3Red: '' });
+  const [points, setPoints] = useState({ 
+    r1Blue: '', r1Red: '', r2Blue: '', r2Red: '', r3Blue: '', r3Red: '',
+    r1Winner: '' as 'Blue' | 'Red' | '',
+    r2Winner: '' as 'Blue' | 'Red' | '',
+    r3Winner: '' as 'Blue' | 'Red' | ''
+  });
   const pointsDebounceRef = React.useRef<NodeJS.Timeout>();
 
   // Use an effect to sync prop changes to local points ONLY if they differ, or upon mount/new bout
@@ -4454,14 +4523,22 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
           r2Blue: ring.currentBout!.points?.r2Blue || '',
           r2Red: ring.currentBout!.points?.r2Red || '',
           r3Blue: ring.currentBout!.points?.r3Blue || '',
-          r3Red: ring.currentBout!.points?.r3Red || ''
+          r3Red: ring.currentBout!.points?.r3Red || '',
+          r1Winner: ring.currentBout!.points?.r1Winner || '',
+          r2Winner: ring.currentBout!.points?.r2Winner || '',
+          r3Winner: ring.currentBout!.points?.r3Winner || ''
         };
         // Don't update if same object to avoid jumpiness
         if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
         return next;
       });
     } else {
-      setPoints({ r1Blue: '', r1Red: '', r2Blue: '', r2Red: '', r3Blue: '', r3Red: '' });
+      setPoints({ 
+        r1Blue: '', r1Red: '', r2Blue: '', r2Red: '', r3Blue: '', r3Red: '',
+        r1Winner: '',
+        r2Winner: '',
+        r3Winner: ''
+      });
     }
   }, [ring.currentBout?.bout, ring.currentBout?.points]);
 
@@ -4513,6 +4590,42 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
   
   const progress = ring.totalBouts && current ? Math.min(100, (getBoutNumber(current.bout) / ring.totalBouts) * 100) : 0;
+
+  // Compute round-by-round winners to determine any overall match winner
+  const getRoundWinnerForPointLayout = (roundNum: 1 | 2 | 3) => {
+    const winnerField = points[`r${roundNum}Winner` as 'r1Winner' | 'r2Winner' | 'r3Winner'];
+    if (winnerField === 'Blue' || winnerField === 'Red') {
+      return winnerField;
+    }
+    const blueValStr = points[`r${roundNum}Blue` as 'r1Blue' | 'r2Blue' | 'r3Blue'];
+    const redValStr = points[`r${roundNum}Red` as 'r1Red' | 'r2Red' | 'r3Red'];
+    if (blueValStr !== '' && redValStr !== '') {
+      const b = parseInt(blueValStr);
+      const r = parseInt(redValStr);
+      if (!isNaN(b) && !isNaN(r)) {
+        if (b > r) return 'Blue';
+        if (r > b) return 'Red';
+      }
+    }
+    return '';
+  };
+
+  const r1WinnerComputed = getRoundWinnerForPointLayout(1);
+  const r2WinnerComputed = getRoundWinnerForPointLayout(2);
+  const r3WinnerComputed = getRoundWinnerForPointLayout(3);
+
+  let blueRoundsWonComputed = 0;
+  let redRoundsWonComputed = 0;
+
+  if (r1WinnerComputed === 'Blue') blueRoundsWonComputed++;
+  if (r1WinnerComputed === 'Red') redRoundsWonComputed++;
+  if (r2WinnerComputed === 'Blue') blueRoundsWonComputed++;
+  if (r2WinnerComputed === 'Red') redRoundsWonComputed++;
+  if (r3WinnerComputed === 'Blue') blueRoundsWonComputed++;
+  if (r3WinnerComputed === 'Red') redRoundsWonComputed++;
+
+  const isBlueMatchWinner = blueRoundsWonComputed >= 2;
+  const isRedMatchWinner = redRoundsWonComputed >= 2;
 
   return (
     <div className="relative bg-white border border-slate-200 rounded-[2.5rem] overflow-hidden shadow-sm hover:border-red-200 transition-colors">
@@ -4669,33 +4782,321 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                   ) : (
                     layout === 'point' ? (
                       <>
-                        <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Round Points</p>
-                        <div className="grid grid-cols-4 gap-2 mb-4">
+                        <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Round Points & Winners</p>
+                        <div className="grid grid-cols-4 gap-2 mb-4 items-center">
                           <div className="flex items-center justify-center font-bold text-slate-400"></div>
                           <div className="text-center text-[10px] font-black uppercase text-slate-500">R1</div>
                           <div className="text-center text-[10px] font-black uppercase text-slate-500">R2</div>
                           <div className="text-center text-[10px] font-black uppercase text-slate-500">R3</div>
                           
                           <div className="flex items-center justify-center font-black text-[#00a2e8] text-sm uppercase">Blue</div>
-                          <input type="number" className={cn("w-full text-center border-2 border-[#00a2e8] transition-all py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8]", points.r1Blue !== '' && points.r1Red !== '' && parseInt(points.r1Blue) > parseInt(points.r1Red) ? "bg-[#00a2e8] text-white rounded-full scale-105 shadow-md" : "bg-white text-slate-800 rounded-lg")} value={points.r1Blue} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r1Blue: val})); handlePointsUpdate(); }} />
-                          <input type="number" className={cn("w-full text-center border-2 border-[#00a2e8] transition-all py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8]", points.r2Blue !== '' && points.r2Red !== '' && parseInt(points.r2Blue) > parseInt(points.r2Red) ? "bg-[#00a2e8] text-white rounded-full scale-105 shadow-md" : "bg-white text-slate-800 rounded-lg")} value={points.r2Blue} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r2Blue: val})); handlePointsUpdate(); }} />
-                          <input type="number" className={cn("w-full text-center border-2 border-[#00a2e8] transition-all py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8]", points.r3Blue !== '' && points.r3Red !== '' && parseInt(points.r3Blue) > parseInt(points.r3Red) ? "bg-[#00a2e8] text-white rounded-full scale-105 shadow-md" : "bg-white text-slate-800 rounded-lg")} value={points.r3Blue} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r3Blue: val})); handlePointsUpdate(); }} />
+                          <input 
+                            type="number" 
+                            className={cn(
+                              "w-12 h-12 text-center border-2 border-[#00a2e8] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8] mx-auto flex items-center justify-center rounded-full", 
+                              (points.r1Winner === 'Blue' || (points.r1Winner === '' && points.r1Blue !== '' && points.r1Red !== '' && parseInt(points.r1Blue) > parseInt(points.r1Red))) 
+                                ? "bg-[#00a2e8] text-white scale-110 shadow-md ring-4 ring-blue-300 border-transparent" 
+                                : "bg-white text-slate-800"
+                            )} 
+                            value={points.r1Blue} 
+                            onChange={(e) => { 
+                              const val = e.target.value; 
+                              setPoints(p => {
+                                let winner = p.r1Winner;
+                                if (val !== '' && p.r1Red !== '') {
+                                  const b = parseInt(val);
+                                  const r = parseInt(p.r1Red);
+                                  if (!isNaN(b) && !isNaN(r)) {
+                                    if (b > r) winner = 'Blue';
+                                    else if (r > b) winner = 'Red';
+                                  }
+                                } else if (val === '' && p.r1Red === '') {
+                                  winner = '';
+                                }
+                                return { ...p, r1Blue: val, r1Winner: winner };
+                              }); 
+                              handlePointsUpdate(); 
+                            }} 
+                          />
+                          <input 
+                            type="number" 
+                            className={cn(
+                              "w-12 h-12 text-center border-2 border-[#00a2e8] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8] mx-auto flex items-center justify-center rounded-full", 
+                              (points.r2Winner === 'Blue' || (points.r2Winner === '' && points.r2Blue !== '' && points.r2Red !== '' && parseInt(points.r2Blue) > parseInt(points.r2Red))) 
+                                ? "bg-[#00a2e8] text-white scale-110 shadow-md ring-4 ring-blue-300 border-transparent" 
+                                : "bg-white text-slate-800"
+                            )} 
+                            value={points.r2Blue} 
+                            onChange={(e) => { 
+                              const val = e.target.value; 
+                              setPoints(p => {
+                                let winner = p.r2Winner;
+                                if (val !== '' && p.r2Red !== '') {
+                                  const b = parseInt(val);
+                                  const r = parseInt(p.r2Red);
+                                  if (!isNaN(b) && !isNaN(r)) {
+                                    if (b > r) winner = 'Blue';
+                                    else if (r > b) winner = 'Red';
+                                  }
+                                } else if (val === '' && p.r2Red === '') {
+                                  winner = '';
+                                }
+                                return { ...p, r2Blue: val, r2Winner: winner };
+                              }); 
+                              handlePointsUpdate(); 
+                            }} 
+                          />
+                          <input 
+                            type="number" 
+                            className={cn(
+                              "w-12 h-12 text-center border-2 border-[#00a2e8] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8] mx-auto flex items-center justify-center rounded-full", 
+                              (points.r3Winner === 'Blue' || (points.r3Winner === '' && points.r3Blue !== '' && points.r3Red !== '' && parseInt(points.r3Blue) > parseInt(points.r3Red))) 
+                                ? "bg-[#00a2e8] text-white scale-110 shadow-md ring-4 ring-blue-300 border-transparent" 
+                                : "bg-white text-slate-800"
+                            )} 
+                            value={points.r3Blue} 
+                            onChange={(e) => { 
+                              const val = e.target.value; 
+                              setPoints(p => {
+                                let winner = p.r3Winner;
+                                if (val !== '' && p.r3Red !== '') {
+                                  const b = parseInt(val);
+                                  const r = parseInt(p.r3Red);
+                                  if (!isNaN(b) && !isNaN(r)) {
+                                    if (b > r) winner = 'Blue';
+                                    else if (r > b) winner = 'Red';
+                                  }
+                                } else if (val === '' && p.r3Red === '') {
+                                  winner = '';
+                                }
+                                return { ...p, r3Blue: val, r3Winner: winner };
+                              }); 
+                              handlePointsUpdate(); 
+                            }} 
+                          />
                           
                           <div className="flex items-center justify-center font-black text-[#ed1c24] text-sm uppercase">Red</div>
-                          <input type="number" className={cn("w-full text-center border-2 border-[#ed1c24] transition-all py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24]", points.r1Red !== '' && points.r1Blue !== '' && parseInt(points.r1Red) > parseInt(points.r1Blue) ? "bg-[#ed1c24] text-white rounded-full scale-105 shadow-md" : "bg-white text-slate-800 rounded-lg")} value={points.r1Red} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r1Red: val})); handlePointsUpdate(); }} />
-                          <input type="number" className={cn("w-full text-center border-2 border-[#ed1c24] transition-all py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24]", points.r2Red !== '' && points.r2Blue !== '' && parseInt(points.r2Red) > parseInt(points.r2Blue) ? "bg-[#ed1c24] text-white rounded-full scale-105 shadow-md" : "bg-white text-slate-800 rounded-lg")} value={points.r2Red} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r2Red: val})); handlePointsUpdate(); }} />
-                          <input type="number" className={cn("w-full text-center border-2 border-[#ed1c24] transition-all py-2 font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24]", points.r3Red !== '' && points.r3Blue !== '' && parseInt(points.r3Red) > parseInt(points.r3Blue) ? "bg-[#ed1c24] text-white rounded-full scale-105 shadow-md" : "bg-white text-slate-800 rounded-lg")} value={points.r3Red} onChange={(e) => { const val = e.target.value; setPoints(p => ({...p, r3Red: val})); handlePointsUpdate(); }} />
+                          <input 
+                            type="number" 
+                            className={cn(
+                              "w-12 h-12 text-center border-2 border-[#ed1c24] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24] mx-auto flex items-center justify-center rounded-full", 
+                              (points.r1Winner === 'Red' || (points.r1Winner === '' && points.r1Red !== '' && points.r1Blue !== '' && parseInt(points.r1Red) > parseInt(points.r1Blue))) 
+                                ? "bg-[#ed1c24] text-white scale-110 shadow-md ring-4 ring-red-300 border-transparent" 
+                                : "bg-white text-slate-800"
+                            )} 
+                            value={points.r1Red} 
+                            onChange={(e) => { 
+                              const val = e.target.value; 
+                              setPoints(p => {
+                                let winner = p.r1Winner;
+                                if (val !== '' && p.r1Blue !== '') {
+                                  const r = parseInt(val);
+                                  const b = parseInt(p.r1Blue);
+                                  if (!isNaN(b) && !isNaN(r)) {
+                                    if (b > r) winner = 'Blue';
+                                    else if (r > b) winner = 'Red';
+                                  }
+                                } else if (val === '' && p.r1Blue === '') {
+                                  winner = '';
+                                }
+                                return { ...p, r1Red: val, r1Winner: winner };
+                              }); 
+                              handlePointsUpdate(); 
+                            }} 
+                          />
+                          <input 
+                            type="number" 
+                            className={cn(
+                              "w-12 h-12 text-center border-2 border-[#ed1c24] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24] mx-auto flex items-center justify-center rounded-full", 
+                              (points.r2Winner === 'Red' || (points.r2Winner === '' && points.r2Red !== '' && points.r2Blue !== '' && parseInt(points.r2Red) > parseInt(points.r2Blue))) 
+                                ? "bg-[#ed1c24] text-white scale-110 shadow-md ring-4 ring-red-300 border-transparent" 
+                                : "bg-white text-slate-800"
+                            )} 
+                            value={points.r2Red} 
+                            onChange={(e) => { 
+                              const val = e.target.value; 
+                              setPoints(p => {
+                                let winner = p.r2Winner;
+                                if (val !== '' && p.r2Blue !== '') {
+                                  const r = parseInt(val);
+                                  const b = parseInt(p.r2Blue);
+                                  if (!isNaN(b) && !isNaN(r)) {
+                                    if (b > r) winner = 'Blue';
+                                    else if (r > b) winner = 'Red';
+                                  }
+                                } else if (val === '' && p.r2Blue === '') {
+                                  winner = '';
+                                }
+                                return { ...p, r2Red: val, r2Winner: winner };
+                              }); 
+                              handlePointsUpdate(); 
+                            }} 
+                          />
+                          <input 
+                            type="number" 
+                            className={cn(
+                              "w-12 h-12 text-center border-2 border-[#ed1c24] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24] mx-auto flex items-center justify-center rounded-full", 
+                              (points.r3Winner === 'Red' || (points.r3Winner === '' && points.r3Red !== '' && points.r3Blue !== '' && parseInt(points.r3Red) > parseInt(points.r3Blue))) 
+                                ? "bg-[#ed1c24] text-white scale-110 shadow-md ring-4 ring-red-300 border-transparent" 
+                                : "bg-white text-slate-800"
+                            )} 
+                            value={points.r3Red} 
+                            onChange={(e) => { 
+                              const val = e.target.value; 
+                              setPoints(p => {
+                                let winner = p.r3Winner;
+                                if (val !== '' && p.r3Blue !== '') {
+                                  const r = parseInt(val);
+                                  const b = parseInt(p.r3Blue);
+                                  if (!isNaN(b) && !isNaN(r)) {
+                                    if (b > r) winner = 'Blue';
+                                    else if (r > b) winner = 'Red';
+                                  }
+                                } else if (val === '' && p.r3Blue === '') {
+                                  winner = '';
+                                }
+                                return { ...p, r3Red: val, r3Winner: winner };
+                              }); 
+                              handlePointsUpdate(); 
+                            }} 
+                          />
+
+                          {/* Round Winner Selectors Row */}
+                          <div className="flex items-center justify-center font-black text-slate-400 text-[10px] uppercase text-center leading-tight">Winner</div>
+                          {/* R1 Selector */}
+                          <div className="flex justify-center items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newVal = points.r1Winner === 'Blue' ? '' : 'Blue';
+                                setPoints(p => ({ ...p, r1Winner: newVal }));
+                                handlePointsUpdate();
+                              }}
+                              className={cn(
+                                "h-7 w-7 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
+                                points.r1Winner === 'Blue'
+                                  ? "bg-[#00a2e8] text-white shadow-md shadow-blue-500/20 ring-2 ring-blue-300"
+                                  : "bg-slate-50 text-slate-500 hover:bg-blue-50 hover:text-[#00a2e8] border border-slate-200"
+                              )}
+                              title="Set Blue as R1 Winner"
+                            >
+                              B
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newVal = points.r1Winner === 'Red' ? '' : 'Red';
+                                setPoints(p => ({ ...p, r1Winner: newVal }));
+                                handlePointsUpdate();
+                              }}
+                              className={cn(
+                                "h-7 w-7 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
+                                points.r1Winner === 'Red'
+                                  ? "bg-[#ed1c24] text-white shadow-md shadow-red-500/20 ring-2 ring-red-300"
+                                  : "bg-slate-50 text-slate-500 hover:bg-red-50 hover:text-[#ed1c24] border border-slate-200"
+                              )}
+                              title="Set Red as R1 Winner"
+                            >
+                              R
+                            </button>
+                          </div>
+                          {/* R2 Selector */}
+                          <div className="flex justify-center items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newVal = points.r2Winner === 'Blue' ? '' : 'Blue';
+                                setPoints(p => ({ ...p, r2Winner: newVal }));
+                                handlePointsUpdate();
+                              }}
+                              className={cn(
+                                "h-7 w-7 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
+                                points.r2Winner === 'Blue'
+                                  ? "bg-[#00a2e8] text-white shadow-md shadow-blue-500/20 ring-2 ring-blue-300"
+                                  : "bg-slate-50 text-slate-500 hover:bg-blue-50 hover:text-[#00a2e8] border border-slate-200"
+                              )}
+                              title="Set Blue as R2 Winner"
+                            >
+                              B
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newVal = points.r2Winner === 'Red' ? '' : 'Red';
+                                setPoints(p => ({ ...p, r2Winner: newVal }));
+                                handlePointsUpdate();
+                              }}
+                              className={cn(
+                                "h-7 w-7 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
+                                points.r2Winner === 'Red'
+                                  ? "bg-[#ed1c24] text-white shadow-md shadow-red-500/20 ring-2 ring-red-300"
+                                  : "bg-slate-50 text-slate-500 hover:bg-red-50 hover:text-[#ed1c24] border border-slate-200"
+                              )}
+                              title="Set Red as R2 Winner"
+                            >
+                              R
+                            </button>
+                          </div>
+                          {/* R3 Selector */}
+                          <div className="flex justify-center items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newVal = points.r3Winner === 'Blue' ? '' : 'Blue';
+                                setPoints(p => ({ ...p, r3Winner: newVal }));
+                                handlePointsUpdate();
+                              }}
+                              className={cn(
+                                "h-7 w-7 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
+                                points.r3Winner === 'Blue'
+                                  ? "bg-[#00a2e8] text-white shadow-md shadow-blue-500/20 ring-2 ring-blue-300"
+                                  : "bg-slate-50 text-slate-500 hover:bg-blue-50 hover:text-[#00a2e8] border border-slate-200"
+                              )}
+                              title="Set Blue as R3 Winner"
+                            >
+                              B
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newVal = points.r3Winner === 'Red' ? '' : 'Red';
+                                setPoints(p => ({ ...p, r3Winner: newVal }));
+                                handlePointsUpdate();
+                              }}
+                              className={cn(
+                                "h-7 w-7 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
+                                points.r3Winner === 'Red'
+                                  ? "bg-[#ed1c24] text-white shadow-md shadow-red-500/20 ring-2 ring-red-300"
+                                  : "bg-slate-50 text-slate-500 hover:bg-red-50 hover:text-[#ed1c24] border border-slate-200"
+                              )}
+                              title="Set Red as R3 Winner"
+                            >
+                              R
+                            </button>
+                          </div>
                         </div>
                         <div className="flex gap-4">
                           <button 
                             onClick={() => onWinnerSelect('Blue')}
-                            className="flex-[1] py-3 bg-[#00a2e8] text-white rounded-xl font-black text-sm uppercase transition-all shadow-md hover:shadow-lg active:scale-95 px-2 break-words text-center"
+                            disabled={isRedMatchWinner}
+                            className={cn(
+                              "flex-[1] py-3 bg-[#00a2e8] text-white rounded-xl font-black text-sm uppercase transition-all shadow-md px-2 break-words text-center",
+                              isRedMatchWinner 
+                                ? "opacity-30 cursor-not-allowed pointer-events-none" 
+                                : "hover:shadow-[#00a2e8]/20 hover:shadow-lg active:scale-95"
+                            )}
                           >
                             Mark {cleanPlaceholder(current.blue_name) || 'Blue'} Win
                           </button>
                           <button 
                             onClick={() => onWinnerSelect('Red')}
-                            className="flex-[1] py-3 bg-[#ed1c24] text-white rounded-xl font-black text-sm uppercase transition-all shadow-md hover:shadow-lg active:scale-95 px-2 break-words text-center"
+                            disabled={isBlueMatchWinner}
+                            className={cn(
+                              "flex-[1] py-3 bg-[#ed1c24] text-white rounded-xl font-black text-sm uppercase transition-all shadow-md px-2 break-words text-center",
+                              isBlueMatchWinner 
+                                ? "opacity-30 cursor-not-allowed pointer-events-none" 
+                                : "hover:shadow-[#ed1c24]/20 hover:shadow-lg active:scale-95"
+                            )}
                           >
                             Mark {cleanPlaceholder(current.red_name) || 'Red'} Win
                           </button>
@@ -5383,7 +5784,7 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                       </div>
                       {/* Players & Points */}
                       <div className="col-span-10 grid grid-cols-12 h-full">
-                        <div className="col-span-6 flex flex-col">
+                        <div className={isPoomsaeModeCurrent ? "col-span-12 flex flex-col" : "col-span-6 flex flex-col"}>
                           <div className={cn(
                             "flex-1 bg-blue-600/90 flex flex-col justify-center px-4 relative",
                             !isPoomsaeModeCurrent && "border-b border-white/10"
@@ -5398,25 +5799,102 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                             </div>
                           )}
                         </div>
-                        <div className="col-span-6 flex flex-col border-l border-white/10 bg-[#0d1526]">
-                          {/* Point columns */}
-                          <div className="flex-1 flex flex-col border-b border-white/10">
-                            <div className="flex-1 grid grid-cols-3 divide-x divide-white/10">
-                              <div className="flex items-center justify-center font-black text-3xl text-[#00a2e8]">{current?.points?.r1Blue || '-'}</div>
-                              <div className="flex items-center justify-center font-black text-3xl text-[#00a2e8]">{current?.points?.r2Blue || '-'}</div>
-                              <div className="flex items-center justify-center font-black text-3xl text-[#00a2e8]">{current?.points?.r3Blue || '-'}</div>
-                            </div>
-                          </div>
-                          {!isPoomsaeModeCurrent && (
-                            <div className="flex-1 flex flex-col">
-                              <div className="flex-1 grid grid-cols-3 divide-x divide-white/10">
-                                <div className="flex items-center justify-center font-black text-3xl text-[#ed1c24]">{current?.points?.r1Red || '-'}</div>
-                                <div className="flex items-center justify-center font-black text-3xl text-[#ed1c24]">{current?.points?.r2Red || '-'}</div>
-                                <div className="flex items-center justify-center font-black text-3xl text-[#ed1c24]">{current?.points?.r3Red || '-'}</div>
+                        {!isPoomsaeModeCurrent && (() => {
+                          const getRoundWinnerSpec = (roundNum: number) => {
+                            const pt = current?.points;
+                            if (!pt) return '';
+                            const winKey = `r${roundNum}Winner`;
+                            const explicitVal = pt[winKey as 'r1Winner' | 'r2Winner' | 'r3Winner'];
+                            if (explicitVal === 'Blue' || explicitVal === 'Red') return explicitVal;
+                            
+                            const blueVal = pt[`r${roundNum}Blue` as 'r1Blue' | 'r2Blue' | 'r3Blue'] !== undefined && pt[`r${roundNum}Blue` as 'r1Blue' | 'r2Blue' | 'r3Blue'] !== null ? parseInt(pt[`r${roundNum}Blue` as 'r1Blue' | 'r2Blue' | 'r3Blue'] || '') : NaN;
+                            const redVal = pt[`r${roundNum}Red` as 'r1Red' | 'r2Red' | 'r3Red'] !== undefined && pt[`r${roundNum}Red` as 'r1Red' | 'r2Red' | 'r3Red'] !== null ? parseInt(pt[`r${roundNum}Red` as 'r1Red' | 'r2Red' | 'r3Red'] || '') : NaN;
+                            if (!isNaN(blueVal) && !isNaN(redVal)) {
+                              if (blueVal > redVal) return 'Blue';
+                              if (redVal > blueVal) return 'Red';
+                            }
+                            return '';
+                          };
+                          const r1Win = getRoundWinnerSpec(1);
+                          const r2Win = getRoundWinnerSpec(2);
+                          const r3Win = getRoundWinnerSpec(3);
+
+                          return (
+                            <div className="col-span-6 flex flex-col border-l border-white/10 bg-[#0d1526]">
+                              {/* Point columns */}
+                              <div className="flex-1 flex flex-col border-b border-white/10">
+                                <div className="flex-1 grid grid-cols-3 divide-x divide-white/10">
+                                  <div className="flex items-center justify-center">
+                                    <span className={cn(
+                                      "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all",
+                                      r1Win === 'Blue' 
+                                        ? "text-[#00a2e8] rounded-full border-4 border-[#00a2e8] bg-[#00a2e8]/15 shadow-[0_0_12px_rgba(0,162,232,0.5)] scale-105" 
+                                        : "text-white"
+                                    )}>
+                                      {current?.points?.r1Blue || '-'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-center">
+                                    <span className={cn(
+                                      "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all",
+                                      r2Win === 'Blue' 
+                                        ? "text-[#00a2e8] rounded-full border-4 border-[#00a2e8] bg-[#00a2e8]/15 shadow-[0_0_12px_rgba(0,162,232,0.5)] scale-105" 
+                                        : "text-white"
+                                    )}>
+                                      {current?.points?.r2Blue || '-'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-center">
+                                    <span className={cn(
+                                      "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all",
+                                      r3Win === 'Blue' 
+                                        ? "text-[#00a2e8] rounded-full border-4 border-[#00a2e8] bg-[#00a2e8]/15 shadow-[0_0_12px_rgba(0,162,232,0.5)] scale-105" 
+                                        : "text-white"
+                                    )}>
+                                      {current?.points?.r3Blue || '-'}
+                                    </span>
+                                  </div>
+                                </div>
                               </div>
+                              {!isPoomsaeModeCurrent && (
+                                <div className="flex-1 flex flex-col">
+                                  <div className="flex-1 grid grid-cols-3 divide-x divide-white/10">
+                                    <div className="flex items-center justify-center">
+                                      <span className={cn(
+                                        "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all",
+                                        r1Win === 'Red' 
+                                          ? "text-[#ed1c24] rounded-full border-4 border-[#ed1c24] bg-[#ed1c24]/15 shadow-[0_0_12px_rgba(237,28,36,0.5)] scale-105" 
+                                          : "text-white"
+                                      )}>
+                                        {current?.points?.r1Red || '-'}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-center">
+                                      <span className={cn(
+                                        "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all",
+                                        r2Win === 'Red' 
+                                          ? "text-[#ed1c24] rounded-full border-4 border-[#ed1c24] bg-[#ed1c24]/15 shadow-[0_0_12px_rgba(237,28,36,0.5)] scale-105" 
+                                          : "text-white"
+                                      )}>
+                                        {current?.points?.r2Red || '-'}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-center">
+                                      <span className={cn(
+                                        "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all",
+                                        r3Win === 'Red' 
+                                          ? "text-[#ed1c24] rounded-full border-4 border-[#ed1c24] bg-[#ed1c24]/15 shadow-[0_0_12px_rgba(237,28,36,0.5)] scale-105" 
+                                          : "text-white"
+                                      )}>
+                                        {current?.points?.r3Red || '-'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
+                          );
+                        })()}
                       </div>
                     </>
                   )}
@@ -5961,6 +6439,9 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
   const current = ring.currentBout;
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
   const isRingInactive = showEmptyBoutAsInactive && (!current || !hasPlayers(current));
+  const isPoomsaeModeCurrent = current?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
+                               current?.category?.toUpperCase().includes('FREESTYLE') ||
+                               (current?.category?.toUpperCase().includes('POOMSAE') && !current?.red_name);
   
   const formatCategoryName = (cat?: string) => {
     if (!cat) return "";
@@ -6064,23 +6545,88 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
             ) : (
               <div className="mt-3 sm:mt-4 space-y-4 sm:space-y-6">
                 {/* Points Table */}
-                <div className="mx-auto w-full max-w-sm grid grid-cols-3 divide-x divide-slate-800 border border-slate-700 bg-slate-800/80 rounded-lg overflow-hidden">
-                  <div className="col-span-3 grid grid-cols-3 divide-x divide-slate-700 bg-white text-black font-black text-center py-1 sm:py-2 text-[11px] sm:text-sm uppercase">
-                    <div>R1</div>
-                    <div>R2</div>
-                    <div>R3</div>
-                  </div>
-                  <div className="col-span-3 grid grid-cols-3 divide-x divide-black/20 bg-[#00a2e8] text-white font-black text-center py-2 sm:py-3 text-xl sm:text-2xl border-t border-slate-800">
-                    <div className={cn((parseInt(current?.points?.r1Blue||'0')||0) > (parseInt(current?.points?.r1Red||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r1Blue || '0'}</div>
-                    <div className={cn((parseInt(current?.points?.r2Blue||'0')||0) > (parseInt(current?.points?.r2Red||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r2Blue || '0'}</div>
-                    <div className={cn((parseInt(current?.points?.r3Blue||'0')||0) > (parseInt(current?.points?.r3Red||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r3Blue || '0'}</div>
-                  </div>
-                  <div className="col-span-3 grid grid-cols-3 divide-x divide-black/20 bg-[#ed1c24] text-white font-black text-center py-2 sm:py-3 text-xl sm:text-2xl border-t border-slate-800">
-                    <div className={cn((parseInt(current?.points?.r1Red||'0')||0) > (parseInt(current?.points?.r1Blue||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r1Red || '0'}</div>
-                    <div className={cn((parseInt(current?.points?.r2Red||'0')||0) > (parseInt(current?.points?.r2Blue||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r2Red || '0'}</div>
-                    <div className={cn((parseInt(current?.points?.r3Red||'0')||0) > (parseInt(current?.points?.r3Blue||'0')||0) ? "bg-white/20" : "")}>{current?.points?.r3Red || '0'}</div>
-                  </div>
-                </div>
+                {!isPoomsaeModeCurrent && (() => {
+                  const getRoundWinnerSpec = (roundNum: number) => {
+                    const pt = current?.points;
+                    if (!pt) return '';
+                    const winKey = `r${roundNum}Winner`;
+                    const explicitVal = pt[winKey as 'r1Winner' | 'r2Winner' | 'r3Winner'];
+                    if (explicitVal === 'Blue' || explicitVal === 'Red') return explicitVal;
+                    
+                    const blueVal = pt[`r${roundNum}Blue` as 'r1Blue' | 'r2Blue' | 'r3Blue'] !== undefined && pt[`r${roundNum}Blue` as 'r1Blue' | 'r2Blue' | 'r3Blue'] !== null ? parseInt(pt[`r${roundNum}Blue` as 'r1Blue' | 'r2Blue' | 'r3Blue'] || '') : NaN;
+                    const redVal = pt[`r${roundNum}Red` as 'r1Red' | 'r2Red' | 'r3Red'] !== undefined && pt[`r${roundNum}Red` as 'r1Red' | 'r2Red' | 'r3Red'] !== null ? parseInt(pt[`r${roundNum}Red` as 'r1Red' | 'r2Red' | 'r3Red'] || '') : NaN;
+                    if (!isNaN(blueVal) && !isNaN(redVal)) {
+                      if (blueVal > redVal) return 'Blue';
+                      if (redVal > blueVal) return 'Red';
+                    }
+                    return '';
+                  };
+                  const r1W = getRoundWinnerSpec(1);
+                  const r2W = getRoundWinnerSpec(2);
+                  const r3W = getRoundWinnerSpec(3);
+
+                  return (
+                    <div className="mx-auto w-full max-w-sm grid grid-cols-3 divide-x divide-slate-800 border border-slate-700 bg-slate-800/80 rounded-lg overflow-hidden">
+                      <div className="col-span-3 grid grid-cols-3 divide-x divide-slate-700 bg-white text-black font-black text-center py-1 sm:py-2 text-[11px] sm:text-sm uppercase">
+                        <div>R1</div>
+                        <div>R2</div>
+                        <div>R3</div>
+                      </div>
+                      <div className="col-span-3 grid grid-cols-3 divide-x divide-slate-800 bg-[#0e1726] text-white font-black text-center text-xl sm:text-2xl border-t border-slate-800 items-center">
+                        <div className="flex items-center justify-center py-2 bg-[#0e1726]">
+                          <span className={cn(
+                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all",
+                            r1W === 'Blue' ? "text-[#00a2e8] border-2 border-[#00a2e8] bg-[#00a2e8]/15 shadow-md scale-105" : "text-white"
+                          )}>
+                            {current?.points?.r1Blue || '0'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-center py-2 bg-[#0e1726]">
+                          <span className={cn(
+                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all",
+                            r2W === 'Blue' ? "text-[#00a2e8] border-2 border-[#00a2e8] bg-[#00a2e8]/15 shadow-md scale-105" : "text-white"
+                          )}>
+                            {current?.points?.r2Blue || '0'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-center py-2 bg-[#0e1726]">
+                          <span className={cn(
+                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all",
+                            r3W === 'Blue' ? "text-[#00a2e8] border-2 border-[#00a2e8] bg-[#00a2e8]/15 shadow-md scale-105" : "text-white"
+                          )}>
+                            {current?.points?.r3Blue || '0'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="col-span-3 grid grid-cols-3 divide-x divide-slate-800 bg-[#0e1726] text-white font-black text-center text-xl sm:text-2xl border-t border-slate-800 items-center">
+                        <div className="flex items-center justify-center py-2 bg-[#0e1726]">
+                          <span className={cn(
+                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all",
+                            r1W === 'Red' ? "text-[#ed1c24] border-2 border-[#ed1c24] bg-[#ed1c24]/15 shadow-md scale-105" : "text-white"
+                          )}>
+                            {current?.points?.r1Red || '0'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-center py-2 bg-[#0e1726]">
+                          <span className={cn(
+                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all",
+                            r2W === 'Red' ? "text-[#ed1c24] border-2 border-[#ed1c24] bg-[#ed1c24]/15 shadow-md scale-105" : "text-white"
+                          )}>
+                            {current?.points?.r2Red || '0'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-center py-2 bg-[#0e1726]">
+                          <span className={cn(
+                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all",
+                            r3W === 'Red' ? "text-[#ed1c24] border-2 border-[#ed1c24] bg-[#ed1c24]/15 shadow-md scale-105" : "text-white"
+                          )}>
+                            {current?.points?.r3Red || '0'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {!current?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') && 
                   !current?.category?.toUpperCase().includes('FREESTYLE') && 

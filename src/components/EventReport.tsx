@@ -35,7 +35,7 @@ interface CategoryResult {
 }
 
 export function EventReport({ currentEventId, events }: EventReportProps) {
-  const [activeTab, setActiveTab] = useState<'winners' | 'summary'>('winners');
+  const [activeTab, setActiveTab] = useState<'winners' | 'by-rank' | 'summary'>('winners');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [matches, setMatches] = useState<RawMatch[]>([]);
@@ -406,6 +406,44 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
 
   const filteredCategories = categoryResults.filter(c => c.category.toLowerCase().includes(searchQuery.toLowerCase()));
 
+  const allGolds = useMemo(() => {
+    return categoryResults
+      .filter(c => c.gold?.name && c.gold.name !== '-')
+      .map(c => ({ ...c.gold!, category: c.category }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [categoryResults]);
+
+  const allSilvers = useMemo(() => {
+    return categoryResults
+      .filter(c => c.silver?.name && c.silver.name !== '-')
+      .map(c => ({ ...c.silver!, category: c.category }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [categoryResults]);
+
+  const allBronzes = useMemo(() => {
+    return categoryResults
+      .flatMap(c => c.bronzes.map(b => ({ ...b, category: c.category })))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [categoryResults]);
+
+  const filteredGolds = allGolds.filter(g => 
+    g.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    g.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (g.club && g.club.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+  const filteredSilvers = allSilvers.filter(g => 
+    g.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    g.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (g.club && g.club.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+  const filteredBronzes = allBronzes.filter(g => 
+    g.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    g.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (g.club && g.club.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
   if (!currentEventId) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-slate-500">
@@ -474,8 +512,20 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
               : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
           )}
         >
-          Top 4 Winners (Categories)
+          Category Placings
           {activeTab === 'winners' && <div className="absolute -bottom-px left-0 right-0 h-px bg-white" />}
+        </button>
+        <button
+          onClick={() => setActiveTab('by-rank')}
+          className={cn(
+            "px-6 py-3 font-bold text-sm tracking-wide rounded-t-xl transition-all relative",
+            activeTab === 'by-rank' 
+              ? "text-blue-700 bg-white border border-b-0 border-slate-200" 
+              : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+          )}
+        >
+          Overall Winners (By Rank)
+          {activeTab === 'by-rank' && <div className="absolute -bottom-px left-0 right-0 h-px bg-white" />}
         </button>
         <button
           onClick={() => setActiveTab('summary')}
@@ -560,6 +610,81 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'by-rank' && (
+          <div className="p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-lg font-bold text-slate-800">Overall Winners categorized by rank</h2>
+              <div className="relative">
+                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search Names, Clubs..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none w-64"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-12">
+              {/* 1st Place Section */}
+              <div>
+                <h3 className="text-lg font-black text-yellow-600 flex items-center gap-2 mb-4 border-b border-yellow-100 pb-2">
+                  <Medal size={20} className="text-yellow-500" /> 1st Place overall (Gold)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {filteredGolds.length === 0 ? (
+                    <div className="text-slate-500 italic">No gold winners found.</div>
+                  ) : filteredGolds.map((g, i) => (
+                    <div key={i} className="bg-white border text-left border-yellow-200 rounded-xl max-w-sm p-4 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="font-black text-slate-900 text-lg leading-tight uppercase mb-1">{g.name}</div>
+                      <div className="text-sm font-bold text-yellow-600 uppercase tracking-widest">{g.club}</div>
+                      <div className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">{g.category}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2nd Place Section */}
+              <div>
+                <h3 className="text-lg font-black text-slate-600 flex items-center gap-2 mb-4 border-b border-slate-100 pb-2">
+                  <Medal size={20} className="text-slate-400" /> 2nd Place overall (Silver)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {filteredSilvers.length === 0 ? (
+                    <div className="text-slate-500 italic">No silver winners found.</div>
+                  ) : filteredSilvers.map((s, i) => (
+                    <div key={i} className="bg-white border text-left border-slate-200 rounded-xl max-w-sm p-4 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="font-black text-slate-900 text-lg leading-tight uppercase mb-1">{s.name}</div>
+                      <div className="text-sm font-bold text-slate-600 uppercase tracking-widest">{s.club}</div>
+                      <div className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">{s.category}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3rd Place Section */}
+              <div>
+                <h3 className="text-lg font-black text-amber-700 flex items-center gap-2 mb-4 border-b border-amber-100 pb-2">
+                  <Medal size={20} className="text-amber-600" /> 3rd Place overall (Bronze)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {filteredBronzes.length === 0 ? (
+                    <div className="text-slate-500 italic">No bronze winners found.</div>
+                  ) : filteredBronzes.map((b, i) => (
+                    <div key={i} className="bg-white border text-left border-amber-200 rounded-xl max-w-sm p-4 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="font-black text-slate-900 text-lg leading-tight uppercase mb-1">{b.name}</div>
+                      <div className="text-sm font-bold text-amber-700 uppercase tracking-widest">{b.club}</div>
+                      <div className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">{b.category}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
             </div>
           </div>
         )}

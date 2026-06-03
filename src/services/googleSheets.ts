@@ -65,7 +65,18 @@ export async function syncToGoogleSheets(url: string, data: MatchData, eventName
       red_name: (data.red_name || '-').toUpperCase(),
       red_club: (data.red_club || '-').toUpperCase(),
       privacy_mode: data.privacy_mode ? 'ON' : 'OFF',
-      reason: (reason || '').toUpperCase()
+      reason: (reason || '').toUpperCase(),
+      // Include points if present
+      r1Blue: data.points?.r1Blue || '',
+      r1Red: data.points?.r1Red || '',
+      r2Blue: data.points?.r2Blue || '',
+      r2Red: data.points?.r2Red || '',
+      r3Blue: data.points?.r3Blue || '',
+      r3Red: data.points?.r3Red || '',
+      r1Winner: data.points?.r1Winner || '',
+      r2Winner: data.points?.r2Winner || '',
+      r3Winner: data.points?.r3Winner || '',
+      points: data.points || null
     };
 
     console.log('>>> GOOGLE SHEETS SYNC START (New Bout) <<<');
@@ -168,7 +179,7 @@ export async function updateBoutDetailsInGoogleSheets(url: string, ring: number,
   }
 }
 
-export async function updateWinnerInGoogleSheets(url: string, ring: number, bout: string | number, winner: string, eventName: string = '', winnerSide?: string, blueName?: string, redName?: string) {
+export async function updateWinnerInGoogleSheets(url: string, ring: number, bout: string | number, winner: string, eventName: string = '', winnerSide?: string, blueName?: string, redName?: string, points?: any) {
   const targetUrl = url?.trim();
   if (!targetUrl) return false;
 
@@ -183,7 +194,18 @@ export async function updateWinnerInGoogleSheets(url: string, ring: number, bout
       blue_name: (blueName || '-').toUpperCase(),
       red_name: (redName || '-').toUpperCase(),
       timestamp: getMalaysiaTimestamp(),
-      event_name: (eventName || '-').toUpperCase()
+      event_name: (eventName || '-').toUpperCase(),
+      // Include points in winner update too
+      r1Blue: points?.r1Blue || '',
+      r1Red: points?.r1Red || '',
+      r2Blue: points?.r2Blue || '',
+      r2Red: points?.r2Red || '',
+      r3Blue: points?.r3Blue || '',
+      r3Red: points?.r3Red || '',
+      r1Winner: points?.r1Winner || '',
+      r2Winner: points?.r2Winner || '',
+      r3Winner: points?.r3Winner || '',
+      points: points || null
     };
 
     console.log('>>> GOOGLE SHEETS SYNC START (Winner) <<<');
@@ -217,12 +239,24 @@ export async function updatePointsInGoogleSheets(url: string, ring: number, bout
       action: 'updatePoints',
       ring: ring,
       bout: formatBout(ring, bout).toUpperCase(),
-      points: points,
       timestamp: getMalaysiaTimestamp(),
-      event_name: (eventName || '-').toUpperCase()
+      event_name: (eventName || '-').toUpperCase(),
+      // Send points both flat and nested for compatibility
+      r1Blue: points?.r1Blue || '',
+      r1Red: points?.r1Red || '',
+      r2Blue: points?.r2Blue || '',
+      r2Red: points?.r2Red || '',
+      r3Blue: points?.r3Blue || '',
+      r3Red: points?.r3Red || '',
+      r1Winner: points?.r1Winner || '',
+      r2Winner: points?.r2Winner || '',
+      r3Winner: points?.r3Winner || '',
+      points: points || null
     };
 
     console.log('>>> GOOGLE SHEETS SYNC START (Update Points) <<<');
+    console.log('Target URL:', targetUrl);
+    console.log('Payload:', JSON.stringify(payload, null, 2));
     
     await fetch(targetUrl, {
       method: 'POST',

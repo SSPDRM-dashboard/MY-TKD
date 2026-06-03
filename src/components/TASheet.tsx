@@ -609,15 +609,22 @@ export function TASheet({
 
     let data = null;
     for (const ring of rings) {
-      if (ring.ringNumber.toString() === m.ringNo) {
-        if (ring.currentBout?.bout.toString() === m.matchNo) data = ring.currentBout;
-        else if (ring.onDeck?.bout.toString() === m.matchNo) data = ring.onDeck;
-        else if (ring.inTheHole?.bout.toString() === m.matchNo) data = ring.inTheHole;
-        break;
+      if (
+        ring.ringNumber.toString() === m.ringNo || 
+        ring.currentBout?.originalRing?.toString() === m.ringNo || 
+        ring.onDeck?.originalRing?.toString() === m.ringNo || 
+        ring.inTheHole?.originalRing?.toString() === m.ringNo
+      ) {
+        if (ring.currentBout?.bout.toString() === m.matchNo) { data = ring.currentBout; break; }
+        else if (ring.onDeck?.bout.toString() === m.matchNo) { data = ring.onDeck; break; }
+        else if (ring.inTheHole?.bout.toString() === m.matchNo) { data = ring.inTheHole; break; }
       }
     }
     if (!data) {
-      const queued = boutQueue.find(q => q.data.ring.toString() === m.ringNo && q.data.bout.toString() === m.matchNo);
+      const queued = boutQueue.find(q => 
+        (q.data.ring.toString() === m.ringNo || q.data.originalRing?.toString() === m.ringNo) && 
+        q.data.bout.toString() === m.matchNo
+      );
       if (queued) data = queued.data;
     }
     return {
@@ -643,7 +650,10 @@ export function TASheet({
     
     // Check if this match is currently in one of the active ring slots (Current, On Deck, In The Hole)
     const isInActiveRing = rings.some(r => 
-      r.ringNumber.toString() === m.ringNo && (
+      (r.ringNumber.toString() === m.ringNo || 
+       r.currentBout?.originalRing?.toString() === m.ringNo || 
+       r.onDeck?.originalRing?.toString() === m.ringNo || 
+       r.inTheHole?.originalRing?.toString() === m.ringNo) && (
         (r.currentBout && r.currentBout.bout.toString() === m.matchNo) ||
         (r.onDeck && r.onDeck.bout.toString() === m.matchNo) ||
         (r.inTheHole && r.inTheHole.bout.toString() === m.matchNo)
@@ -733,14 +743,22 @@ export function TASheet({
     if (!currentMatch) return null;
     
     for (const ring of rings) {
-      if (ring.ringNumber.toString() === currentMatch.ringNo) {
+      if (
+        ring.ringNumber.toString() === currentMatch.ringNo || 
+        ring.currentBout?.originalRing?.toString() === currentMatch.ringNo || 
+        ring.onDeck?.originalRing?.toString() === currentMatch.ringNo || 
+        ring.inTheHole?.originalRing?.toString() === currentMatch.ringNo
+      ) {
         if (ring.currentBout?.bout.toString() === currentMatch.matchNo) return ring.currentBout;
         if (ring.onDeck?.bout.toString() === currentMatch.matchNo) return ring.onDeck;
         if (ring.inTheHole?.bout.toString() === currentMatch.matchNo) return ring.inTheHole;
       }
     }
     
-    const queuedMatch = boutQueue.find(q => q.data.ring.toString() === currentMatch.ringNo && q.data.bout.toString() === currentMatch.matchNo);
+    const queuedMatch = boutQueue.find(q => 
+      (q.data.ring.toString() === currentMatch.ringNo || q.data.originalRing?.toString() === currentMatch.ringNo) && 
+      q.data.bout.toString() === currentMatch.matchNo
+    );
     if (queuedMatch) return queuedMatch.data;
     
     return null;
