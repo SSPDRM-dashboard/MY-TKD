@@ -33,45 +33,120 @@ function cleanAndParseJSON(rawText: string | undefined): any {
 
   let cleaned = rawText.trim();
 
-  // 1. Remove markdown backticks if present
+  // 1. Strip markdown code block wraps
   if (cleaned.startsWith("```")) {
     cleaned = cleaned.replace(/^```[a-zA-Z]*\n/i, "");
     cleaned = cleaned.replace(/\n```$/, "");
     cleaned = cleaned.trim();
   }
 
-  // 2. Remove standard trailing commas in objects and arrays
-  cleaned = cleaned.replace(/,\s*([}\]])/g, "$1");
-
+  // 2. Try simple JSON.parse first
   try {
     return JSON.parse(cleaned);
   } catch (initialError: any) {
-    console.warn("Initial JSON parsing failed. Attempting deep repair of nested unescaped quotes...", initialError);
-    try {
-      // Line by line repair for unescaped nested double quotes in "key": "value" patterns
-      const lines = cleaned.split("\n");
-      const repairedLines = lines.map(line => {
-        // This matches lines like: "key": "value" with possible trailing comma and whitespace
-        const match = line.match(/^(\s*"[^"]+"\s*:\s*")([\s\S]*)("\s*,?\s*)$/);
-        if (match) {
-          const prefix = match[1];
-          const value = match[2];
-          const suffix = match[3];
+    console.warn("Initial JSON parse failed. Running deep repair...", initialError.message);
+  }
 
-          // Normalize any existing escaped double quotes first, then escape all double quotes
-          const normalizedValue = value.replace(/\\"/g, '"');
-          const escapedValue = normalizedValue.replace(/"/g, '\\"');
-          return prefix + escapedValue + suffix;
-        }
-        return line;
-      });
-
-      const repairedJSON = repairedLines.join("\n");
-      return JSON.parse(repairedJSON);
-    } catch (repairErr: any) {
-      console.error("JSON repair failed:", repairErr);
-      throw new Error(`JSON format error: ${initialError.message || initialError}. Help: Ensure nicknames or special names are escaped.`);
+  // State-machine based parsing and repair to handle:
+  // - Unescaped double quotes inside values
+  // - Truncated JSON (closes open braces/brackets/quotes)
+  // - Trailing commas
+  let repaired = "";
+  let inString = false;
+  let escapeNext = false;
+  let bracketStack: string[] = [];
+  const chars = Array.from(cleaned);
+  
+  for (let i = 0; i < chars.length; i++) {
+    const char = chars[i];
+    
+    if (escapeNext) {
+      repaired += char;
+      escapeNext = false;
+      continue;
     }
+    
+    if (char === '\\') {
+      repaired += char;
+      escapeNext = true;
+      continue;
+    }
+    
+    if (char === '"') {
+      if (inString) {
+        // We are currently inside a string. Determine if this double quote
+        // is genuinely the end of the string or if it's an unescaped raw quote inside the string.
+        let peekIdx = i + 1;
+        while (peekIdx < chars.length && /\s/.test(chars[peekIdx])) {
+          peekIdx++;
+        }
+        
+        const nextChar = chars[peekIdx];
+        const isGenuineEnd = 
+          peekIdx >= chars.length || // End of text
+          nextChar === ',' || 
+          nextChar === ':' || 
+          nextChar === '}' || 
+          nextChar === ']';
+          
+        if (isGenuineEnd) {
+          inString = false;
+          repaired += '"';
+        } else {
+          // Nested unescaped quote! Escape it.
+          repaired += '\\"';
+        }
+      } else {
+        inString = true;
+        repaired += '"';
+      }
+      continue;
+    }
+    
+    if (inString) {
+      // Inside a string, just append the character
+      repaired += char;
+    } else {
+      // Outside a string, track braces and brackets
+      if (char === '{' || char === '[') {
+        bracketStack.push(char);
+      } else if (char === '}') {
+        if (bracketStack[bracketStack.length - 1] === '{') {
+          bracketStack.pop();
+        }
+      } else if (char === ']') {
+        if (bracketStack[bracketStack.length - 1] === '[') {
+          bracketStack.pop();
+        }
+      }
+      repaired += char;
+    }
+  }
+
+  // Handle truncation (unterminated strings or open brackets)
+  if (inString) {
+    repaired += '"';
+  }
+
+  // Remove trailing commas before closing braces/brackets
+  repaired = repaired.replace(/,\s*([}\]])/g, "$1");
+
+  // Close any unclosed brackets
+  while (bracketStack.length > 0) {
+    const last = bracketStack.pop();
+    if (last === '{') {
+      repaired += '}';
+    } else if (last === '[') {
+      repaired += ']';
+    }
+  }
+
+  try {
+    return JSON.parse(repaired);
+  } catch (finalError: any) {
+    console.error("Deep repair failed. Raw text:", rawText);
+    console.log("Repaired attempt:", repaired);
+    throw new Error(`JSON parsing failed: ${finalError.message}. Help: Ensure nicknames or special names are escaped.`);
   }
 }
 
