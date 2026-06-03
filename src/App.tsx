@@ -350,6 +350,35 @@ export default function App() {
     return unsub;
   }, [currentEventId]);
 
+  // Real-time automatic deduplication of the Match Queue
+  useEffect(() => {
+    if (!boutQueue || boutQueue.length === 0) return;
+
+    const seen = new Set<string>();
+    let hasDuplicates = false;
+
+    const uniqueQueue = boutQueue.filter(item => {
+      if (!item || !item.data) return false;
+      const ringNum = item.data.ring || 1;
+      const rawBout = item.data.bout;
+      const eventId = item.data.eventId || 'default';
+      const normalizedBout = normalizeBoutWithRing(rawBout, ringNum);
+      const uniqueKey = `${eventId}_${ringNum}_${normalizedBout}`;
+
+      if (seen.has(uniqueKey)) {
+        hasDuplicates = true;
+        return false;
+      }
+      seen.add(uniqueKey);
+      return true;
+    });
+
+    if (hasDuplicates) {
+      console.log('tkd_match_centre: Automatically removed duplicate elements from Match Queue');
+      setBoutQueue(uniqueQueue);
+    }
+  }, [boutQueue, setBoutQueue]);
+
   useEffect(() => {
     const handleSyncHistory = (e: any) => {
       const newHistory = e.detail;
@@ -1661,6 +1690,8 @@ export default function App() {
           if (sourceMatch) newMatch.category = sourceMatch.category.toUpperCase();
 
           setBoutQueue(prev => {
+            const isDuplicate = prev.some(q => isBoutMatch(q.data.bout, nextBoutId) && q.data.eventId === currentEventId);
+            if (isDuplicate) return prev;
             const updated = [...prev, { id: `auto_${currentEventId}_${nextBoutId}_${Date.now()}`, data: newMatch }];
             localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
             return updated;
