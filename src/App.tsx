@@ -51,7 +51,7 @@ import { EventReport } from './components/EventReport';
 import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateBoutDetailsInGoogleSheets, updatePointsInGoogleSheets, testSync } from './services/googleSheets';
 import { cn, normalizeBoutNumber, normalizeBoutWithRing, getBoutNumber, formatBoutNumber, isBoutMatch, parseRingNumber, extractWinnerOfBout } from './lib/utils';
 import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, getDocFromServer, where } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, disableFirestoreNetwork } from './firebase';
 import Papa from 'papaparse';
 
 function sanitizeForFirestore(obj: any): any {
@@ -94,6 +94,14 @@ function hasPlayers(bout: MatchData | null | undefined): boolean {
   return cleanPlaceholder(bout.blue_name) !== "---" || cleanPlaceholder(bout.red_name) !== "---";
 }
 
+export let isFirestoreQuotaExceeded = false;
+
+export const handleGlobalQuotaTrigger = () => {
+  isFirestoreQuotaExceeded = true;
+  disableFirestoreNetwork();
+  window.dispatchEvent(new CustomEvent('firestore-quota-exceeded'));
+};
+
 function useSyncedState<T>(key: string, initialValue: T) {
   const [state, setState] = useState<T>(() => {
     const saved = localStorage.getItem(key);
@@ -108,47 +116,67 @@ function useSyncedState<T>(key: string, initialValue: T) {
   });
 
   const lastRemoteValue = useRef<string>('');
+  const timeoutRef = useRef<any>(null);
+  const latestValueRef = useRef<T>(state);
+
+  // Keep latestValueRef synced with the current state as a fallback
+  useEffect(() => {
+    latestValueRef.current = state;
+  }, [state]);
 
   useEffect(() => {
+    if (isFirestoreQuotaExceeded) {
+      return;
+    }
+
     let isMounted = true;
+    let unsub = () => {};
 
-    const unsub = onSnapshot(doc(db, 'sync', key), (document) => {
-      if (!isMounted) return;
+    const handleQuota = () => {
+      handleGlobalQuotaTrigger();
+      unsub();
+    };
 
-      if (document.exists()) {
-        const remoteValue = document.data().value;
-        const remoteValueStr = JSON.stringify(remoteValue);
-        
-        // Only update if the remote value actually changed from what we last saw
-        if (remoteValueStr !== lastRemoteValue.current) {
-          lastRemoteValue.current = remoteValueStr;
-          setState(remoteValue);
-          localStorage.setItem(key, remoteValueStr);
-        }
-      } else {
-        const saved = localStorage.getItem(key);
-        if (saved !== null) {
-          try {
-            const parsed = JSON.parse(saved);
-            const sanitized = sanitizeForFirestore(parsed);
-            lastRemoteValue.current = JSON.stringify(sanitized);
-            setDoc(doc(db, 'sync', key), { value: sanitized });
-          } catch (e) {
-            const sanitized = sanitizeForFirestore(saved);
-            lastRemoteValue.current = JSON.stringify(sanitized);
-            setDoc(doc(db, 'sync', key), { value: sanitized });
+    const handleGlobalQuota = () => {
+      unsub();
+    };
+    window.addEventListener('firestore-quota-exceeded', handleGlobalQuota);
+
+    if (isFirestoreQuotaExceeded) return;
+    try {
+      unsub = onSnapshot(doc(db, 'sync', key), (document) => {
+        if (!isMounted) return;
+
+        if (document.exists()) {
+          const remoteValue = document.data().value;
+          const remoteValueStr = JSON.stringify(remoteValue);
+          
+          if (remoteValueStr !== lastRemoteValue.current) {
+            lastRemoteValue.current = remoteValueStr;
+            setState(remoteValue);
+            localStorage.setItem(key, remoteValueStr);
           }
         }
+      }, (error) => {
+        if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
+          handleQuota();
+        } else if (error.code !== 'permission-denied') {
+          console.error(`Firestore Sync Error (${key}):`, error);
+        }
+      });
+    } catch (e: any) {
+      if (e.code === 'resource-exhausted' || e.message?.toLowerCase().includes('quota')) {
+        handleQuota();
       }
-    }, (error) => {
-      if (error.code !== 'permission-denied' && !error.message.includes('quota')) {
-        console.error(`Firestore Sync Error (${key}):`, error);
-      }
-    });
+    }
 
     return () => {
       isMounted = false;
       unsub();
+      window.removeEventListener('firestore-quota-exceeded', handleGlobalQuota);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
     };
   }, [key]);
 
@@ -160,16 +188,34 @@ function useSyncedState<T>(key: string, initialValue: T) {
       if (!isEqual(prev, newValue)) {
         const valStr = JSON.stringify(newValue);
         localStorage.setItem(key, valStr);
+        latestValueRef.current = newValue;
         
+        // Clear previous pending write to avoid extra intermediate updates
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+        }
+
         // Guard against writing the same value back to Firestore
         if (valStr !== lastRemoteValue.current) {
-          lastRemoteValue.current = valStr;
-          setDoc(doc(db, 'sync', key), { value: sanitizeForFirestore(newValue) })
-            .catch(err => {
-              if (err.code === 'resource-exhausted') {
-                console.warn("Firestore Quota Exceeded. Updates will stay local until reset.");
+          timeoutRef.current = setTimeout(() => {
+            const currentPending = latestValueRef.current;
+            const currentStr = JSON.stringify(currentPending);
+            
+            if (currentStr !== lastRemoteValue.current) {
+              lastRemoteValue.current = currentStr;
+              if (!isFirestoreQuotaExceeded) {
+                setDoc(doc(db, 'sync', key), { value: sanitizeForFirestore(currentPending) })
+                  .catch(err => {
+                    if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
+                      console.warn(`Firestore Quota Exceeded for ${key}. Updates will stay local until reset.`);
+                      handleGlobalQuotaTrigger();
+                    } else {
+                      console.error(`Error syncing key ${key} to Firestore:`, err);
+                    }
+                  });
               }
-            });
+            }
+          }, 1000); // 1-second debounce (highly optimal for score buttons and slider triggers)
         }
       }
       return newValue;
@@ -318,29 +364,75 @@ export default function App() {
   const [announcementTarget, setAnnouncementTarget] = useState<'all' | 'users'>('all');
 
   useEffect(() => {
-    if (!currentEventId) return;
+    if (!currentEventId || isFirestoreQuotaExceeded) return;
     const q = query(collection(db, 'event_logic'), where('eventId', '==', currentEventId));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BoutMapping));
-      console.log('Mappings updated:', data.length);
-      setMappings(data);
-    });
-    return unsub;
+    let unsub = () => {};
+    
+    const handleGlobalQuota = () => {
+      unsub();
+    };
+    window.addEventListener('firestore-quota-exceeded', handleGlobalQuota);
+
+    if (isFirestoreQuotaExceeded) return;
+    try {
+      unsub = onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BoutMapping));
+        console.log('Mappings updated:', data.length);
+        setMappings(data);
+      }, (error) => {
+        if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
+          handleGlobalQuotaTrigger();
+          unsub();
+        } else if (error.code !== 'permission-denied') {
+          console.error("Firestore Mappings Error:", error);
+        }
+      });
+    } catch (e: any) {
+      if (e.code === 'resource-exhausted' || e.message?.toLowerCase().includes('quota')) {
+        handleGlobalQuotaTrigger();
+      }
+    }
+
+    return () => {
+      unsub();
+      window.removeEventListener('firestore-quota-exceeded', handleGlobalQuota);
+    };
   }, [currentEventId]);
 
   useEffect(() => {
-    if (!currentEventId) return;
+    if (!currentEventId || isFirestoreQuotaExceeded) return;
     const q = query(collection(db, 'matchHistory'), where('eventId', '==', currentEventId));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-      // Replace entire history with collection state to stay in sync with Firestore source of truth
-      setMatchHistory(data);
-    }, (error) => {
-      if (error.code !== 'permission-denied' && !error.message.includes('quota')) {
-        console.error("Firestore History Error:", error);
+    let unsub = () => {};
+
+    const handleGlobalQuota = () => {
+      unsub();
+    };
+    window.addEventListener('firestore-quota-exceeded', handleGlobalQuota);
+
+    if (isFirestoreQuotaExceeded) return;
+    try {
+      unsub = onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+        // Replace entire history with collection state to stay in sync with Firestore source of truth
+        setMatchHistory(data);
+      }, (error) => {
+        if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
+          handleGlobalQuotaTrigger();
+          unsub();
+        } else if (error.code !== 'permission-denied') {
+          console.error("Firestore History Error:", error);
+        }
+      });
+    } catch (e: any) {
+      if (e.code === 'resource-exhausted' || e.message?.toLowerCase().includes('quota')) {
+        handleGlobalQuotaTrigger();
       }
-    });
-    return unsub;
+    }
+
+    return () => {
+      unsub();
+      window.removeEventListener('firestore-quota-exceeded', handleGlobalQuota);
+    };
   }, [currentEventId]);
 
   // Real-time automatic deduplication and active-mats eviction from the Match Queue
@@ -592,37 +684,63 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
+    if (isFirestoreQuotaExceeded) return;
     const q = query(collection(db, 'announcements'), orderBy('timestamp', 'desc'), limit(1));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        const data = snapshot.docs[0].data();
-        const id = snapshot.docs[0].id;
-        
-        const target = data.target || 'all';
-        if (target === 'users' && user?.role !== 'user') return;
-        
-        // Check if it's too old (more than 12 hours)
-        if (data.timestamp) {
-          const ts = data.timestamp.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
-          const now = new Date();
-          if (now.getTime() - ts.getTime() > 12 * 60 * 60 * 1000) return;
-        }
+    let unsubscribe = () => {};
 
-        const lastSeen = localStorage.getItem('tkd_last_announcement');
-        const isDismissed = localStorage.getItem(`tkd_announcement_dismissed_${id}`);
-        
-        if (lastSeen !== id && !isDismissed) {
-          setActiveAnnouncement({ message: data.message, id });
-          localStorage.setItem('tkd_last_announcement', id);
+    const handleGlobalQuota = () => {
+      unsubscribe();
+    };
+    window.addEventListener('firestore-quota-exceeded', handleGlobalQuota);
+
+    if (isFirestoreQuotaExceeded) return;
+    try {
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          const data = snapshot.docs[0].data();
+          const id = snapshot.docs[0].id;
           
-          const timer = setTimeout(() => {
-            setActiveAnnouncement(null);
-          }, 60000);
-          return () => clearTimeout(timer);
+          const target = data.target || 'all';
+          if (target === 'users' && user?.role !== 'user') return;
+          
+          // Check if it's too old (more than 12 hours)
+          if (data.timestamp) {
+            const ts = data.timestamp.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
+            const now = new Date();
+            if (now.getTime() - ts.getTime() > 12 * 60 * 60 * 1000) return;
+          }
+
+          const lastSeen = localStorage.getItem('tkd_last_announcement');
+          const isDismissed = localStorage.getItem(`tkd_announcement_dismissed_${id}`);
+          
+          if (lastSeen !== id && !isDismissed) {
+            setActiveAnnouncement({ message: data.message, id });
+            localStorage.setItem('tkd_last_announcement', id);
+            
+            const timer = setTimeout(() => {
+              setActiveAnnouncement(null);
+            }, 60000);
+            return () => clearTimeout(timer);
+          }
         }
+      }, (error) => {
+        if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
+          handleGlobalQuotaTrigger();
+          unsubscribe();
+        } else if (error.code !== 'permission-denied') {
+          console.error("Firestore Announcements Error:", error);
+        }
+      });
+    } catch (e: any) {
+      if (e.code === 'resource-exhausted' || e.message?.toLowerCase().includes('quota')) {
+        handleGlobalQuotaTrigger();
       }
-    });
-    return () => unsubscribe();
+    }
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('firestore-quota-exceeded', handleGlobalQuota);
+    };
   }, [user?.role]);
 
   const handleAnnouncementClose = () => {
@@ -634,6 +752,10 @@ export default function App() {
 
   const handleSendAnnouncement = async () => {
     if (!announcementText.trim()) return;
+    if (isFirestoreQuotaExceeded) {
+      console.warn("Firestore quota exceeded, cannot send announcement.");
+      return;
+    }
     try {
       await addDoc(collection(db, 'announcements'), {
         message: announcementText,
@@ -643,8 +765,11 @@ export default function App() {
       });
       setAnnouncementText('');
       setShowAnnouncementInput(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending announcement:", error);
+      if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
+        handleGlobalQuotaTrigger();
+      }
     }
   };
   const [activeTab, setActiveTab] = useState<string>(() => {
@@ -691,6 +816,18 @@ export default function App() {
   const [showPublicStandbyQueue, setShowPublicStandbyQueue] = useSyncedState<boolean>('tkd_show_public_standby_queue', true);
   const [showInspectionPopupSetting, setShowInspectionPopupSetting] = useSyncedState<boolean>('tkd_show_inspection_popup_setting', true);
   const [publicEventId, setPublicEventId] = useSyncedState<string>('tkd_public_event_id', 'active');
+  const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
+
+  useEffect(() => {
+    const handleQuotaExceeded = () => {
+      setIsQuotaExceeded(true);
+      disableFirestoreNetwork();
+    };
+    window.addEventListener('firestore-quota-exceeded', handleQuotaExceeded);
+    return () => {
+      window.removeEventListener('firestore-quota-exceeded', handleQuotaExceeded);
+    };
+  }, []);
 
   // Persistence & Cross-tab Sync handled by useSyncedState
 
@@ -1043,7 +1180,15 @@ export default function App() {
                     };
                     
                     console.log(`Syncing result: Bout ${matchNo}, Category ${category}, Winner ${winner}`);
-                    await setDoc(doc(db, 'matchHistory', historyId), historyItem);
+                    if (!isFirestoreQuotaExceeded) {
+                      try {
+                        await setDoc(doc(db, 'matchHistory', historyId), historyItem);
+                      } catch (err: any) {
+                        if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
+                          handleGlobalQuotaTrigger();
+                        }
+                      }
+                    }
                     syncCount++;
                   }
                 }
@@ -1547,7 +1692,14 @@ export default function App() {
       if (toSave.winnerSide === undefined) delete toSave.winnerSide;
       if (toSave.winnerClub === undefined) delete toSave.winnerClub;
       
-      setDoc(doc(db, 'matchHistory', historyId), toSave).catch(err => console.error("Error saving match history:", err));
+      if (!isFirestoreQuotaExceeded) {
+        setDoc(doc(db, 'matchHistory', historyId), toSave).catch(err => {
+          console.error("Error saving match history:", err);
+          if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
+            handleGlobalQuotaTrigger();
+          }
+        });
+      }
 
       // Check and generate next bout
       checkAndGenerateNextBout(boutNumber, winnerName || winner, winner === 'Blue' ? currentBout.blue_club : currentBout.red_club, currentBout.category);
@@ -2449,6 +2601,33 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col md:h-screen overflow-hidden">
+        {isQuotaExceeded && (
+          <div className="bg-gradient-to-r from-red-600 to-amber-600 text-white px-4 py-2.5 text-center text-xs font-bold flex flex-col sm:flex-row items-center justify-center gap-2 relative z-50 border-b border-red-700 shadow-md">
+            <div className="flex items-center gap-2 justify-center">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 animate-bounce text-amber-200" />
+              <span>
+                <strong>Firestore Daily Quota Exceeded!</strong> Real-time cloud sync is paused; all operator actions remain fully active locally (offline-first backup mode) and will automatically upload when the quota resets tomorrow.
+              </span>
+            </div>
+            <div className="flex gap-3 items-center justify-center shrink-0 mt-1 sm:mt-0">
+              <a 
+                href="https://console.firebase.google.com/project/vocal-vigil-452005-p0/firestore/databases/ai-studio-e1347685-6c03-4b4d-bc4e-0dc0bfd5b849/data?openUpgradeDialog=true" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="bg-white text-red-700 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider"
+              >
+                Upgrade / Check Quota
+              </a>
+              <button 
+                onClick={() => setIsQuotaExceeded(false)}
+                className="text-white hover:text-slate-200 underline text-[10px] font-mono py-0.5"
+              >
+                [Dismiss]
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Scrollable Area */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 pb-24 md:pb-8">
           {/* Page Header */}
@@ -3423,7 +3602,14 @@ export default function App() {
               if (toSave.winnerSide === undefined) delete toSave.winnerSide;
               if (toSave.winnerClub === undefined) delete toSave.winnerClub;
 
-              setDoc(doc(db, 'matchHistory', historyItem.id), toSave).catch(err => console.error("Error updating history:", err));
+              if (!isFirestoreQuotaExceeded) {
+                setDoc(doc(db, 'matchHistory', historyItem.id), toSave).catch(err => {
+                  console.error("Error updating history:", err);
+                  if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
+                    handleGlobalQuotaTrigger();
+                  }
+                });
+              }
 
               // Advancement
               checkAndGenerateNextBout(boutNumber, winName, winClub, cat);
@@ -3547,7 +3733,14 @@ export default function App() {
                     if (toSave.winnerSide === undefined) delete toSave.winnerSide;
                     if (toSave.winnerClub === undefined) delete toSave.winnerClub;
 
-                    setDoc(doc(db, 'matchHistory', histId), toSave).catch(err => console.error("Error updating history on name change:", err));
+                    if (!isFirestoreQuotaExceeded) {
+                      setDoc(doc(db, 'matchHistory', histId), toSave).catch(err => {
+                        console.error("Error updating history on name change:", err);
+                        if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
+                          handleGlobalQuotaTrigger();
+                        }
+                      });
+                    }
 
                     // RE-PROPAGATE to brackets!
                     checkAndGenerateNextBout(boutNumber, newWinName, newWinClub, oldMatch.category);
@@ -4461,6 +4654,10 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                     const boutNumStr = formData.bout.toString();
                     if (!boutNumStr) return;
                     
+                    if (isFirestoreQuotaExceeded) {
+                      console.warn("Firestore quota exceeded, bypassing getting bracket.");
+                      return;
+                    }
                     try {
                       // Fetch bracket data from Firestore
                       const bracketRef = doc(db, 'tournaments', currentEventId || 'default', 'bracket', 'data');
@@ -6519,6 +6716,17 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
 function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator, showTotalBouts = true, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, showPublicStandbyQueue = true, publicViewLayout = 'standard', selectedEventName = '' }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', onBack: () => void, isSpectator?: boolean, showTotalBouts?: boolean, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, showPublicStandbyQueue?: boolean, publicViewLayout?: 'standard' | 'point', selectedEventName?: string }) {
   const [logoClicks, setLogoClicks] = React.useState(0);
   const clickTimer = React.useRef<NodeJS.Timeout | null>(null);
+  const [isQuotaExceeded, setIsQuotaExceeded] = React.useState(false);
+
+  React.useEffect(() => {
+    const handleQuotaExceeded = () => {
+      setIsQuotaExceeded(true);
+    };
+    window.addEventListener('firestore-quota-exceeded', handleQuotaExceeded);
+    return () => {
+      window.removeEventListener('firestore-quota-exceeded', handleQuotaExceeded);
+    };
+  }, []);
 
   const isStrictPublic = import.meta.env.VITE_APP_MODE === 'PUBLIC' || new URLSearchParams(window.location.search).get('view') === 'public';
 
@@ -6542,6 +6750,33 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
 
   return (
     <div className="min-h-[100dvh] bg-slate-900 text-white font-sans overflow-x-hidden flex flex-col">
+      {isQuotaExceeded && (
+        <div className="bg-gradient-to-r from-red-600 to-amber-600 text-white px-4 py-3 text-center text-xs md:text-sm font-bold flex flex-col sm:flex-row items-center justify-center gap-2 relative z-[100] border-b border-red-700 shadow-md">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 animate-bounce" />
+            <span>
+              <strong>Firestore Daily Quota Limit Reached!</strong> Real-time cloud syncing is temporarily paused. Your scoreboard operations remain 100% active locally (offline-first mode) and will automatically sync when quota resets tomorrow.
+            </span>
+          </div>
+          <div className="flex gap-4 items-center shrink-0 mt-2 sm:mt-0">
+            <a 
+              href="https://console.firebase.google.com/project/vocal-vigil-452005-p0/firestore/databases/ai-studio-e1347685-6c03-4b4d-bc4e-0dc0bfd5b849/data?openUpgradeDialog=true" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="bg-white text-red-700 px-3 py-1 rounded-lg hover:bg-slate-100 transition-colors text-xs font-black uppercase tracking-wider"
+            >
+              Check Database Quota / Upgrade
+            </a>
+            <button 
+              onClick={() => setIsQuotaExceeded(false)}
+              className="text-white hover:text-slate-200 underline text-xs font-bold font-mono py-1 select-none cursor-pointer"
+            >
+              [Dismiss]
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Public Header */}
       <header className="p-4 sm:p-5 bg-slate-800 border-b border-slate-700 flex items-center justify-between sticky top-0 z-50 transition-all">
         <div 

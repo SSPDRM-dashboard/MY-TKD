@@ -5,6 +5,7 @@ import { MatchData, RingStatus, EventData, MatchHistoryItem } from '../types';
 import Papa from 'papaparse';
 import { cn, formatBoutNumber, normalizeBoutNumber, normalizeBoutWithRing, parseRingNumber } from '../lib/utils';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { handleGlobalQuotaTrigger, isFirestoreQuotaExceeded } from '../App';
 import { db } from '../firebase';
 
 interface SignaturePadProps {
@@ -473,14 +474,22 @@ export function TASheet({
                 
                 historyItems.push(historyItem);
 
-                if (isDifferent) {
+                if (isDifferent && !isFirestoreQuotaExceeded) {
                   try {
                     setDoc(doc(db, 'matchHistory', historyId), {
                       ...historyItem,
                       syncedAt: serverTimestamp()
+                    }).catch(err => {
+                      console.error("Error saving winner to Firestore:", err);
+                      if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
+                        handleGlobalQuotaTrigger();
+                      }
                     });
-                  } catch (err) {
+                  } catch (err: any) {
                     console.error("Error saving winner to Firestore:", err);
+                    if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
+                      handleGlobalQuotaTrigger();
+                    }
                   }
                 }
               }

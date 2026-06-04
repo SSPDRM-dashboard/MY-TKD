@@ -4,6 +4,7 @@ import { collection, addDoc, deleteDoc, doc, onSnapshot, query, where, setDoc, s
 import { BoutMapping, EventData, MatchHistoryItem } from '../types';
 import { Trash2, Plus, Save, Hash, ArrowRight, User, Shield, RefreshCw, Trophy } from 'lucide-react';
 import { cn, normalizeBoutNumber, formatBoutNumber } from '../lib/utils';
+import { handleGlobalQuotaTrigger, isFirestoreQuotaExceeded } from '../App';
 import Papa from 'papaparse';
 
 interface AdminMappingProps {
@@ -157,11 +158,14 @@ export function AdminMapping({
                   syncedAt: isDifferent ? serverTimestamp() : (existingItem?.syncedAt || serverTimestamp())
                 };
                 
-                if (isDifferent) {
+                if (isDifferent && !isFirestoreQuotaExceeded) {
                   try {
                     await setDoc(doc(db, 'matchHistory', historyId), historyItem);
-                  } catch (err) {
+                  } catch (err: any) {
                     console.error("Error saving match history item to Firestore:", err);
+                    if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
+                      handleGlobalQuotaTrigger();
+                    }
                   }
                 }
                 newHistory.push({ id: historyId, ...historyItem });
@@ -191,12 +195,36 @@ export function AdminMapping({
     syncCategoriesFromSheet();
 
     const q = query(collection(db, 'event_logic'), where('eventId', '==', selectedEventId));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BoutMapping));
-      setMappings(data);
-    });
+    let unsubscribe = () => {};
 
-    return () => unsubscribe();
+    const handleGlobalQuota = () => {
+      unsubscribe();
+    };
+    window.addEventListener('firestore-quota-exceeded', handleGlobalQuota);
+
+    if (isFirestoreQuotaExceeded) return;
+    try {
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BoutMapping));
+        setMappings(data);
+      }, (error) => {
+        if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
+          handleGlobalQuotaTrigger();
+          unsubscribe();
+        } else if (error.code !== 'permission-denied') {
+          console.error("Firestore Admin Mappings Error:", error);
+        }
+      });
+    } catch (e: any) {
+      if (e.code === 'resource-exhausted' || e.message?.toLowerCase().includes('quota')) {
+        handleGlobalQuotaTrigger();
+      }
+    }
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('firestore-quota-exceeded', handleGlobalQuota);
+    };
   }, [selectedEventId]);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -206,6 +234,7 @@ export function AdminMapping({
     const event = events.find(ev => ev.id === selectedEventId);
     if (!event) return;
 
+    if (isFirestoreQuotaExceeded) return;
     setIsSaving(true);
     try {
       await addDoc(collection(db, 'event_logic'), {
@@ -218,28 +247,39 @@ export function AdminMapping({
       });
       setSourceBout('');
       setNextBout('');
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving mapping:", error);
+      if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
+        handleGlobalQuotaTrigger();
+      }
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
+    if (isFirestoreQuotaExceeded) return;
     try {
       await deleteDoc(doc(db, 'event_logic', id));
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error deleting mapping:", error);
+      if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
+        handleGlobalQuotaTrigger();
+      }
     }
   };
 
   const handleDeleteAll = async () => {
+    if (isFirestoreQuotaExceeded) return;
     try {
       const promises = mappings.map(m => deleteDoc(doc(db, 'event_logic', m.id)));
       await Promise.all(promises);
       setShowDeleteAllModal(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error deleting all mappings:", error);
+      if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
+        handleGlobalQuotaTrigger();
+      }
     }
   };
 

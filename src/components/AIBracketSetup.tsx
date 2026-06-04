@@ -22,6 +22,7 @@ import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { MatchData, BoutMapping, EventData, RingStatus } from '../types';
 import { cn, normalizeBoutNumber, formatBoutNumber, isBoutMatch } from '../lib/utils';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { handleGlobalQuotaTrigger, isFirestoreQuotaExceeded } from '../App';
 import { db } from '../firebase';
 import { syncToGoogleSheets } from '../services/googleSheets';
 import Papa from 'papaparse';
@@ -695,6 +696,7 @@ export function AIBracketSetup({
         );
         const resolvedCategory = matchingMatch ? matchingMatch.category : "Auto-Extracted from File";
 
+        if (isFirestoreQuotaExceeded) return Promise.resolve();
         return addDoc(collection(db, 'event_logic'), {
           ...m,
           sourceBout: normalizeBoutNumber(m.sourceBout || ''),
@@ -793,9 +795,12 @@ export function AIBracketSetup({
       if (onSuccess) onSuccess();
       setPreviewData(null);
       setFile(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Apply Error:", err);
       setError("Failed to save mappings to the system.");
+      if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
+        handleGlobalQuotaTrigger();
+      }
     } finally {
       setIsProcessing(false);
     }
