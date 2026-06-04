@@ -1267,6 +1267,39 @@ export default function App() {
         if (mapping.categoryName && mapping.categoryName !== "Auto-Extracted") {
           target.category = mapping.categoryName;
         }
+      } else {
+        // No match found in history yet! Ensure the placeholder is presented so we don't display older, buggy, or leaked winner data.
+        const key = normalizeBoutNumber(mapping.nextBout);
+        if (!targetBouts.has(key)) {
+          // Resolve category
+          let mCat = mapping.categoryName;
+          if (!mCat || mCat === "Auto-Extracted" || mCat === "Auto-Extracted from File") {
+            const queueMatch = boutQueue.find(b => isBoutMatch(b.data.bout, mapping.nextBout)) ||
+                               rings.flatMap(r => [r.currentBout, r.onDeck, r.inTheHole]).find(b => b && isBoutMatch(b.bout, mapping.nextBout));
+            if (queueMatch) {
+              mCat = queueMatch.category || queueMatch.data?.category || '';
+            }
+          }
+          targetBouts.set(key, { category: mCat || '', bout: mapping.nextBout });
+        }
+        const target = targetBouts.get(key)!;
+        
+        // Construct standard placeholder string (e.g. "WINNER OF F22B")
+        const ringNo = parseRingNumber(mapping.sourceBout);
+        const placeholderStr = `WINNER OF ${formatBoutNumber(ringNo, mapping.sourceBout)}`;
+        
+        if (mapping.slot === 'Chung') {
+          if (!target.blue) {
+            target.blue = placeholderStr;
+            target.blueClub = '';
+          }
+        }
+        if (mapping.slot === 'Hong') {
+          if (!target.red) {
+            target.red = placeholderStr;
+            target.redClub = '';
+          }
+        }
       }
     });
 
@@ -1334,13 +1367,7 @@ export default function App() {
         if (!next) return false;
         const normCurrent = current.trim().toUpperCase();
         const normNext = next.trim().toUpperCase();
-        if (normCurrent === normNext) return false;
-        
-        // Always update if current value is a placeholder or basically empty
-        if (normCurrent === '' || normCurrent === 'WINNER' || normCurrent.includes('WINNER OF')) {
-          return true;
-        }
-        return true; // Overwrite anything if mapping provides a new player
+        return normCurrent !== normNext;
       };
 
       // Check rings
@@ -1529,7 +1556,7 @@ export default function App() {
       setDoc(doc(db, 'matchHistory', historyId), toSave).catch(err => console.error("Error saving match history:", err));
 
       // Check and generate next bout
-      checkAndGenerateNextBout(boutNumber, winnerName || winner, winner === 'Blue' ? currentBout.blue_club : currentBout.red_club);
+      checkAndGenerateNextBout(boutNumber, winnerName || winner, winner === 'Blue' ? currentBout.blue_club : currentBout.red_club, currentBout.category);
     }
     
     const ringQueue = boutQueue.filter(q => q.data.ring === ringNumber && q.data.eventId === currentEventId);
@@ -1621,17 +1648,49 @@ export default function App() {
     return 1; // Default
   };
 
-  const checkAndGenerateNextBout = (completedBout: string | number, winnerName: string, winnerClub: string) => {
+  const checkAndGenerateNextBout = (completedBout: string | number, winnerName: string, winnerClub: string, categoryName?: string) => {
     if (!currentEventId) return;
 
-    // 1. Find mappings where this bout is a source
-    const relevantMappings = mappings.filter(m => isBoutMatch(m.sourceBout, completedBout));
+    const normHelper = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+
+    // Resolve category helper
+    const getMappingCategory = (m: any) => {
+      if (m.categoryName && m.categoryName !== "Auto-Extracted" && m.categoryName !== "Auto-Extracted from File") {
+        return m.categoryName;
+      }
+      const nextMatch = boutQueue.find(b => isBoutMatch(b.data.bout, m.nextBout)) ||
+                        rings.flatMap(r => [r.currentBout, r.onDeck, r.inTheHole]).find(b => b && isBoutMatch(b.bout, m.nextBout));
+      if (nextMatch) {
+        return nextMatch.category || nextMatch.data?.category || '';
+      }
+      return '';
+    };
+
+    const compBoutHistObj = matchHistory.find(h => isBoutMatch(h.bout, completedBout) && h.eventId === currentEventId);
+    const resolvedCat = categoryName || (compBoutHistObj ? compBoutHistObj.category : '');
+
+    // 1. Find mappings where this bout is a source and categories match
+    const relevantMappings = mappings.filter(m => {
+      const boutsMatch = isBoutMatch(m.sourceBout, completedBout);
+      if (!boutsMatch) return false;
+
+      const mappingCategory = getMappingCategory(m);
+      if (resolvedCat && mappingCategory) {
+        return normHelper(mappingCategory) === normHelper(resolvedCat);
+      }
+      return true;
+    });
     
     for (const mapping of relevantMappings) {
       const nextBoutId = mapping.nextBout;
+      const targetCategory = getMappingCategory(mapping);
       
-      // 2. Find the other mapping for the same nextBout
-      const otherMapping = mappings.find(m => isBoutMatch(m.nextBout, nextBoutId) && m.id !== mapping.id);
+      // 2. Find the other mapping for the same nextBout within the same category
+      const otherMapping = mappings.find(m => 
+        isBoutMatch(m.nextBout, nextBoutId) && 
+        m.id !== mapping.id &&
+        normHelper(getMappingCategory(m)) === normHelper(targetCategory)
+      );
       
       let blue_name = '';
       let blue_club = '';
@@ -1649,8 +1708,12 @@ export default function App() {
       }
 
       if (otherMapping) {
-        // Check if the other source bout has a winner
-        const otherWinner = matchHistory.find(h => isBoutMatch(h.bout, otherMapping.sourceBout) && h.eventId === currentEventId);
+        // Check if the other source bout has a winner under the same category
+        const otherWinner = matchHistory.find(h => 
+          isBoutMatch(h.bout, otherMapping.sourceBout) && 
+          h.eventId === currentEventId &&
+          normHelper(h.category) === normHelper(targetCategory)
+        );
         if (otherWinner) {
           if (otherMapping.slot === 'Chung') {
             blue_name = otherWinner.winner;
@@ -1666,8 +1729,12 @@ export default function App() {
         shouldGenerate = true;
       }
 
-      // Check if already in queue
-      const existingQueueIndex = boutQueue.findIndex(q => isBoutMatch(q.data.bout, nextBoutId) && q.data.eventId === currentEventId);
+      // Check if already in queue (with match on category name to avoid cross-category overwrites)
+      const existingQueueIndex = boutQueue.findIndex(q => 
+        isBoutMatch(q.data.bout, nextBoutId) && 
+        q.data.eventId === currentEventId && 
+        normHelper(q.data.category) === normHelper(targetCategory)
+      );
       
       if (existingQueueIndex !== -1) {
         // Update existing bout in queue
@@ -1686,7 +1753,7 @@ export default function App() {
         });
       }
 
-      // Check and update if already in rings
+      // Check and update if already in rings (with category validation)
       setRings(prevRings => {
         let ringsModified = false;
         const nextRings = prevRings.map(r => {
@@ -1694,7 +1761,10 @@ export default function App() {
           let updatedRing = { ...r };
           ['currentBout', 'onDeck', 'inTheHole'].forEach(slot => {
             const boutInSlot = updatedRing[slot as keyof RingStatus] as MatchData | null;
-            if (boutInSlot && isBoutMatch(boutInSlot.bout, nextBoutId) && (boutInSlot.eventId === currentEventId || !boutInSlot.eventId)) {
+            if (boutInSlot && 
+                isBoutMatch(boutInSlot.bout, nextBoutId) && 
+                (boutInSlot.eventId === currentEventId || !boutInSlot.eventId) &&
+                normHelper(boutInSlot.category) === normHelper(targetCategory)) {
               updatedRing = {
                 ...updatedRing,
                 [slot]: {
@@ -1721,9 +1791,9 @@ export default function App() {
       if (existingQueueIndex === -1 && shouldGenerate) {
         // Check if already in rings (check again because we might have just updated it above)
         const existsInRings = rings.some(r => (
-          (r.currentBout && isBoutMatch(r.currentBout.bout, nextBoutId) && r.currentBout.eventId === currentEventId) || 
-          (r.onDeck && isBoutMatch(r.onDeck.bout, nextBoutId) && r.onDeck.eventId === currentEventId) || 
-          (r.inTheHole && isBoutMatch(r.inTheHole.bout, nextBoutId) && r.inTheHole.eventId === currentEventId)
+          (r.currentBout && isBoutMatch(r.currentBout.bout, nextBoutId) && r.currentBout.eventId === currentEventId && normHelper(r.currentBout.category) === normHelper(targetCategory)) || 
+          (r.onDeck && isBoutMatch(r.onDeck.bout, nextBoutId) && r.onDeck.eventId === currentEventId && normHelper(r.onDeck.category) === normHelper(targetCategory)) || 
+          (r.inTheHole && isBoutMatch(r.inTheHole.bout, nextBoutId) && r.inTheHole.eventId === currentEventId && normHelper(r.inTheHole.category) === normHelper(targetCategory))
         ));
 
         if (!existsInRings) {
@@ -1736,17 +1806,17 @@ export default function App() {
             blue_club: blue_club.toUpperCase(),
             red_name: red_name.toUpperCase(),
             red_club: red_club.toUpperCase(),
-            category: '', 
+            category: targetCategory.toUpperCase(), 
             privacy_mode: false,
             eventId: currentEventId
           };
           
-          // Try to find category from source bouts
-          const sourceMatch = matchHistory.find(h => isBoutMatch(h.bout, completedBout));
-          if (sourceMatch) newMatch.category = sourceMatch.category.toUpperCase();
-
           setBoutQueue(prev => {
-            const isDuplicate = prev.some(q => isBoutMatch(q.data.bout, nextBoutId) && q.data.eventId === currentEventId);
+            const isDuplicate = prev.some(q => 
+              isBoutMatch(q.data.bout, nextBoutId) && 
+              q.data.eventId === currentEventId &&
+              normHelper(q.data.category) === normHelper(targetCategory)
+            );
             if (isDuplicate) return prev;
             const updated = [...prev, { id: `auto_${currentEventId}_${nextBoutId}_${Date.now()}`, data: newMatch }];
             localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
@@ -3313,7 +3383,7 @@ export default function App() {
               setDoc(doc(db, 'matchHistory', historyItem.id), toSave).catch(err => console.error("Error updating history:", err));
 
               // Advancement
-              checkAndGenerateNextBout(boutNumber, winName, winClub);
+              checkAndGenerateNextBout(boutNumber, winName, winClub, cat);
             }
           }}
           rings={currentRings}
@@ -3437,7 +3507,7 @@ export default function App() {
                     setDoc(doc(db, 'matchHistory', histId), toSave).catch(err => console.error("Error updating history on name change:", err));
 
                     // RE-PROPAGATE to brackets!
-                    checkAndGenerateNextBout(boutNumber, newWinName, newWinClub);
+                    checkAndGenerateNextBout(boutNumber, newWinName, newWinClub, oldMatch.category);
                   }
                 }
               }

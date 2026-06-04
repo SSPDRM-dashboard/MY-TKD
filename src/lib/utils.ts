@@ -37,15 +37,16 @@ export function normalizeBoutNumber(bout: string | number): string {
   if (!s) return '';
   
   // Replace letter 'O' with digit '0' if it is inside the alphabetic ring prefix of a bout (e.g., "CO1" -> "C01")
-  s = s.replace(/^([A-H])O+(\d+)$/, '$10$2');
+  s = s.replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
   
-  // Handle A01, B01, C01 format (A=1000, B=2000, C=3000, etc.)
-  const match = s.match(/^([A-Z])(\d+)$/);
+  // Handle A01, B01, C01 format (A=1000, B=2000, C=3000, etc.) with optional suffix
+  const match = s.match(/^([A-Z])(\d+)([A-Z]*)$/);
   if (match) {
     const letter = match[1];
     const number = parseInt(match[2]);
+    const suffix = match[3] || '';
     const ringOffset = (letter.charCodeAt(0) - 'A'.charCodeAt(0) + 1) * 1000;
-    return (ringOffset + number).toString();
+    return (ringOffset + number).toString() + suffix;
   }
   
   // Handle cases where someone might input "1022" and we want to compare with "1022"
@@ -56,10 +57,21 @@ export function isBoutMatch(bout1: string | number, bout2: string | number): boo
   if (bout1 === bout2) return true;
   if (!bout1 || !bout2) return false;
 
+  const getSuffix = (b: string | number): string => {
+    const s = b.toString().toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
+    const match = s.match(/([0-9]+)([A-Z]+)$/);
+    return match ? match[2] : '';
+  };
+
+  const suffix1 = getSuffix(bout1);
+  const suffix2 = getSuffix(bout2);
+
+  if (suffix1 !== suffix2) return false;
+
   const normalizeLenient = (b: string | number) => {
     let s = b.toString().toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
     // Also cover lenient "O" to "0" replacing for single letter prefixes
-    s = s.replace(/^([A-H])O+(\d+)$/, '$10$2');
+    s = s.replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
     return s;
   };
   
@@ -92,20 +104,24 @@ export function normalizeBoutWithRing(bout: string | number, ringNum: number): s
   if (!s) return '';
   
   // Normalize O to 0
-  s = s.replace(/^([A-H])O+(\d+)$/, '$10$2');
+  s = s.replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
   
   // If it already has a letter, use standard normalization
   if (/^[A-Z]/.test(s)) return normalizeBoutNumber(s);
   
   const num = parseInt(s.replace(/[^0-9]/g, ''));
   if (isNaN(num)) return s;
+
+  // Extract suffix
+  const suffixMatch = s.match(/([0-9]+)([A-Z]+)$/);
+  const suffix = suffixMatch ? suffixMatch[2] : '';
   
   // If it's a small number, assume it's relative to the ring
   if (num < 1000) {
-    return ((ringNum * 1000) + num).toString();
+    return ((ringNum * 1000) + num).toString() + suffix;
   }
   
-  return num.toString();
+  return num.toString() + suffix;
 }
 
 export function getBoutNumber(bout: string | number): number {
@@ -117,7 +133,10 @@ export function formatBoutNumber(ringNum: number, bout: string | number, mode: '
   if (!s) return '';
 
   const num = parseInt(s.replace(/[^0-9]/g, ''));
-  const suffix = s.replace(/[0-9]/g, '');
+  
+  // Extract custom suffix using safe pattern
+  const match = s.match(/([0-9]+)([A-Z]+)$/);
+  const suffix = match ? match[2] : '';
 
   if (isNaN(num)) return s;
 
