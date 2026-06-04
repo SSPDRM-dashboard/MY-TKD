@@ -35,7 +35,8 @@ import {
   Download,
   ArrowLeft,
   ClipboardCheck,
-  PieChart
+  PieChart,
+  Layers
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -48,6 +49,7 @@ import { AIBracketSetup } from './components/AIBracketSetup';
 import { TournamentAssistant } from './components/TournamentAssistant';
 import { SearchWinner } from './components/SearchWinner';
 import { EventReport } from './components/EventReport';
+import { BoutChart } from './components/BoutChart';
 import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateBoutDetailsInGoogleSheets, updatePointsInGoogleSheets, testSync } from './services/googleSheets';
 import { cn, normalizeBoutNumber, normalizeBoutWithRing, getBoutNumber, formatBoutNumber, isBoutMatch, parseRingNumber, extractWinnerOfBout } from './lib/utils';
 import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, getDocFromServer, where } from 'firebase/firestore';
@@ -94,12 +96,23 @@ function hasPlayers(bout: MatchData | null | undefined): boolean {
   return cleanPlaceholder(bout.blue_name) !== "---" || cleanPlaceholder(bout.red_name) !== "---";
 }
 
-export let isFirestoreQuotaExceeded = false;
+export let isFirestoreQuotaExceeded = localStorage.getItem('tkd_disable_firebase') === 'true';
 
 export const handleGlobalQuotaTrigger = () => {
   isFirestoreQuotaExceeded = true;
   disableFirestoreNetwork();
   window.dispatchEvent(new CustomEvent('firestore-quota-exceeded'));
+};
+
+export const manuallyDisableFirebase = () => {
+  localStorage.setItem('tkd_disable_firebase', 'true');
+  handleGlobalQuotaTrigger();
+};
+
+export const manuallyEnableFirebase = () => {
+  localStorage.removeItem('tkd_disable_firebase');
+  isFirestoreQuotaExceeded = false;
+  window.location.reload();
 };
 
 function useSyncedState<T>(key: string, initialValue: T) {
@@ -2436,6 +2449,12 @@ export default function App() {
                 active={activeTab === 'ai-setup'} 
                 onClick={() => setActiveTab('ai-setup')} 
               />
+              <NavItem 
+                icon={<Layers size={20} />} 
+                label="Bout Chart" 
+                active={activeTab === 'bout-chart'} 
+                onClick={() => setActiveTab('bout-chart')} 
+              />
             </>
           )}
           {user?.role === 'user' && (
@@ -3141,7 +3160,16 @@ export default function App() {
             />
           )}
 
-
+          {activeTab === 'bout-chart' && user?.role === 'admin' && (
+            <div className="max-w-7xl mx-auto">
+               <BoutChart 
+                  mappings={mappings}
+                  boutQueue={boutQueue}
+                  matchHistory={matchHistory}
+                  boutNumberingMode={boutNumberingMode}
+               />
+            </div>
+          )}
 
           {activeTab === 'inspection-logs' && (user?.role === 'admin' || user?.role === 'ta') && (
             <div className="max-w-5xl mx-auto">
@@ -3158,6 +3186,28 @@ export default function App() {
                 </h3>
                 
                 <div className="space-y-4">
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-700">Cloud Real-Time Sync (Firebase)</h4>
+                      <p className="text-[10px] text-slate-500 mt-1">If enabled, scoreboards will sync globally over the internet. Disable this if you hit your daily quota or want to run 100% offline (LocalStorage only).</p>
+                    </div>
+                    {isFirestoreQuotaExceeded ? (
+                      <button 
+                        onClick={manuallyEnableFirebase}
+                        className="px-4 py-2 bg-green-100 text-green-700 rounded-lg text-xs font-bold whitespace-nowrap hover:bg-green-200 transition-colors"
+                      >
+                        Enable Cloud Sync
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={manuallyDisableFirebase}
+                        className="px-4 py-2 bg-red-100 text-red-700 rounded-lg text-xs font-bold whitespace-nowrap hover:bg-red-200 transition-colors"
+                      >
+                        Disable Sync (Go Offline)
+                      </button>
+                    )}
+                  </div>
+                  
                   <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                     <label className="block text-sm font-bold text-slate-700 mb-2">Google Sheets Web App URL</label>
                     <div className="flex gap-2">

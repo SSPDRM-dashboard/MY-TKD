@@ -22,6 +22,10 @@ export const disableFirestoreNetwork = async () => {
 
 // Test Firestore connection on boot
 async function testFirestoreConnection() {
+  if (localStorage.getItem('tkd_disable_firebase') === 'true') {
+    disableFirestoreNetwork();
+    return;
+  }
   try {
     await getDocFromServer(doc(db, 'sync', 'connection_test'));
     console.log("Firestore connection verified.");
