@@ -611,7 +611,7 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
               : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
           )}
         >
-          Overall Winners (By Rank)
+          Club/State Overall Winner by Category
           {activeTab === 'by-rank' && <div className="absolute -bottom-px left-0 right-0 h-px bg-white" />}
         </button>
         <button
@@ -713,7 +713,7 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
         {activeTab === 'by-rank' && (
           <div className="p-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-              <h2 className="text-lg font-bold text-slate-800">Overall Winners categorized by rank</h2>
+              <h2 className="text-lg font-bold text-slate-800">Club/State Overall Winner by Category</h2>
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   onClick={downloadOverallWinners}

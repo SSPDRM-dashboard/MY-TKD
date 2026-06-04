@@ -432,13 +432,22 @@ export default function App() {
         const currentEvt = events.find(e => e.id === currentEventId);
         const currentEvtName = (currentEvt ? currentEvt.name : '').trim().toLowerCase();
 
+        const normalizeStr = (s: string | null | undefined) => s ? s.toLowerCase().replace(/[^a-z0-9]/g, '').trim() : '';
+
         // 1. Try to fulfill "WINNER OF X" placeholders using matchHistory
         const blueBoutId = extractWinnerOfBout(bout.blue_name);
         if (blueBoutId) {
-          const historyMatch = matchHistory.find((h: MatchHistoryItem) => 
+          let historyMatch = matchHistory.find((h: MatchHistoryItem) => 
             isBoutMatch(h.bout, blueBoutId) && 
-            (h.eventId === currentEventId || h.eventId === currentEvtName)
+            (h.eventId === currentEventId || h.eventId === currentEvtName) &&
+            normalizeStr(h.category) === normalizeStr(bout.category)
           );
+          if (!historyMatch) {
+            historyMatch = matchHistory.find((h: MatchHistoryItem) => 
+              isBoutMatch(h.bout, blueBoutId) && 
+              (h.eventId === currentEventId || h.eventId === currentEvtName)
+            );
+          }
           if (historyMatch && historyMatch.winner && historyMatch.winner !== '-' && historyMatch.winner.trim() !== '') {
             bout.blue_name = historyMatch.winner.toUpperCase();
             if (historyMatch.winnerClub) bout.blue_club = historyMatch.winnerClub.toUpperCase();
@@ -448,10 +457,17 @@ export default function App() {
         
         const redBoutId = extractWinnerOfBout(bout.red_name);
         if (redBoutId) {
-          const historyMatch = matchHistory.find((h: MatchHistoryItem) => 
+          let historyMatch = matchHistory.find((h: MatchHistoryItem) => 
             isBoutMatch(h.bout, redBoutId) && 
-            (h.eventId === currentEventId || h.eventId === currentEvtName)
+            (h.eventId === currentEventId || h.eventId === currentEvtName) &&
+            normalizeStr(h.category) === normalizeStr(bout.category)
           );
+          if (!historyMatch) {
+            historyMatch = matchHistory.find((h: MatchHistoryItem) => 
+              isBoutMatch(h.bout, redBoutId) && 
+              (h.eventId === currentEventId || h.eventId === currentEvtName)
+            );
+          }
           if (historyMatch && historyMatch.winner && historyMatch.winner !== '-' && historyMatch.winner.trim() !== '') {
             bout.red_name = historyMatch.winner.toUpperCase();
             if (historyMatch.winnerClub) bout.red_club = historyMatch.winnerClub.toUpperCase();
@@ -1208,17 +1224,28 @@ export default function App() {
     const targetBouts = new Map<string, { category: string, bout: string, blue?: string, red?: string, blueClub?: string, redClub?: string }>();
 
     mappings.forEach(mapping => {
-      const match = matchHistory.find(h => {
+      // Prioritize matching by category if available, otherwise fallback
+      let match = matchHistory.find(h => {
         const boutsMatch = isBoutMatch(h.bout, mapping.sourceBout);
         const eventIdMatch = h.eventId === currentEventId;
-        const catMatch = !mapping.categoryName || mapping.categoryName === "Auto-Extracted" || normalizeStr(h.category) === normalizeStr(mapping.categoryName);
-        
-        if (boutsMatch && eventIdMatch && !catMatch) {
-          console.log(`Found bout match ${h.bout} but category mismatch: history=${h.category}, mapping=${mapping.categoryName}`);
-        }
-        
+        const catMatch = mapping.categoryName && 
+                         mapping.categoryName !== "Auto-Extracted" && 
+                         mapping.categoryName !== "Auto-Extracted from File" && 
+                         normalizeStr(h.category) === normalizeStr(mapping.categoryName);
         return boutsMatch && eventIdMatch && catMatch;
       });
+
+      if (!match) {
+        match = matchHistory.find(h => {
+          const boutsMatch = isBoutMatch(h.bout, mapping.sourceBout);
+          const eventIdMatch = h.eventId === currentEventId;
+          const catMatch = !mapping.categoryName || 
+                           mapping.categoryName === "Auto-Extracted" || 
+                           mapping.categoryName === "Auto-Extracted from File" || 
+                           normalizeStr(h.category) === normalizeStr(mapping.categoryName);
+          return boutsMatch && eventIdMatch && catMatch;
+        });
+      }
 
       if (match) {
         // Use normalized bout number as the key to group mappings for the same target match
@@ -1250,10 +1277,18 @@ export default function App() {
         if (!nameStr) return;
         const sourceBoutStr = extractWinnerOfBout(nameStr);
         if (sourceBoutStr) {
-          const historyMatch = matchHistory.find(h => 
+          let historyMatch = matchHistory.find(h => 
             isBoutMatch(h.bout, sourceBoutStr) && 
-            (h.eventId === currentEventId || h.eventId === getCurrentEventName())
+            (h.eventId === currentEventId || h.eventId === getCurrentEventName()) &&
+            normalizeStr(h.category) === normalizeStr(boutData.category)
           );
+          
+          if (!historyMatch) {
+            historyMatch = matchHistory.find(h => 
+              isBoutMatch(h.bout, sourceBoutStr) && 
+              (h.eventId === currentEventId || h.eventId === getCurrentEventName())
+            );
+          }
           
           if (historyMatch && historyMatch.winner && historyMatch.winner !== '-' && historyMatch.winner.trim() !== '') {
             console.log(`Fallback detected: Match ${boutData.bout} (${slot}) needs WINNER OF ${sourceBoutStr}. Found winner: ${historyMatch.winner}`);

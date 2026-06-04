@@ -20,7 +20,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { MatchData, BoutMapping, EventData, RingStatus } from '../types';
-import { cn, normalizeBoutNumber, formatBoutNumber } from '../lib/utils';
+import { cn, normalizeBoutNumber, formatBoutNumber, isBoutMatch } from '../lib/utils';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { syncToGoogleSheets } from '../services/googleSheets';
@@ -690,13 +690,18 @@ export function AIBracketSetup({
     try {
       // 1. Save Mappings to Firestore (event_logic)
       const mappingPromises = previewData.mappings.map(m => {
+        const matchingMatch = previewData.matches.find((match: MatchData) => 
+          isBoutMatch(match.bout, m.sourceBout) || isBoutMatch(match.bout, m.nextBout)
+        );
+        const resolvedCategory = matchingMatch ? matchingMatch.category : "Auto-Extracted from File";
+
         return addDoc(collection(db, 'event_logic'), {
           ...m,
           sourceBout: normalizeBoutNumber(m.sourceBout || ''),
           nextBout: normalizeBoutNumber(m.nextBout || ''),
           eventId: currentEventId,
           eventName: currentEvent.name,
-          categoryName: "Auto-Extracted from File",
+          categoryName: resolvedCategory,
           createdAt: serverTimestamp()
         });
       });
