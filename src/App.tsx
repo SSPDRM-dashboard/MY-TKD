@@ -110,14 +110,21 @@ function useSyncedState<T>(key: string, initialValue: T) {
   const lastRemoteValue = useRef<string>('');
 
   useEffect(() => {
-    // Initial sync from Firestore
-    getDocFromServer(doc(db, 'sync', key)).then(document => {
+    let isMounted = true;
+
+    const unsub = onSnapshot(doc(db, 'sync', key), (document) => {
+      if (!isMounted) return;
+
       if (document.exists()) {
-        const val = document.data().value;
-        const valStr = JSON.stringify(val);
-        lastRemoteValue.current = valStr;
-        setState(val);
-        localStorage.setItem(key, valStr);
+        const remoteValue = document.data().value;
+        const remoteValueStr = JSON.stringify(remoteValue);
+        
+        // Only update if the remote value actually changed from what we last saw
+        if (remoteValueStr !== lastRemoteValue.current) {
+          lastRemoteValue.current = remoteValueStr;
+          setState(remoteValue);
+          localStorage.setItem(key, remoteValueStr);
+        }
       } else {
         const saved = localStorage.getItem(key);
         if (saved !== null) {
@@ -133,30 +140,16 @@ function useSyncedState<T>(key: string, initialValue: T) {
           }
         }
       }
-    }).catch(error => {
-      if (error instanceof Error && error.message.includes('the client is offline')) {
-        console.error("Firestore Configuration Error: The client is offline.");
-      }
-    });
-
-    const unsub = onSnapshot(doc(db, 'sync', key), (document) => {
-      if (document.exists()) {
-        const remoteValue = document.data().value;
-        const remoteValueStr = JSON.stringify(remoteValue);
-        
-        // Only update if the remote value actually changed from what we last saw
-        if (remoteValueStr !== lastRemoteValue.current) {
-          lastRemoteValue.current = remoteValueStr;
-          setState(remoteValue);
-          localStorage.setItem(key, remoteValueStr);
-        }
-      }
     }, (error) => {
       if (error.code !== 'permission-denied' && !error.message.includes('quota')) {
         console.error(`Firestore Sync Error (${key}):`, error);
       }
     });
-    return unsub;
+
+    return () => {
+      isMounted = false;
+      unsub();
+    };
   }, [key]);
 
   const setSyncedState = React.useCallback((updater: T | ((prev: T) => T)) => {
@@ -684,7 +677,7 @@ export default function App() {
   const [showAddRingModal, setShowAddRingModal] = useState(false);
   const [missingBoutPrompt, setMissingBoutPrompt] = useState<{ ringNumber: number; expectedBout: number; totalBouts: number } | null>(null);
   const [finalBoutCheck, setFinalBoutCheck] = useState<{ ringNumber: number; remainingCount: number } | null>(null);
-  const [ringNamingMode, setRingNamingMode] = useState<'number' | 'alphabet'>('number');
+  const [ringNamingMode, setRingNamingMode] = useSyncedState<'number' | 'alphabet'>('tkd_ring_naming_mode', 'number');
   const [boutNumberingMode, setBoutNumberingMode] = useSyncedState<'numeric' | 'alphanumeric'>('tkd_bout_numbering_mode', 'alphanumeric');
   const [categories, setCategories] = useSyncedState<string[]>('tkd_categories', ["Junior Male -45kg", "Junior Female -42kg", "Senior Male -54kg", "INDIVIDUAL POOMSAE"]);
   const [clubs, setClubs] = useSyncedState<string[]>('tkd_clubs', ["KST", "TKT", "PST", "MTA"]);
@@ -697,6 +690,7 @@ export default function App() {
   const [publicViewLayout, setPublicViewLayout] = useSyncedState<'standard' | 'point'>('tkd_public_view_layout', 'standard');
   const [showPublicStandbyQueue, setShowPublicStandbyQueue] = useSyncedState<boolean>('tkd_show_public_standby_queue', true);
   const [showInspectionPopupSetting, setShowInspectionPopupSetting] = useSyncedState<boolean>('tkd_show_inspection_popup_setting', true);
+  const [publicEventId, setPublicEventId] = useSyncedState<string>('tkd_public_event_id', 'active');
 
   // Persistence & Cross-tab Sync handled by useSyncedState
 
@@ -1849,6 +1843,7 @@ export default function App() {
     // Capitalize all letters for ring controller and normalize bout number
     const capitalizedData: MatchData = {
       ...newData,
+      eventId: newData.eventId || currentEventId || null,
       blue_name: newData.blue_name?.toUpperCase() || '',
       blue_club: newData.blue_club?.toUpperCase() || '',
       red_name: newData.red_name?.toUpperCase() || '',
@@ -2141,6 +2136,36 @@ export default function App() {
     }));
   }, [rings, currentEventId]);
 
+  const effectivePublicEventId = React.useMemo(() => {
+    if (publicEventId === 'active') {
+      return currentEventId;
+    }
+    return publicEventId || currentEventId;
+  }, [publicEventId, currentEventId]);
+
+  const publicBoutQueue = React.useMemo(() => {
+    if (!effectivePublicEventId) return [];
+    return boutQueue.filter(b => b.data.eventId === effectivePublicEventId);
+  }, [boutQueue, effectivePublicEventId]);
+
+  const publicRings = React.useMemo(() => {
+    if (!effectivePublicEventId) {
+      return rings.map(r => ({ ...r, currentBout: null, onDeck: null, inTheHole: null }));
+    }
+    return rings.map(r => ({
+      ...r,
+      currentBout: r.currentBout && r.currentBout.eventId === effectivePublicEventId ? r.currentBout : null,
+      onDeck: r.onDeck && r.onDeck.eventId === effectivePublicEventId ? r.onDeck : null,
+      inTheHole: r.inTheHole && r.inTheHole.eventId === effectivePublicEventId ? r.inTheHole : null,
+    }));
+  }, [rings, effectivePublicEventId]);
+
+  const publicEventName = React.useMemo(() => {
+    if (!effectivePublicEventId) return '';
+    const event = events.find(e => e.id === effectivePublicEventId);
+    return event ? event.name : '';
+  }, [events, effectivePublicEventId]);
+
   if (!user && showLogin && !isPublicView) {
     return <LoginScreen onLogin={handleLogin} events={events} onBack={() => setShowLogin(false)} />;
   }
@@ -2148,8 +2173,8 @@ export default function App() {
   if (!user) {
     return (
       <PublicDashboardView 
-        rings={currentRings} 
-        boutQueue={currentBoutQueue} 
+        rings={publicRings} 
+        boutQueue={publicBoutQueue} 
         namingMode={ringNamingMode} 
         onBack={() => setShowLogin(true)} 
         isSpectator={true}
@@ -2159,6 +2184,7 @@ export default function App() {
         showEmptyBoutAsInactive={showEmptyBoutAsInactive}
         showPublicStandbyQueue={showPublicStandbyQueue}
         publicViewLayout={publicViewLayout}
+        selectedEventName={publicEventName}
       />
     );
   }
@@ -2166,8 +2192,8 @@ export default function App() {
   if (isPublicView) {
     return (
       <PublicDashboardView 
-        rings={currentRings} 
-        boutQueue={currentBoutQueue} 
+        rings={publicRings} 
+        boutQueue={publicBoutQueue} 
         namingMode={ringNamingMode} 
         onBack={() => setIsPublicView(false)} 
         showTotalBouts={showTotalBoutsPublic}
@@ -2176,6 +2202,7 @@ export default function App() {
         showEmptyBoutAsInactive={showEmptyBoutAsInactive}
         showPublicStandbyQueue={showPublicStandbyQueue}
         publicViewLayout={publicViewLayout}
+        selectedEventName={publicEventName}
       />
     );
   }
@@ -3111,6 +3138,22 @@ export default function App() {
                           Points
                         </button>
                       </div>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-700 font-sans">Public View Event / Day</p>
+                        <p className="text-[10px] text-slate-500 font-sans">Choose which tournament day or event is displayed live on public screens</p>
+                      </div>
+                      <select
+                        value={publicEventId}
+                        onChange={(e) => setPublicEventId(e.target.value)}
+                        className="px-4 py-2 bg-white rounded-xl text-[10px] md:text-xs font-black text-slate-600 border border-slate-200 uppercase tracking-widest focus:ring-2 focus:ring-red-500 outline-none w-full sm:w-auto min-w-[200px] cursor-pointer"
+                      >
+                        <option value="active">Active Operator Event</option>
+                        {events.map((e) => (
+                          <option key={e.id} value={e.id}>{e.name}</option>
+                        ))}
+                      </select>
                     </div>
                     <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
                       <div>
@@ -6473,7 +6516,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
   );
 }
 
-function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator, showTotalBouts = true, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, showPublicStandbyQueue = true, publicViewLayout = 'standard' }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', onBack: () => void, isSpectator?: boolean, showTotalBouts?: boolean, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, showPublicStandbyQueue?: boolean, publicViewLayout?: 'standard' | 'point' }) {
+function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator, showTotalBouts = true, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, showPublicStandbyQueue = true, publicViewLayout = 'standard', selectedEventName = '' }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', onBack: () => void, isSpectator?: boolean, showTotalBouts?: boolean, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, showPublicStandbyQueue?: boolean, publicViewLayout?: 'standard' | 'point', selectedEventName?: string }) {
   const [logoClicks, setLogoClicks] = React.useState(0);
   const clickTimer = React.useRef<NodeJS.Timeout | null>(null);
 
@@ -6510,9 +6553,18 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
           </div>
           <div>
             <h1 className="font-black text-lg sm:text-xl leading-tight tracking-tighter">MY-TKD LIVE</h1>
-            <p className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-widest">Web View Dashboard</p>
+            <p className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-widest font-mono">Web View Dashboard</p>
           </div>
         </div>
+
+        {selectedEventName && (
+          <div className="bg-red-600/10 border border-red-500/25 px-3 py-1.5 rounded-xl flex items-center gap-2">
+            <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+            <span className="text-[10px] sm:text-xs font-black tracking-widest uppercase text-red-500 font-mono">
+              {selectedEventName}
+            </span>
+          </div>
+        )}
       </header>
 
       <div className="p-3 sm:p-6 md:p-8 space-y-6 md:space-y-8 max-w-[1600px] mx-auto flex-1 w-full">
