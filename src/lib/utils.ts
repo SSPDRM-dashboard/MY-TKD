@@ -20,15 +20,31 @@ export function validateIC(ic: string): boolean {
 export function parseRingNumber(ringVal: any): number {
   if (!ringVal) return 1;
   const s = ringVal.toString().trim().toUpperCase();
-  // If it is already a straight number
-  const num = parseInt(s.replace(/[^0-9]/g, ''));
-  if (!isNaN(num) && num > 0) return num;
+  
+  // If it's a full alphanumeric bout code (e.g., "F01", "F22B", "A15")
+  // It starts with a single letter, followed by digits, and optional trailing letters
+  const boutMatch = s.match(/^([A-Z])(\d+)([A-Z]*)$/);
+  if (boutMatch) {
+    return boutMatch[1].charCodeAt(0) - 'A'.charCodeAt(0) + 1;
+  }
+
+  // If it is already a straight number with no surrounding letters except standard spaces
+  const onlyNums = s.replace(/[^0-9]/g, '');
+  if (onlyNums && /^\d+$/.test(s.replace(/\s+/g, ''))) {
+    const num = parseInt(onlyNums);
+    if (!isNaN(num) && num > 0) return num;
+  }
   
   // Look for match with letters: Ring A, Court A, A
   const letterMatch = s.match(/(?:RING|COURT|AISTUDIO)?\s*([A-Z])/i);
   if (letterMatch && letterMatch[1]) {
     return letterMatch[1].charCodeAt(0) - 'A'.charCodeAt(0) + 1;
   }
+
+  // Fallback to extracting any numbers in it
+  const numFallback = parseInt(s.replace(/[^0-9]/g, ''));
+  if (!isNaN(numFallback) && numFallback > 0) return numFallback;
+
   return 1;
 }
 
@@ -129,7 +145,7 @@ export function getBoutNumber(bout: string | number): number {
 }
 
 export function formatBoutNumber(ringNum: number, bout: string | number, mode: 'numeric' | 'alphanumeric' = 'alphanumeric'): string {
-  const s = bout.toString().trim().toUpperCase();
+  const s = bout.toString().replace(/\s+/g, '').toUpperCase();
   if (!s) return '';
 
   const num = parseInt(s.replace(/[^0-9]/g, ''));
@@ -196,6 +212,9 @@ export function extractWinnerOfBout(nameStr: string | null | undefined): string 
   
   // Clean spaced bout numbers (e.g., "C 01" -> "C01")
   s = s.replace(/([A-H])\s*(\d+)/g, '$1$2');
+
+  // Remove space between digits and a trailing suffix alphabet, e.g., "F22 B" -> "F22B", "22 b" -> "22B"
+  s = s.replace(/(\d+)\s*([A-Z]+)\b/g, '$1$2');
 
   // Perform extracting match
   const matchOf = s.match(/WINNER OF\s*([\w-]+)/i);
