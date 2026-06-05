@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Edit2, X } from 'lucide-react';
-import { RingStatus, MatchData } from '../types';
+import { RingStatus, MatchData, EventData } from '../types';
 import { cn, normalizeBoutNumber, formatBoutNumber, isBoutMatch } from '../lib/utils';
 
 interface EditBoutDetailsModalProps {
@@ -11,12 +11,15 @@ interface EditBoutDetailsModalProps {
   queue: { id: string; data: MatchData }[];
   user: any;
   boutNumberingMode: 'numeric' | 'alphanumeric';
+  events: EventData[];
+  currentEventId: string | null;
 }
 
-export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, boutNumberingMode }: EditBoutDetailsModalProps) {
+export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, boutNumberingMode, events, currentEventId }: EditBoutDetailsModalProps) {
   const defaultRing = user?.role === 'admin' ? (rings[0]?.ringNumber || 1) : (Number(user?.assignedRing) || 1);
   
   const [formData, setFormData] = useState({
+    eventId: currentEventId || '',
     ring: defaultRing,
     bout: '',
     blue_name: '',
@@ -45,11 +48,11 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
     const ring = rings.find(r => r.ringNumber === formData.ring);
     
     let foundMatch: MatchData | null = null;
-    if (ring?.currentBout && isBoutMatch(ring.currentBout.bout, formData.bout)) {
+    if (ring?.currentBout && isBoutMatch(ring.currentBout.bout, formData.bout) && (ring.currentBout.eventId === formData.eventId || !formData.eventId)) {
       foundMatch = ring.currentBout;
-    } else if (ring?.onDeck && isBoutMatch(ring.onDeck.bout, formData.bout)) {
+    } else if (ring?.onDeck && isBoutMatch(ring.onDeck.bout, formData.bout) && (ring.onDeck.eventId === formData.eventId || !formData.eventId)) {
       foundMatch = ring.onDeck;
-    } else if (ring?.inTheHole && isBoutMatch(ring.inTheHole.bout, formData.bout)) {
+    } else if (ring?.inTheHole && isBoutMatch(ring.inTheHole.bout, formData.bout) && (ring.inTheHole.eventId === formData.eventId || !formData.eventId)) {
       foundMatch = ring.inTheHole;
     }
 
@@ -68,7 +71,7 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
     }
 
     // Check queue
-    const queuedBout = queue.find(q => q.data.ring === formData.ring && isBoutMatch(q.data.bout, formData.bout));
+    const queuedBout = queue.find(q => q.data.ring === formData.ring && isBoutMatch(q.data.bout, formData.bout) && (q.data.eventId === formData.eventId || !formData.eventId));
     if (queuedBout) {
       const isSolo = queuedBout.data.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || false;
       setFormData(prev => ({
@@ -128,6 +131,19 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
           <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2 col-span-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Event</label>
+              <select 
+                value={formData.eventId}
+                onChange={(e) => setFormData({...formData, eventId: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+              >
+                <option value="">All Events</option>
+                {events.map((e) => (
+                  <option key={e.id} value={e.id}>{e.name}</option>
+                ))}
+              </select>
+            </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Ring</label>
               <select 

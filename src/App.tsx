@@ -1517,9 +1517,21 @@ export default function App() {
 
       const shouldUpdateField = (current: string, next: string | undefined): boolean => {
         if (!next) return false;
-        const normCurrent = current.trim().toUpperCase();
+        const normCurrent = (current || '').trim().toUpperCase();
         const normNext = next.trim().toUpperCase();
-        return normCurrent !== normNext;
+        if (normCurrent === normNext) return false;
+
+        const currentIsRealName = normCurrent !== '' && normCurrent !== '-' && !normCurrent.startsWith('WINNER OF ');
+        const nextIsRealName = normNext !== '' && normNext !== '-' && !normNext.startsWith('WINNER OF ');
+
+        // If current is already a real name, DO NOT overwrite it.
+        // This preserves manual edits directly made in the UI or Google Sheets
+        // and prevents subsequent bracket logic from quietly reverting intentional corrections.
+        if (currentIsRealName) {
+          return false;
+        }
+
+        return true;
       };
 
       // Check rings
@@ -3554,7 +3566,9 @@ export default function App() {
           user={user}
           initialRing={newBoutInitialRing}
           currentEventId={currentEventId}
+          events={events}
           isSyncing={isSyncing}
+          boutNumberingMode={boutNumberingMode}
         />
       )}
 
@@ -3669,12 +3683,16 @@ export default function App() {
           queue={currentBoutQueue}
           user={user}
           boutNumberingMode={boutNumberingMode}
+          events={events}
+          currentEventId={currentEventId}
         />
       )}
 
       {showEditBoutDetailsModal && (
         <EditBoutDetailsModal
           onClose={() => setShowEditBoutDetailsModal(false)}
+          events={events}
+          currentEventId={currentEventId}
           onSubmit={(ringNumber, boutNumber, updates) => {
             // Update in rings (all slots: current, onDeck, inTheHole)
             setRings(prev => prev.map(r => {
@@ -3803,6 +3821,8 @@ export default function App() {
           queue={currentBoutQueue}
           user={user}
           boutNumberingMode={boutNumberingMode}
+          events={events}
+          currentEventId={currentEventId}
         />
       )}
 
@@ -4292,12 +4312,15 @@ interface EditResultModalProps {
   queue: { id: string; data: MatchData }[];
   user: UserAccount | null;
   boutNumberingMode?: 'numeric' | 'alphanumeric';
+  events: EventData[];
+  currentEventId: string | null;
 }
 
-function EditResultModal({ onClose, onSubmit, rings, queue, user, boutNumberingMode = 'alphanumeric' }: EditResultModalProps) {
+function EditResultModal({ onClose, onSubmit, rings, queue, user, boutNumberingMode = 'alphanumeric', events, currentEventId }: EditResultModalProps) {
   const defaultRing = user?.role === 'admin' ? (rings[0]?.ringNumber || 1) : (Number(user?.assignedRing) || 1);
   
   const [formData, setFormData] = useState({
+    eventId: currentEventId || '',
     ring: defaultRing,
     bout: '',
     winner: 'Blue' as 'Blue' | 'Red' | 'Completed'
@@ -4317,12 +4340,12 @@ function EditResultModal({ onClose, onSubmit, rings, queue, user, boutNumberingM
     let found: MatchData | null = null;
     const ring = rings.find(r => r.ringNumber === formData.ring);
     if (ring) {
-      if (ring.currentBout && isBoutMatch(ring.currentBout.bout, normalized)) found = ring.currentBout;
-      else if (ring.onDeck && isBoutMatch(ring.onDeck.bout, normalized)) found = ring.onDeck;
-      else if (ring.inTheHole && isBoutMatch(ring.inTheHole.bout, normalized)) found = ring.inTheHole;
+      if (ring.currentBout && isBoutMatch(ring.currentBout.bout, normalized) && (ring.currentBout.eventId === formData.eventId || !formData.eventId)) found = ring.currentBout;
+      else if (ring.onDeck && isBoutMatch(ring.onDeck.bout, normalized) && (ring.onDeck.eventId === formData.eventId || !formData.eventId)) found = ring.onDeck;
+      else if (ring.inTheHole && isBoutMatch(ring.inTheHole.bout, normalized) && (ring.inTheHole.eventId === formData.eventId || !formData.eventId)) found = ring.inTheHole;
     }
     if (!found) {
-      const queued = queue.find(q => q.data.ring === formData.ring && isBoutMatch(q.data.bout, normalized));
+      const queued = queue.find(q => q.data.ring === formData.ring && isBoutMatch(q.data.bout, normalized) && (q.data.eventId === formData.eventId || !formData.eventId));
       if (queued) found = queued.data;
     }
 
@@ -4380,6 +4403,19 @@ function EditResultModal({ onClose, onSubmit, rings, queue, user, boutNumberingM
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2 col-span-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Event</label>
+              <select 
+                value={formData.eventId}
+                onChange={(e) => setFormData({...formData, eventId: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+              >
+                <option value="">All Events</option>
+                {events.map((e) => (
+                  <option key={e.id} value={e.id}>{e.name}</option>
+                ))}
+              </select>
+            </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Ring</label>
               <select 
@@ -4511,11 +4547,12 @@ interface NewBoutModalProps {
   user: UserAccount | null;
   initialRing?: number;
   currentEventId: string | null;
+  events: EventData[];
   isSyncing: boolean;
   boutNumberingMode?: 'numeric' | 'alphanumeric';
 }
 
-function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user, initialRing, currentEventId, isSyncing, boutNumberingMode = 'alphanumeric' }: NewBoutModalProps) {
+function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user, initialRing, currentEventId, events, isSyncing, boutNumberingMode = 'alphanumeric' }: NewBoutModalProps) {
   const defaultRing = initialRing || (user?.role === 'admin' ? (rings[0]?.ringNumber || 1) : (Number(user?.assignedRing) || 1));
   
   const getNextBoutNumber = (ringNum: number) => {
@@ -4558,6 +4595,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
 
   const [formData, setFormData] = useState<MatchData>(() => {
     return {
+      eventId: currentEventId || null,
       ring: defaultRing,
       bout: getNextBoutNumber(defaultRing),
       category: '',
@@ -4605,14 +4643,14 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
     const inQueue = queue.find(q => 
       q.data.ring === formData.ring && 
       normalizeBoutWithRing(q.data.bout, q.data.ring) === targetBout &&
-      q.data.eventId === currentEventId
+      q.data.eventId === formData.eventId
     );
     
     const inCurrent = rings.find(r => 
       r.ringNumber === formData.ring && 
       r.currentBout && 
       normalizeBoutWithRing(r.currentBout.bout, r.ringNumber) === targetBout &&
-      r.currentBout.eventId === currentEventId
+      r.currentBout.eventId === formData.eventId
     );
                        
     if (inQueue) {
@@ -4625,7 +4663,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
     }
     
     // Update formData with normalized bout number before submitting
-    const finalData = { ...formData, bout: targetBout, eventId: currentEventId || null };
+    const finalData = { ...formData, bout: targetBout, eventId: formData.eventId || null };
     
     onSubmit(formData.ring, finalData);
     onClose();
@@ -4668,6 +4706,19 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
             </div>
           )}
           <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2 col-span-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Event</label>
+              <select 
+                value={formData.eventId || ''}
+                onChange={(e) => setFormData({...formData, eventId: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
+              >
+                <option value="">All Events</option>
+                {events.map((e) => (
+                  <option key={e.id} value={e.id}>{e.name}</option>
+                ))}
+              </select>
+            </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Ring</label>
               <select 
