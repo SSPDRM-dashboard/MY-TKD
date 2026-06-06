@@ -36,7 +36,8 @@ import {
   ArrowLeft,
   ClipboardCheck,
   PieChart,
-  Layers
+  Layers,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -640,6 +641,28 @@ export default function App() {
       // Check if it's already in match history (completed)
       const isCompleted = matchHistory.some(h => {
         if ((h.eventId || currentEventId || 'default') !== eventId) return false;
+
+        // Ring extraction helper to prevent cross-ring comparison errors
+        const getBoutRing = (boutStr: string | number) => {
+          const s = boutStr.toString().replace(/\s+/g, '').toUpperCase();
+          const match = s.match(/^([A-H])(\d+)([A-Z]*)$/);
+          if (match) {
+            return match[1].charCodeAt(0) - 'A'.charCodeAt(0) + 1;
+          }
+          const num = parseInt(s);
+          if (!isNaN(num) && num >= 1000) {
+            return Math.floor(num / 1000);
+          }
+          return null;
+        };
+
+        const hRing = getBoutRing(h.bout);
+        const itemRing = Number(ringNum);
+
+        // If the history item has a detected ring and it doesn't match the queue item's ring, then they are absolutely different bouts!
+        if (hRing && itemRing && hRing !== itemRing) {
+          return false;
+        }
         
         // Match 1: Using strict logic with ring combination
         if (normalizeBoutWithRing(h.bout, ringNum) === normalizedBout) return true;
@@ -2295,6 +2318,41 @@ export default function App() {
     }
   };
 
+  const returnActiveBoutToQueue = async (ringNumber: number) => {
+    const ring = rings.find(r => r.ringNumber === ringNumber);
+    const currentBout = ring?.currentBout;
+    if (!currentBout) return;
+
+    // Add back to the upcoming queue (boutQueue)
+    const queueItem = { 
+      id: Math.random().toString(36).substr(2, 9), 
+      data: { ...currentBout, eventId: currentEventId || null } 
+    };
+
+    setBoutQueue(prev => {
+      const updated = [...prev, queueItem];
+      localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
+      return updated;
+    });
+
+    // Remove from ring currentBout slot
+    setRings(prev => {
+      const updated = prev.map(r => {
+        if (r.ringNumber === ringNumber) {
+          const returnedBoutNo = getBoutNumber(currentBout.bout);
+          return {
+            ...r,
+            currentBout: null,
+            nextBoutNumber: returnedBoutNo > 0 ? returnedBoutNo : r.nextBoutNumber
+          };
+        }
+        return r;
+      });
+      localStorage.setItem('tkd_rings', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   const startRing = (ringNumber: number) => {
     const ring = rings.find(r => r.ringNumber === ringNumber);
     const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber);
@@ -3064,6 +3122,7 @@ export default function App() {
                         boutNumberingMode={boutNumberingMode}
                         layout={ringControlLayout}
                         showInspectionPopupSetting={showInspectionPopupSetting}
+                        onReturnToQueue={() => returnActiveBoutToQueue(selectedRingObj.ringNumber)}
                       />
                     </div>
                   </div>
@@ -3241,6 +3300,7 @@ export default function App() {
                       boutNumberingMode={boutNumberingMode}
                       layout={ringControlLayout}
                       showInspectionPopupSetting={showInspectionPopupSetting}
+                      onReturnToQueue={() => returnActiveBoutToQueue(ring.ringNumber)}
                     />
                   ))
                 ) : (
@@ -3267,6 +3327,7 @@ export default function App() {
                           boutNumberingMode={boutNumberingMode}
                           layout={ringControlLayout}
                           showInspectionPopupSetting={showInspectionPopupSetting}
+                          onReturnToQueue={() => returnActiveBoutToQueue(ring.ringNumber)}
                         />
                       ))}
                     </div>
@@ -4687,6 +4748,7 @@ interface RingCardProps {
   boutNumberingMode?: 'numeric' | 'alphanumeric';
   layout?: 'winner' | 'point';
   showInspectionPopupSetting?: boolean;
+  onReturnToQueue?: () => void;
 }
 
 interface EditResultModalProps {
@@ -5382,7 +5444,7 @@ function AddRingModal({ onClose, onAdd, existingRings, namingMode }: AddRingModa
   );
 }
 
-function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onPointsUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, currentEventId, onForceSync, isAutoPull, onToggleAutoPull, user, boutNumberingMode = 'alphanumeric', layout = 'winner', showInspectionPopupSetting = true }: RingCardProps & { currentEventId?: string | null, onForceSync?: (data: MatchData) => void }) {
+function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onPointsUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, currentEventId, onForceSync, isAutoPull, onToggleAutoPull, user, boutNumberingMode = 'alphanumeric', layout = 'winner', showInspectionPopupSetting = true, onReturnToQueue }: RingCardProps & { currentEventId?: string | null, onForceSync?: (data: MatchData) => void }) {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isFinalBoutSelection, setIsFinalBoutSelection] = useState(false);
   const [isSyncingLocal, setIsSyncingLocal] = useState(false);
@@ -5567,6 +5629,19 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {current && onReturnToQueue && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onReturnToQueue();
+              }}
+              className="px-2.5 py-1 bg-amber-500/25 border border-amber-500/35 text-amber-400 hover:bg-amber-500/35 rounded text-[10px] font-black uppercase tracking-widest transition-all duration-200 flex items-center gap-1.5 active:scale-95 cursor-pointer shadow-sm text-center"
+              title="Return current active bout back to the upcoming bout standby queue"
+            >
+              <RotateCcw size={11} strokeWidth={3} />
+              Return to Queue
+            </button>
+          )}
           {onToggleAutoPull && (
             <button
               onClick={onToggleAutoPull}
