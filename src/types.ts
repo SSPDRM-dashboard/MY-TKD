@@ -47,6 +47,7 @@ export interface MatchData {
     r2Winner?: 'Blue' | 'Red' | '';
     r3Winner?: 'Blue' | 'Red' | '';
   };
+  isManuallyEdited?: boolean;
 }
 
 export interface RingStatus {

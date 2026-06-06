@@ -102,7 +102,8 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
       blue_club: formData.blue_club,
       red_name: formData.is_poomsae_solo ? '' : formData.red_name,
       red_club: formData.is_poomsae_solo ? '' : formData.red_club,
-      category: updatedCategory
+      category: updatedCategory,
+      isManuallyEdited: true
     });
     onClose();
   };

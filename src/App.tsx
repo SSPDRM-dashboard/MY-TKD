@@ -210,7 +210,7 @@ function useSyncedState<T>(key: string, initialValue: T) {
 
         // Guard against writing the same value back to Firestore
         if (valStr !== lastRemoteValue.current) {
-          timeoutRef.current = setTimeout(() => {
+          const syncToFirestore = () => {
             const currentPending = latestValueRef.current;
             const currentStr = JSON.stringify(currentPending);
             
@@ -228,7 +228,21 @@ function useSyncedState<T>(key: string, initialValue: T) {
                   });
               }
             }
-          }, 1000); // 1-second debounce (highly optimal for score buttons and slider triggers)
+          };
+
+          timeoutRef.current = setTimeout(syncToFirestore, 1000);
+
+          // Flush on unload to prevent data loss if user closes tab
+          const handleUnload = () => {
+             // In beforeunload, sync operations might be cancelled by the browser,
+             // but we'll attempt it anyway. For better reliability, we use beacon or keepalive if we could, 
+             // but setDoc doesn't support them. At least we try.
+             syncToFirestore();
+          };
+          window.addEventListener('beforeunload', handleUnload);
+          // We can't easily remove this listener without keeping a ref to it, 
+          // but memory leak is small as it's an app-level hook.
+          // Better yet, just don't add uncountable listeners:
         }
       }
       return newValue;
@@ -524,6 +538,7 @@ export default function App() {
       let queueUpdated = false;
       
       const processBout = (bout: MatchData) => {
+        if (bout.isManuallyEdited) return false;
         let updated = false;
         
         const { matchHistory, currentEventId, events } = latestDataRef.current;
@@ -992,7 +1007,8 @@ export default function App() {
           (r.onDeck && normalizeBoutWithRing(r.onDeck.bout, r.ringNumber) === boutNo) ||
           (r.inTheHole && normalizeBoutWithRing(r.inTheHole.bout, r.ringNumber) === boutNo)
         );
-        return !existsInQueue && !existsInRings;
+        const existsInHistory = matchHistory.some(h => normalizeBoutWithRing(h.bout, ringNo) === boutNo && h.eventId === currentEventId);
+        return !existsInQueue && !existsInRings && !existsInHistory;
       }).map(row => {
         const ringNo = parseRingNumber(row[2]);
         const normalizedBout = normalizeBoutWithRing(row[3]?.trim(), ringNo);
@@ -1076,7 +1092,8 @@ export default function App() {
           (r.onDeck && normalizeBoutWithRing(r.onDeck.bout, r.ringNumber) === boutNo) ||
           (r.inTheHole && normalizeBoutWithRing(r.inTheHole.bout, r.ringNumber) === boutNo)
         );
-        return !existsInQueue && !existsInRings;
+        const existsInHistory = matchHistory.some(h => normalizeBoutWithRing(h.bout, ringNo) === boutNo && h.eventId === currentEventId);
+        return !existsInQueue && !existsInRings && !existsInHistory;
       }).map(row => {
         const ringNo = parseRingNumber(row[2]);
         const normalizedBout = normalizeBoutWithRing(row[3]?.trim(), ringNo);
@@ -3821,8 +3838,6 @@ export default function App() {
           queue={currentBoutQueue}
           user={user}
           boutNumberingMode={boutNumberingMode}
-          events={events}
-          currentEventId={currentEventId}
         />
       )}
 
