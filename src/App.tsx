@@ -491,8 +491,14 @@ export default function App() {
       const normalizedBout = normalizeBoutWithRing(rawBout, ringNum);
       const uniqueKey = `${eventId}_${ringNum}_${normalizedBout}`;
 
-      // If already active in the ring slots, remove from the standby queue
-      if (activeRingBouts.has(uniqueKey)) {
+      // Check if it's already in match history (completed)
+      const isCompleted = matchHistory.some(h => 
+        (h.eventId || currentEventId || 'default') === eventId && 
+        normalizeBoutWithRing(h.bout, ringNum) === normalizedBout
+      );
+
+      // If already active in the ring slots or already completed, remove from the standby queue
+      if (activeRingBouts.has(uniqueKey) || isCompleted) {
         hasDuplicates = true;
         return false;
       }
@@ -506,11 +512,11 @@ export default function App() {
     });
 
     if (hasDuplicates) {
-      console.log('tkd_match_centre: Automatically removed duplicate or ring-active elements from Match Queue');
+      console.log('tkd_match_centre: Automatically removed duplicate, completed, or ring-active elements from Match Queue');
       setBoutQueue(uniqueQueue);
       localStorage.setItem('tkd_bout_queue', JSON.stringify(uniqueQueue));
     }
-  }, [boutQueue, rings, currentEventId, setBoutQueue]);
+  }, [boutQueue, rings, matchHistory, currentEventId, setBoutQueue]);
 
   useEffect(() => {
     const handleSyncHistory = (e: any) => {
@@ -891,9 +897,25 @@ export default function App() {
         return matchesEvent && matchesRing && matchesUserRing;
       })
       .sort((a, b) => {
-        const boutA = parseInt(normalizeBoutNumber(a.data.bout)) || 0;
-        const boutB = parseInt(normalizeBoutNumber(b.data.bout)) || 0;
-        return boutA - boutB;
+        const boutA = parseInt(normalizeBoutNumber(a.data.bout));
+        const boutB = parseInt(normalizeBoutNumber(b.data.bout));
+        const isValidA = !isNaN(boutA);
+        const isValidB = !isNaN(boutB);
+        
+        if (isValidA && isValidB) {
+          if (boutA !== boutB) {
+            return boutA - boutB;
+          }
+        } else if (isValidA) {
+          return -1;
+        } else if (isValidB) {
+          return 1;
+        }
+        
+        // Fallback to stable string comparison and ID-based tiebreaker
+        const strCmp = (a.data.bout || '').toString().localeCompare((b.data.bout || '').toString());
+        if (strCmp !== 0) return strCmp;
+        return a.id.localeCompare(b.id);
       });
   };
 
