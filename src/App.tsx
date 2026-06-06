@@ -509,6 +509,22 @@ export default function App() {
   const [showAnnouncementInput, setShowAnnouncementInput] = useState(false);
   const [announcementText, setAnnouncementText] = useState('');
   const [announcementTarget, setAnnouncementTarget] = useState<'all' | 'users'>('all');
+  const [dashboardSelectedRing, setDashboardSelectedRing] = useState<number>(() => {
+    try {
+      const savedUser = localStorage.getItem('tkd_user');
+      if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        if (parsed?.assignedRing) return Number(parsed.assignedRing);
+      }
+    } catch (e) {}
+    return 1;
+  });
+
+  useEffect(() => {
+    if (user?.assignedRing) {
+      setDashboardSelectedRing(Number(user.assignedRing));
+    }
+  }, [user]);
 
   useEffect(() => {
     if (!currentEventId || isFirestoreQuotaExceeded) return;
@@ -2935,64 +2951,110 @@ export default function App() {
           </div>
 
           {activeTab === 'dashboard' && (() => {
-            const dashboardRings = rings.filter(r => user?.role === 'admin' || r.ringNumber === Number(user?.assignedRing));
-            const activeCount = dashboardRings.filter(r => r.currentBout).length;
+            const activeCount = rings.filter(r => r.currentBout).length;
+            const selectedRingObj = rings.find(r => r.ringNumber === dashboardSelectedRing) || rings[0];
 
             return (
               <>
+                {/* Ring 1 to 12 Selection Bar on Top */}
+                <div className="bg-white border border-slate-200 rounded-3xl p-5 mb-6 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                    <div>
+                      <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                        <LayoutDashboard size={20} className="text-red-600" />
+                        Active Ring Selection
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-0.5">Select a ring below to view and manage its active bout and upcoming queue.</p>
+                    </div>
+                    <div className="flex items-center gap-2 self-start sm:self-center">
+                      <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                      <span className="text-xs font-bold text-green-600 bg-green-50 px-3 py-1 rounded-full uppercase tracking-widest">
+                        {activeCount} active ring{activeCount !== 1 ? 's' : ''} live
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-none flex-nowrap lg:flex-wrap">
+                    {Array.from({ length: 12 }, (_, i) => {
+                      const ringNum = i + 1;
+                      const ringObj = rings.find(r => r.ringNumber === ringNum);
+                      const isRingActive = ringObj && !!ringObj.currentBout;
+                      const isSelected = dashboardSelectedRing === ringNum;
+                      
+                      return (
+                        <button
+                          key={ringNum}
+                          type="button"
+                          id={`dashboard-ring-tab-${ringNum}`}
+                          onClick={() => setDashboardSelectedRing(ringNum)}
+                          className={cn(
+                            "flex-1 min-w-[70px] h-12 flex flex-col items-center justify-center rounded-2xl border text-xs font-black transition-all duration-200 shadow-sm outline-none px-2 relative cursor-pointer",
+                            isSelected
+                              ? "bg-slate-900 border-slate-900 text-white ring-2 ring-offset-2 ring-slate-900"
+                              : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
+                          )}
+                        >
+                          <span className="text-[9px] opacity-75 font-bold leading-none uppercase">Ring</span>
+                          <span className="text-base font-black leading-tight mt-0.5">{getRingName(ringNum)}</span>
+                          {isRingActive && (
+                            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-green-500 border border-white flex items-center justify-center animate-pulse" title="Ongoing Bout" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                   {/* Live Rings */}
                   <div className="lg:col-span-2 space-y-6">
                     <div className="flex items-center justify-between">
                       <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
                         <LayoutDashboard size={20} className="text-red-600" />
-                        Active Ring Overview
+                        Active Ring Overview (Ring {getRingName(dashboardSelectedRing)})
                       </h3>
                       <div className="flex items-center gap-2">
-                        <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                        <span className="text-xs font-bold text-green-600 uppercase tracking-widest">
-                          {activeCount} Live
-                        </span>
+                        {selectedRingObj.currentBout ? (
+                          <>
+                            <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                            <span className="text-xs font-bold text-green-600 uppercase tracking-widest">
+                              Live
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="flex h-2 w-2 rounded-full bg-slate-300" />
+                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                              Inactive
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {dashboardRings.length === 0 ? (
-                        <div className="col-span-full py-20 bg-white border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center text-slate-400 space-y-4">
-                          <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center">
-                            <LayoutDashboard size={32} />
-                          </div>
-                          <div className="text-center">
-                            <p className="text-sm font-bold text-slate-600">No Rings Assigned</p>
-                            <p className="text-xs font-medium">Rings will appear here once they are added by an administrator.</p>
-                          </div>
-                        </div>
-                      ) : (
-                        dashboardRings.map((ring) => (
-                          <RingCard 
-                            key={ring.ringNumber} 
-                            ring={ring} 
-                            namingMode={ringNamingMode}
-                            categories={categories}
-                            clubs={clubs}
-                            queueCount={getFilteredQueue(ring.ringNumber).length}
-                            onUpdate={(data) => handleBoutUpdate(ring.ringNumber, data)}
-                            onPointsUpdate={(points) => handlePointsUpdateApp(ring.ringNumber, ring.currentBout?.bout || '', points)}
-                            onUpdateTotalBouts={(total) => handleUpdateTotalBouts(ring.ringNumber, total)}
-                            onStart={() => startRing(ring.ringNumber)}
-                            onDelete={user?.role === 'admin' ? () => deleteRing(ring.ringNumber) : undefined}
-                            onWinnerSelect={(winner) => handleWinnerSelect(ring.ringNumber, ring.currentBout?.bout || 0, winner)}
-                            currentEventId={currentEventId}
-                            onForceSync={handleForceSync}
-                            isAutoPull={autoPullRings[ring.ringNumber] || false}
-                            onToggleAutoPull={() => setAutoPullRings(prev => ({ ...prev, [ring.ringNumber]: !prev[ring.ringNumber] }))}
-                            user={user}
-                            boutNumberingMode={boutNumberingMode}
-                            layout={ringControlLayout}
-                            showInspectionPopupSetting={showInspectionPopupSetting}
-                          />
-                        ))
-                      )}
+                    <div className="grid grid-cols-1 gap-6">
+                      <RingCard 
+                        key={selectedRingObj.ringNumber} 
+                        ring={selectedRingObj} 
+                        namingMode={ringNamingMode}
+                        categories={categories}
+                        clubs={clubs}
+                        queueCount={getFilteredQueue(selectedRingObj.ringNumber).length}
+                        onUpdate={(data) => handleBoutUpdate(selectedRingObj.ringNumber, data)}
+                        onPointsUpdate={(points) => handlePointsUpdateApp(selectedRingObj.ringNumber, selectedRingObj.currentBout?.bout || '', points)}
+                        onUpdateTotalBouts={(total) => handleUpdateTotalBouts(selectedRingObj.ringNumber, total)}
+                        onStart={() => startRing(selectedRingObj.ringNumber)}
+                        onDelete={user?.role === 'admin' ? () => deleteRing(selectedRingObj.ringNumber) : undefined}
+                        onWinnerSelect={(winner) => handleWinnerSelect(selectedRingObj.ringNumber, selectedRingObj.currentBout?.bout || 0, winner)}
+                        currentEventId={currentEventId}
+                        onForceSync={handleForceSync}
+                        isAutoPull={autoPullRings[selectedRingObj.ringNumber] || false}
+                        onToggleAutoPull={() => setAutoPullRings(prev => ({ ...prev, [selectedRingObj.ringNumber]: !prev[selectedRingObj.ringNumber] }))}
+                        user={user}
+                        boutNumberingMode={boutNumberingMode}
+                        layout={ringControlLayout}
+                        showInspectionPopupSetting={showInspectionPopupSetting}
+                      />
                     </div>
                   </div>
 
@@ -3003,22 +3065,22 @@ export default function App() {
                       <div className="flex items-center justify-between">
                         <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
                           <Calendar size={20} className="text-red-600" />
-                          Upcoming Bouts
+                          Upcoming Bouts (Ring {getRingName(dashboardSelectedRing)})
                         </h3>
                         <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full">
-                          {getFilteredQueue().length}
+                          {getFilteredQueue(dashboardSelectedRing).length}
                         </span>
                       </div>
                       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col max-h-[400px]">
                         <div className="p-4 overflow-y-auto space-y-3">
-                            {getFilteredQueue().length === 0 ? (
-                            <p className="text-sm text-slate-500 text-center py-8">No upcoming bouts.</p>
+                            {getFilteredQueue(dashboardSelectedRing).length === 0 ? (
+                            <p className="text-sm text-slate-500 text-center py-8">No upcoming bouts for Ring {getRingName(dashboardSelectedRing)}.</p>
                           ) : (
-                            getFilteredQueue().map(item => (
+                            getFilteredQueue(dashboardSelectedRing).map(item => (
                               <div key={item.id} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
                                 <div>
                                   <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                    <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-md">Ring {item.data.ring}</span>
+                                    <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-md">Ring {getRingName(item.data.ring)}</span>
                                     <span className="text-[11px] font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">Bout {formatBoutNumber(item.data.ring, item.data.bout, boutNumberingMode)}</span>
                                     <div className="flex items-center gap-1">
                                       <span className="text-[10px] font-bold text-slate-400">Move:</span>
