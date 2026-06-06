@@ -110,9 +110,7 @@ export const manuallyDisableFirebase = () => {
 };
 
 export const manuallyEnableFirebase = () => {
-  localStorage.removeItem('tkd_disable_firebase');
-  isFirestoreQuotaExceeded = false;
-  window.location.reload();
+  window.dispatchEvent(new CustomEvent('request-reboot'));
 };
 
 function useSyncedState<T>(key: string, initialValue: T) {
@@ -162,7 +160,57 @@ function useSyncedState<T>(key: string, initialValue: T) {
         if (!isMounted) return;
 
         if (document.exists()) {
-          const remoteValue = document.data().value;
+          let remoteValue = document.data().value;
+          
+          // CRDT Last-Write-Wins Merge for tkd_rings to prevent cross-court state overrides (uses logical version & updatedAt physical fallback)
+          if (key === 'tkd_rings' && Array.isArray(remoteValue)) {
+            const localRings = (latestValueRef.current || []) as any[];
+            const remoteRings = remoteValue as any[];
+            
+            const mergedRings = remoteRings.map(remoteRing => {
+              const localRing = localRings.find(r => r.ringNumber === remoteRing.ringNumber);
+              if (!localRing) return remoteRing;
+              
+              const localVersion = localRing.version || 0;
+              const remoteVersion = remoteRing.version || 0;
+              
+              if (localVersion > remoteVersion) {
+                return localRing;
+              } else if (remoteVersion > localVersion) {
+                return remoteRing;
+              } else {
+                // Secondary physical fallback to resolve same version conflicts safely
+                const localTime = localRing.updatedAt || 0;
+                const remoteTime = remoteRing.updatedAt || 0;
+                if (localTime > remoteTime) {
+                  return localRing;
+                }
+                return remoteRing;
+              }
+            });
+            
+            const hasLocalNewer = mergedRings.some((mr, idx) => {
+              const lr = localRings.find(r => r.ringNumber === mr.ringNumber);
+              if (!lr) return false;
+              
+              const localVersion = lr.version || 0;
+              const remoteVersion = remoteRings[idx]?.version || 0;
+              
+              if (localVersion > remoteVersion) return true;
+              if (remoteVersion > localVersion) return false;
+              
+              return (lr.updatedAt || 0) > (remoteRings[idx]?.updatedAt || 0);
+            });
+            
+            remoteValue = mergedRings;
+            
+            if (hasLocalNewer) {
+              setTimeout(() => {
+                setSyncedState(mergedRings as unknown as T);
+              }, 100);
+            }
+          }
+
           const remoteValueStr = JSON.stringify(remoteValue);
           
           if (remoteValueStr !== lastRemoteValue.current) {
@@ -212,7 +260,43 @@ function useSyncedState<T>(key: string, initialValue: T) {
 
   const setSyncedState = React.useCallback((updater: T | ((prev: T) => T)) => {
     setState(prev => {
-      const newValue = typeof updater === 'function' ? (updater as any)(prev) : updater;
+      let newValue = typeof updater === 'function' ? (updater as any)(prev) : updater;
+      
+      // Inject logical versions & physical timestamps for tkd_rings changes to avoid distributed logical overwrites & clock drift
+      if (key === 'tkd_rings') {
+        const prevArray = (prev || []) as any[];
+        const nextArray = (newValue || []) as any[];
+        newValue = nextArray.map((nextRing) => {
+          const prevRing = prevArray.find(r => r.ringNumber === nextRing.ringNumber);
+          const isChanged = !prevRing || 
+            JSON.stringify(prevRing.currentBout) !== JSON.stringify(nextRing.currentBout) ||
+            JSON.stringify(prevRing.onDeck) !== JSON.stringify(nextRing.onDeck) ||
+            JSON.stringify(prevRing.inTheHole) !== JSON.stringify(nextRing.inTheHole) ||
+            prevRing.nextBoutNumber !== nextRing.nextBoutNumber ||
+            prevRing.totalBouts !== nextRing.totalBouts ||
+            prevRing.isFinalBouts !== nextRing.isFinalBouts;
+          
+          if (isChanged) {
+            // Keep the remote's version and updatedAt if they represent a merged snapshot change already newer than local
+            const isRemoteVersionNewer = nextRing.version && nextRing.version > (prevRing?.version || 0);
+            const isRemoteTimeNewer = nextRing.updatedAt && nextRing.updatedAt > (prevRing?.updatedAt || 0);
+            
+            if (isRemoteVersionNewer || isRemoteTimeNewer) {
+              return nextRing;
+            }
+            return {
+              ...nextRing,
+              version: (prevRing?.version || 0) + 1,
+              updatedAt: Date.now()
+            };
+          }
+          return {
+            ...nextRing,
+            version: nextRing.version || (prevRing && prevRing.version) || 0,
+            updatedAt: nextRing.updatedAt || (prevRing && prevRing.updatedAt) || 0
+          };
+        }) as unknown as T;
+      }
       
       // Safety: Only write to local & remote if value actually changed
       if (!isEqual(prev, newValue)) {
@@ -223,11 +307,29 @@ function useSyncedState<T>(key: string, initialValue: T) {
         // Clear previous pending write to avoid extra intermediate updates
         if (timeoutRef.current) {
           clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
         }
 
-        // Guard against writing the same value back to Firestore
-        if (valStr !== lastRemoteValue.current) {
+        // Only allow authorized logged-in users (admin, user, ta) to push updates to Firestore 
+        // to prevent spectator/viewer/guest clients from overwriting the cloud state.
+        const canWriteToCloud = (() => {
+          const isPublicUrl = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('view') === 'public';
+          if (isPublicUrl) return false;
+          
+          const savedUser = localStorage.getItem('tkd_user');
+          if (savedUser) {
+            try {
+              const parsed = JSON.parse(savedUser);
+              return ['admin', 'user', 'ta'].includes(parsed?.role);
+            } catch (_) {}
+          }
+          return false; // Strict default: Do NOT allow unlogged-in guest/spectator clients to write settings/states back to the Firestore database
+        })();
+
+        // Guard against writing the same value back to Firestore, and ensure user is authorized
+        if (canWriteToCloud && valStr !== lastRemoteValue.current) {
           const syncToFirestore = () => {
+            timeoutRef.current = null;
             const currentPending = latestValueRef.current;
             const currentStr = JSON.stringify(currentPending);
             
@@ -259,7 +361,8 @@ function useSyncedState<T>(key: string, initialValue: T) {
             }
           };
 
-          timeoutRef.current = setTimeout(syncToFirestore, 1000);
+          // Optimized 50ms delay for ultra-fast, near-instant propagation
+          timeoutRef.current = setTimeout(syncToFirestore, 50);
         }
       }
       return newValue;
@@ -875,17 +978,33 @@ export default function App() {
   const [showInspectionPopupSetting, setShowInspectionPopupSetting] = useSyncedState<boolean>('tkd_show_inspection_popup_setting', true);
   const [publicEventId, setPublicEventId] = useSyncedState<string>('tkd_public_event_id', 'active');
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
+  const [showRebootModal, setShowRebootModal] = useState(false);
 
   useEffect(() => {
     const handleQuotaExceeded = () => {
       setIsQuotaExceeded(true);
       disableFirestoreNetwork();
     };
+    const handleRequestReboot = () => {
+      setShowRebootModal(true);
+    };
     window.addEventListener('firestore-quota-exceeded', handleQuotaExceeded);
+    window.addEventListener('request-reboot', handleRequestReboot);
     return () => {
       window.removeEventListener('firestore-quota-exceeded', handleQuotaExceeded);
+      window.removeEventListener('request-reboot', handleRequestReboot);
     };
   }, []);
+
+  const handleConfirmReboot = () => {
+    localStorage.removeItem('tkd_disable_firebase');
+    isFirestoreQuotaExceeded = false;
+    window.location.reload();
+  };
+
+  const handleCancelReboot = () => {
+    setShowRebootModal(false);
+  };
 
   // Persistence & Cross-tab Sync handled by useSyncedState
 
@@ -3975,6 +4094,14 @@ export default function App() {
         />
       )}
 
+      {showRebootModal && (
+        <RebootConfirmModal
+          onClose={handleCancelReboot}
+          onConfirm={handleConfirmReboot}
+          isAdmin={user?.role === 'admin'}
+        />
+      )}
+
       {missingBoutPrompt && (
         <MissingBoutModal
           prompt={missingBoutPrompt}
@@ -4089,6 +4216,67 @@ export default function App() {
           boutNumberingMode={boutNumberingMode}
         />
       )}
+    </div>
+  );
+}
+
+interface RebootConfirmModalProps {
+  onClose: () => void;
+  onConfirm: () => void;
+  isAdmin: boolean;
+}
+
+function RebootConfirmModal({ onClose, onConfirm, isAdmin }: RebootConfirmModalProps) {
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[999]">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100"
+      >
+        <div className="p-6 bg-amber-500 text-white flex items-center gap-4">
+          <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
+            <RefreshCw size={24} className="animate-spin" style={{ animationDuration: '6s' }} />
+          </div>
+          <div>
+            <h2 className="text-xl font-black tracking-tight text-white">System Reboot Request</h2>
+            <p className="text-xs text-amber-100 font-bold uppercase tracking-widest">Confirmation Needed</p>
+          </div>
+        </div>
+        
+        <div className="p-8 space-y-6">
+          <div className="space-y-3 text-center sm:text-left">
+            <p className="text-slate-700 font-bold text-sm leading-relaxed">
+              {isAdmin 
+                ? "The system is requesting a page reload/reboot to refresh cloud database connections." 
+                : "A system reboot is required to refresh database connections, which must be authorized by an Administrator."}
+            </p>
+            <p className="text-slate-500 text-xs leading-relaxed">
+              {isAdmin 
+                ? "As an Admin, do you want to reboot the system now to re-establish cloud database synchronization?" 
+                : "Only an Administrator is authorized to confirm this reboot. Please contact an Admin to authorize this action."}
+            </p>
+          </div>
+          
+          <div className="flex gap-4">
+            <button 
+              onClick={onClose}
+              className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-black text-xs uppercase tracking-widest transition-colors"
+            >
+              Cancel
+            </button>
+            {isAdmin && (
+              <button 
+                onClick={onConfirm}
+                className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-colors shadow-lg shadow-amber-200"
+              >
+                Reboot Now
+              </button>
+            )}
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 }
@@ -5071,6 +5259,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
   const [isFinalBoutSelection, setIsFinalBoutSelection] = useState(false);
   const [isSyncingLocal, setIsSyncingLocal] = useState(false);
   const [showInspectionWarning, setShowInspectionWarning] = useState(false);
+  const [dismissedBouts, setDismissedBouts] = useState<string[]>([]);
   const [points, setPoints] = useState({ 
     r1Blue: '', r1Red: '', r2Blue: '', r2Red: '', r3Blue: '', r3Red: '',
     r1Winner: '' as 'Blue' | 'Red' | '',
@@ -5123,7 +5312,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
           onUpdate({ ...ring.currentBout, points: latestPointsRef.current });
         }
       }
-    }, 1000); // 1s debounce to avoid spamming Google Sheets
+    }, 250); // 250ms debounce to feel responsive while still protecting Google Sheets and Firestore writes from keypress spam
   };
   
   // Only show current bout if it belongs to the current event
@@ -5135,6 +5324,13 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
 
   useEffect(() => {
     if (current) {
+      const boutKey = `${currentEventId || 'unknown'}_${ring.ringNumber}_${current.bout}`;
+      // Respect user intent: if they already dismissed the warning for this bout, do not show it again
+      if (dismissedBouts.includes(boutKey)) {
+        setShowInspectionWarning(false);
+        return;
+      }
+
       if (isPoomsaeMode) {
         if (!current.blue_inspected) {
           setShowInspectionWarning(true);
@@ -5151,7 +5347,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
     } else {
       setShowInspectionWarning(false);
     }
-  }, [current?.bout, current?.blue_inspected, current?.red_inspected, isPoomsaeMode]);
+  }, [current?.bout, current?.blue_inspected, current?.red_inspected, isPoomsaeMode, dismissedBouts, currentEventId, ring.ringNumber]);
   
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
   
@@ -5786,7 +5982,13 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                 </p>
               </div>
               <button
-                onClick={() => setShowInspectionWarning(false)}
+                onClick={() => {
+                  setShowInspectionWarning(false);
+                  if (current) {
+                    const boutKey = `${currentEventId || 'unknown'}_${ring.ringNumber}_${current.bout}`;
+                    setDismissedBouts(prev => [...prev, boutKey]);
+                  }
+                }}
                 className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-colors"
               >
                 Acknowledge

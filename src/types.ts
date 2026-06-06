@@ -59,6 +59,8 @@ export interface RingStatus {
   inTheHole: MatchData | null;
   isFinalBouts?: boolean;
   eventId?: string | null;
+  version?: number;
+  updatedAt?: number;
 }
 
 export interface MatchHistoryItem {
