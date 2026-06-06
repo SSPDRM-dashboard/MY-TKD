@@ -21,29 +21,37 @@ export function parseRingNumber(ringVal: any): number {
   if (!ringVal) return 1;
   const s = ringVal.toString().trim().toUpperCase();
   
-  // If it's a full alphanumeric bout code (e.g., "F01", "F22B", "A15")
-  // It starts with a single letter, followed by digits, and optional trailing letters
+  // 1. Check for court/ring keyword followed by number or letter (e.g., "RING 3", "COURT B")
+  const keywordMatch = s.match(/(?:RING|COURT|AISTUDIO)\s*([A-Z0-9]+)/i);
+  if (keywordMatch && keywordMatch[1]) {
+    const val = keywordMatch[1].trim();
+    if (/^\d+$/.test(val)) {
+      const num = parseInt(val, 10);
+      if (!isNaN(num) && num > 0) return num;
+    }
+    if (/^[A-Z]$/.test(val)) {
+      return val.charCodeAt(0) - 'A'.charCodeAt(0) + 1;
+    }
+  }
+
+  // 2. If it's a full alphanumeric bout code (e.g., "F01", "F22B", "A15")
   const boutMatch = s.match(/^([A-Z])(\d+)([A-Z]*)$/);
   if (boutMatch) {
     return boutMatch[1].charCodeAt(0) - 'A'.charCodeAt(0) + 1;
   }
 
-  // If it is already a straight number with no surrounding letters except standard spaces
-  const onlyNums = s.replace(/[^0-9]/g, '');
-  if (onlyNums && /^\d+$/.test(s.replace(/\s+/g, ''))) {
-    const num = parseInt(onlyNums);
+  // 3. Fallback to extracting stable standalone numbers or trailing numbers
+  const trailingNum = s.match(/\b\d+\b/) || s.match(/\d+/);
+  if (trailingNum) {
+    const num = parseInt(trailingNum[0], 10);
     if (!isNaN(num) && num > 0) return num;
   }
-  
-  // Look for match with letters: Ring A, Court A, A
-  const letterMatch = s.match(/(?:RING|COURT|AISTUDIO)?\s*([A-Z])/i);
-  if (letterMatch && letterMatch[1]) {
-    return letterMatch[1].charCodeAt(0) - 'A'.charCodeAt(0) + 1;
-  }
 
-  // Fallback to extracting any numbers in it
-  const numFallback = parseInt(s.replace(/[^0-9]/g, ''));
-  if (!isNaN(numFallback) && numFallback > 0) return numFallback;
+  // 4. Look for single letter (e.g. "A", "B", "C")
+  const singleLetterMatch = s.match(/\b([A-Z])\b/) || s.match(/^([A-Z])$/);
+  if (singleLetterMatch && singleLetterMatch[1]) {
+    return singleLetterMatch[1].charCodeAt(0) - 'A'.charCodeAt(0) + 1;
+  }
 
   return 1;
 }

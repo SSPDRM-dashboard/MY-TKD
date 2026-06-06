@@ -167,13 +167,21 @@ function useSyncedState<T>(key: string, initialValue: T) {
             const localRings = (latestValueRef.current || []) as any[];
             const remoteRings = remoteValue as any[];
             
-            const mergedRings = remoteRings.map(remoteRing => {
-              const localRing = localRings.find(r => r.ringNumber === remoteRing.ringNumber);
-              if (!localRing) return remoteRing;
-              
+            const allRingNumbers = Array.from(new Set([
+              ...localRings.map(r => r.ringNumber),
+              ...remoteRings.map(r => r.ringNumber)
+            ])).sort((a, b) => a - b);
+
+            const mergedRings = allRingNumbers.map(ringNum => {
+              const localRing = localRings.find(r => r.ringNumber === ringNum);
+              const remoteRing = remoteRings.find(r => r.ringNumber === ringNum);
+
+              if (!localRing) return remoteRing!;
+              if (!remoteRing) return localRing;
+
               const localVersion = localRing.version || 0;
               const remoteVersion = remoteRing.version || 0;
-              
+
               if (localVersion > remoteVersion) {
                 return localRing;
               } else if (remoteVersion > localVersion) {
@@ -189,17 +197,19 @@ function useSyncedState<T>(key: string, initialValue: T) {
               }
             });
             
-            const hasLocalNewer = mergedRings.some((mr, idx) => {
+            const hasLocalNewer = mergedRings.some((mr) => {
               const lr = localRings.find(r => r.ringNumber === mr.ringNumber);
+              const rr = remoteRings.find(r => r.ringNumber === mr.ringNumber);
               if (!lr) return false;
+              if (!rr) return true; // Local is newer since remote doesn't have it
               
               const localVersion = lr.version || 0;
-              const remoteVersion = remoteRings[idx]?.version || 0;
+              const remoteVersion = rr.version || 0;
               
               if (localVersion > remoteVersion) return true;
               if (remoteVersion > localVersion) return false;
               
-              return (lr.updatedAt || 0) > (remoteRings[idx]?.updatedAt || 0);
+              return (lr.updatedAt || 0) > (rr.updatedAt || 0);
             });
             
             remoteValue = mergedRings;
@@ -3945,68 +3955,124 @@ export default function App() {
           events={events}
           currentEventId={currentEventId}
           onSubmit={(ringNumber, boutNumber, updates) => {
-            // Update in rings (all slots: current, onDeck, inTheHole)
-            setRings(prev => prev.map(r => {
+            // Check if bout already exists in rings or queue
+            let exists = false;
+            rings.forEach(r => {
               if (r.ringNumber === ringNumber) {
-                let changed = false;
-                const newRing = { ...r };
-
-                if (r.currentBout && isBoutMatch(r.currentBout.bout, boutNumber)) {
-                  newRing.currentBout = { ...r.currentBout, ...updates };
-                  changed = true;
-                }
-                if (r.onDeck && isBoutMatch(r.onDeck.bout, boutNumber)) {
-                  newRing.onDeck = { ...r.onDeck, ...updates };
-                  changed = true;
-                }
-                if (r.inTheHole && isBoutMatch(r.inTheHole.bout, boutNumber)) {
-                  newRing.inTheHole = { ...r.inTheHole, ...updates };
-                  changed = true;
-                }
-
-                return changed ? newRing : r;
+                if (r.currentBout && isBoutMatch(r.currentBout.bout, boutNumber)) exists = true;
+                if (r.onDeck && isBoutMatch(r.onDeck.bout, boutNumber)) exists = true;
+                if (r.inTheHole && isBoutMatch(r.inTheHole.bout, boutNumber)) exists = true;
               }
-              return r;
-            }));
+            });
+            if (!exists) {
+              const inQ = boutQueue.some(q => q.data.ring === ringNumber && isBoutMatch(q.data.bout, boutNumber));
+              if (inQ) exists = true;
+            }
 
-            // Update in queue
-            setBoutQueue(prev => prev.map(q => {
-              if (q.data.ring === ringNumber && isBoutMatch(q.data.bout, boutNumber)) {
-                return {
-                  ...q,
-                  data: { ...q.data, ...updates }
-                };
+            if (!exists) {
+              // Creating a brand new bout!
+              const targetNormalizedBout = normalizeBoutWithRing(boutNumber, ringNumber);
+              const newMatchData: MatchData = {
+                ring: ringNumber,
+                bout: targetNormalizedBout,
+                blue_name: updates.blue_name?.toUpperCase() || '',
+                blue_club: updates.blue_club?.toUpperCase() || '',
+                red_name: updates.red_name?.toUpperCase() || '',
+                red_club: updates.red_club?.toUpperCase() || '',
+                category: updates.category?.toUpperCase() || '',
+                eventId: currentEventId || null,
+                isManuallyEdited: true,
+                privacy_mode: false
+              };
+              
+              if (newMatchData.category && !categories.includes(newMatchData.category)) {
+                setCategories(prev => [...prev, newMatchData.category]);
               }
-              return q;
-            }));
+              if (newMatchData.blue_club && !clubs.includes(newMatchData.blue_club)) {
+                setClubs(prev => [...prev, newMatchData.blue_club]);
+              }
+              if (newMatchData.red_club && !clubs.includes(newMatchData.red_club)) {
+                setClubs(prev => [...prev, newMatchData.red_club]);
+              }
+              
+              const queueItem = { 
+                id: Math.random().toString(36).substr(2, 9), 
+                data: newMatchData 
+              };
+              
+              setBoutQueue(prev => [...prev, queueItem]);
+              console.log("Adding non-existent bout to queue from EditBoutDetailsModal:", queueItem);
 
-            // Find match to determine originalRing
-            let foundMatch: MatchData | null = null;
-            const targetRingObj = rings.find(r => r.ringNumber === ringNumber);
-            if (targetRingObj) {
-              if (targetRingObj.currentBout && isBoutMatch(targetRingObj.currentBout.bout, boutNumber)) foundMatch = targetRingObj.currentBout;
-              else if (targetRingObj.onDeck && isBoutMatch(targetRingObj.onDeck.bout, boutNumber)) foundMatch = targetRingObj.onDeck;
-              else if (targetRingObj.inTheHole && isBoutMatch(targetRingObj.inTheHole.bout, boutNumber)) foundMatch = targetRingObj.inTheHole;
-            }
-            if (!foundMatch) {
-              const qMatch = boutQueue.find(q => q.data.ring === ringNumber && isBoutMatch(q.data.bout, boutNumber));
-              if (qMatch) foundMatch = qMatch.data;
-            }
-            const targetSyncRing = foundMatch?.originalRing || ringNumber;
+              // Sync to Google Sheets as a new bout
+              if (googleSheetUrl) {
+                setIsSyncing(true);
+                syncToGoogleSheets(googleSheetUrl, newMatchData, getCurrentEventName())
+                  .finally(() => setIsSyncing(false));
+              }
+            } else {
+              // Update in rings (all slots: current, onDeck, inTheHole)
+              setRings(prev => prev.map(r => {
+                if (r.ringNumber === ringNumber) {
+                  let changed = false;
+                  const newRing = { ...r };
 
-            // Sync to Google Sheets
-            if (googleSheetUrl) {
-              setIsSyncing(true);
-              updateBoutDetailsInGoogleSheets(
-                googleSheetUrl,
-                targetSyncRing,
-                boutNumber,
-                updates.blue_name || '',
-                updates.blue_club || '',
-                updates.red_name || '',
-                updates.red_club || '',
-                getCurrentEventName()
-              ).finally(() => setIsSyncing(false));
+                  if (r.currentBout && isBoutMatch(r.currentBout.bout, boutNumber)) {
+                    newRing.currentBout = { ...r.currentBout, ...updates };
+                    changed = true;
+                  }
+                  if (r.onDeck && isBoutMatch(r.onDeck.bout, boutNumber)) {
+                    newRing.onDeck = { ...r.onDeck, ...updates };
+                    changed = true;
+                  }
+                  if (r.inTheHole && isBoutMatch(r.inTheHole.bout, boutNumber)) {
+                    newRing.inTheHole = { ...r.inTheHole, ...updates };
+                    changed = true;
+                  }
+
+                  return changed ? newRing : r;
+                }
+                return r;
+              }));
+
+              // Update in queue
+              setBoutQueue(prev => prev.map(q => {
+                if (q.data.ring === ringNumber && isBoutMatch(q.data.bout, boutNumber)) {
+                  return {
+                    ...q,
+                    data: { ...q.data, ...updates }
+                  };
+                }
+                return q;
+              }));
+
+              // Find match to determine originalRing
+              let foundMatch: MatchData | null = null;
+              const targetRingObj = rings.find(r => r.ringNumber === ringNumber);
+              if (targetRingObj) {
+                if (targetRingObj.currentBout && isBoutMatch(targetRingObj.currentBout.bout, boutNumber)) foundMatch = targetRingObj.currentBout;
+                else if (targetRingObj.onDeck && isBoutMatch(targetRingObj.onDeck.bout, boutNumber)) foundMatch = targetRingObj.onDeck;
+                else if (targetRingObj.inTheHole && isBoutMatch(targetRingObj.inTheHole.bout, boutNumber)) foundMatch = targetRingObj.inTheHole;
+              }
+              if (!foundMatch) {
+                const qMatch = boutQueue.find(q => q.data.ring === ringNumber && isBoutMatch(q.data.bout, boutNumber));
+                if (qMatch) foundMatch = qMatch.data;
+              }
+              const targetSyncRing = foundMatch?.originalRing || ringNumber;
+
+              // Sync to Google Sheets
+              if (googleSheetUrl) {
+                setIsSyncing(true);
+                updateBoutDetailsInGoogleSheets(
+                  googleSheetUrl,
+                  targetSyncRing,
+                  boutNumber,
+                  updates.blue_name || '',
+                  updates.blue_club || '',
+                  updates.red_name || '',
+                  updates.red_club || '',
+                  getCurrentEventName()
+                ).finally(() => setIsSyncing(false));
+              }
             }
 
             // Update match history if it already exists for this bout
