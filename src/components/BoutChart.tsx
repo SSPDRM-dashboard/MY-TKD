@@ -194,7 +194,7 @@ export function BoutChart({ mappings, boutQueue, matchHistory, boutNumberingMode
                ) : (
                   <div style={{ width: Math.max(width, 600), height: Math.max(height, 400), position: 'relative' }}>
                      <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }}>
-                        {edges.map(e => {
+                        {edges.map((e, i) => {
                            // Define Path. Simple curve or right-angle lines.
                            // Standard bracket line: Horizontal, vertical, horizontal.
                            const midX = e.startX + (e.endX - e.startX) / 2;
@@ -206,7 +206,7 @@ export function BoutChart({ mappings, boutQueue, matchHistory, boutNumberingMode
                            
                            return (
                              <path 
-                               key={e.id}
+                               key={`${e.id}-${i}`}
                                d={path}
                                fill="none"
                                stroke="#cbd5e1"
@@ -217,7 +217,7 @@ export function BoutChart({ mappings, boutQueue, matchHistory, boutNumberingMode
                         })}
                      </svg>
                      
-                     {nodes.map(node => {
+                     {nodes.map((node, i) => {
                         const m = node.match as any;
                         
                         // Parse winner. 
@@ -227,7 +227,7 @@ export function BoutChart({ mappings, boutQueue, matchHistory, boutNumberingMode
                         
                         return (
                           <div 
-                             key={node.id} 
+                             key={`${node.id}-${i}`} 
                              className="absolute bg-white border border-slate-300 rounded-lg shadow-sm overflow-hidden flex flex-col text-xs"
                              style={{ left: node.x, top: node.y, width: 220, height: 80 }}
                           >

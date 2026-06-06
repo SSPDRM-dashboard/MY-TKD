@@ -925,7 +925,7 @@ export function AIBracketSetup({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg mx-auto">
                 {events.map((e) => (
                   <button
-                    key={e.id}
+                    key={`${e.id}-${i}`}
                     onClick={() => onSelectEvent?.(e.id)}
                     className="p-4 bg-white border border-indigo-100 rounded-2xl text-left hover:border-indigo-400 hover:shadow-lg transition-all group"
                   >

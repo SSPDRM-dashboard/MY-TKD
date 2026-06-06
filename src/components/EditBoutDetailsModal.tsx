@@ -140,8 +140,8 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
               >
                 <option value="">All Events</option>
-                {events.map((e) => (
-                  <option key={e.id} value={e.id}>{e.name}</option>
+                {events.map((e, i) => (
+                  <option key={`${e.id}-${i}`} value={e.id}>{e.name}</option>
                 ))}
               </select>
             </div>

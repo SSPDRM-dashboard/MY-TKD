@@ -366,8 +366,8 @@ export function AdminMapping({
                 required
               >
                 <option value="" disabled>Select Event</option>
-                {events.map(ev => (
-                  <option key={ev.id} value={ev.id}>{ev.name}</option>
+                {events.map((ev, i) => (
+                  <option key={`${ev.id}-${i}`} value={ev.id}>{ev.name}</option>
                 ))}
               </select>
             </div>
@@ -382,8 +382,8 @@ export function AdminMapping({
               required
             >
               <option value="">Select Category</option>
-              {(fetchedCategories.length > 0 ? fetchedCategories : categories).map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
+              {(fetchedCategories.length > 0 ? fetchedCategories : categories).map((cat, i) => (
+                <option key={`${cat}-${i}`} value={cat}>{cat}</option>
               ))}
             </select>
           </div>
@@ -476,7 +476,7 @@ export function AdminMapping({
                 </tr>
               ) : (
                 sortedMappings.map((m) => (
-                  <tr key={m.id} className="hover:bg-slate-50 transition-colors">
+                  <tr key={`${m.id}-${i}`} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
                       <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">{m.eventName || 'Unknown'}</span>
                     </td>

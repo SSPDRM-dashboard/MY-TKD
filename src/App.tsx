@@ -53,7 +53,7 @@ import { EventReport } from './components/EventReport';
 import { BoutChart } from './components/BoutChart';
 import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateBoutDetailsInGoogleSheets, updatePointsInGoogleSheets, testSync } from './services/googleSheets';
 import { cn, normalizeBoutNumber, normalizeBoutWithRing, getBoutNumber, formatBoutNumber, isBoutMatch, parseRingNumber, extractWinnerOfBout } from './lib/utils';
-import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, getDocFromServer, where } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, deleteDoc, getDoc, getDocFromServer, where } from 'firebase/firestore';
 import { db, disableFirestoreNetwork } from './firebase';
 import Papa from 'papaparse';
 
@@ -672,6 +672,31 @@ export default function App() {
           return false;
         }
         
+        // Category validation: If categories are present and do not match, they are different bouts!
+        const hCat = h.category?.toString().replace(/\s+/g, '').toUpperCase() || '';
+        const qCat = item.data.category?.toString().replace(/\s+/g, '').toUpperCase() || '';
+        if (hCat && qCat && hCat !== qCat) {
+          return false;
+        }
+
+        // Competitor checklist: If real names are present in the queue and a real winner side/name is present in history,
+        // and the winner is neither of the competitors, then they are absolutely different bouts!
+        const normalizeName = (name?: string) => name?.toString().replace(/[^A-Z0-9]/gi, '').toUpperCase() || '';
+        const qBlue = normalizeName(item.data.blue_name);
+        const qRed = normalizeName(item.data.red_name);
+        const hWinner = normalizeName(h.winner);
+
+        const hasRealNamesInQueue = qBlue && !qBlue.includes('WINNEROF') && !qBlue.includes('LOSEROF') && !qBlue.includes('CHUNG') && !qBlue.includes('HONG') && qBlue !== '---' &&
+                              qRed && !qRed.includes('WINNEROF') && !qRed.includes('LOSEROF') && !qRed.includes('CHUNG') && !qRed.includes('HONG') && qRed !== '---';
+                              
+        const hasRealWinnerInHistory = hWinner && !hWinner.includes('WINNEROF') && !hWinner.includes('LOSEROF') && hWinner !== '---' && hWinner !== '-';
+
+        if (hasRealNamesInQueue && hasRealWinnerInHistory) {
+          if (hWinner !== qBlue && hWinner !== qRed) {
+            return false;
+          }
+        }
+        
         // Match 1: Using strict logic with ring combination
         if (normalizeBoutWithRing(h.bout, ringNum) === normalizedBout) return true;
         
@@ -682,7 +707,7 @@ export default function App() {
       });
 
       // If already active in the ring slots or already completed, remove from the standby queue
-      if (activeRingBouts.has(uniqueKey) || isCompleted) {
+      if (activeRingBouts.has(uniqueKey) || (isCompleted && !item.data.allowCompleted)) {
         hasDuplicates = true;
         return false;
       }
@@ -1155,6 +1180,7 @@ export default function App() {
       red_club: newData.red_club?.toUpperCase() || '',
       category: newData.category?.toUpperCase() || '',
       bout: newData.bout?.toString().toUpperCase() || '',
+      allowCompleted: true,
     };
 
     // Update categories and clubs lists
@@ -2044,6 +2070,69 @@ export default function App() {
   };
 
 
+  const handleRestoreMatch = async (matchToRestore: MatchHistoryItem) => {
+    if (!currentEventId) return;
+
+    let activeUrl = googleSheetUrl;
+    if (!activeUrl && currentEventId && events.length > 0) {
+      const event = events.find(e => e.id === currentEventId);
+      if (event && event.sheetUrl) {
+        activeUrl = event.sheetUrl;
+      }
+    }
+
+    const ringToUse = matchToRestore.ring || getRingFromBout(matchToRestore.bout) || 1;
+
+    const newBoutId = `restored_${currentEventId}_${Date.now()}`;
+    const restoredMatchData: MatchData = {
+      ring: ringToUse,
+      originalRing: ringToUse,
+      bout: matchToRestore.bout,
+      category: matchToRestore.category || '',
+      blue_name: '',
+      blue_club: '',
+      red_name: '',
+      red_club: '',
+      points: {},
+      eventId: currentEventId,
+      allowCompleted: true
+    };
+
+    setBoutQueue(prev => {
+      const updated = [...prev, { id: newBoutId, data: restoredMatchData }];
+      return updated;
+    });
+
+    setMatchHistory(prev => {
+      const updated = prev.filter(h => h.id !== matchToRestore.id);
+      return updated;
+    });
+
+    if (!isFirestoreQuotaExceeded) {
+      deleteDoc(doc(db, 'matchHistory', matchToRestore.id)).catch(err => {
+        console.error("Error removing restored match from history:", err);
+      });
+    }
+
+    if (activeUrl) {
+      updateWinnerInGoogleSheets(
+        activeUrl, 
+        ringToUse, 
+        matchToRestore.bout, 
+        '-', 
+        getCurrentEventName(), 
+        '-', 
+        '-', 
+        '-'
+      ).catch(e => console.error("Error clearing winner in sheets:", e));
+    }
+
+    // Try to auto-populate the player names from Google Sheets right away
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('tkd_force_propagate_winners'));
+    }, 1000);
+  };
+
   const getRingFromBout = (bout: string | number): number => {
     const boutStr = bout.toString().toUpperCase();
     const prefix = boutStr.charAt(0);
@@ -2750,6 +2839,12 @@ export default function App() {
                 active={activeTab === 'bout-chart'} 
                 onClick={() => setActiveTab('bout-chart')} 
               />
+              <NavItem 
+                icon={<Search size={20} />} 
+                label="Search Winner" 
+                active={activeTab === 'search-winner'} 
+                onClick={() => setActiveTab('search-winner')} 
+              />
             </>
           )}
           {user?.role === 'user' && (
@@ -2974,8 +3069,8 @@ export default function App() {
                     className="px-4 py-2 bg-slate-100 rounded-xl text-[10px] md:text-xs font-black text-slate-600 border border-slate-200 uppercase tracking-widest focus:ring-2 focus:ring-red-500 outline-none"
                   >
                     <option value="">Select Tournament Event...</option>
-                    {events.map((e) => (
-                      <option key={e.id} value={e.id}>{e.name}</option>
+                    {events.map((e, i) => (
+                      <option key={`${e.id}-${i}`} value={e.id}>{e.name}</option>
                     ))}
                   </select>
                 </div>
@@ -3155,8 +3250,8 @@ export default function App() {
                             {getFilteredQueue(dashboardSelectedRing).length === 0 ? (
                             <p className="text-sm text-slate-500 text-center py-8">No upcoming bouts for Ring {getRingName(dashboardSelectedRing)}.</p>
                           ) : (
-                            getFilteredQueue(dashboardSelectedRing).map(item => (
-                              <div key={item.id} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+                            getFilteredQueue(dashboardSelectedRing).map((item, idx) => (
+                              <div key={`${item.id}-${idx}`} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
                                 <div>
                                   <div className="flex items-center gap-2 mb-2 flex-wrap">
                                     <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-md">Ring {getRingName(item.data.ring)}</span>
@@ -3357,8 +3452,8 @@ export default function App() {
                             {getFilteredQueue().length === 0 ? (
                               <p className="text-sm text-slate-500 text-center py-8">No upcoming bouts.</p>
                             ) : (
-                              getFilteredQueue().map(item => (
-                                <div key={item.id} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+                              getFilteredQueue().map((item, idx) => (
+                                <div key={`${item.id}-${idx}`} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
                                   <div>
                                     <div className="flex items-center gap-2 mb-2 flex-wrap">
                                       <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-md">Ring {item.data.ring}</span>
@@ -3473,6 +3568,7 @@ export default function App() {
             <SearchWinner 
               matchHistory={matchHistory}
               currentEventId={currentEventId}
+              onRestoreMatch={handleRestoreMatch}
             />
           )}
 
@@ -3723,8 +3819,8 @@ export default function App() {
                         className="px-4 py-2 bg-white rounded-xl text-[10px] md:text-xs font-black text-slate-600 border border-slate-200 uppercase tracking-widest focus:ring-2 focus:ring-red-500 outline-none w-full sm:w-auto min-w-[200px] cursor-pointer"
                       >
                         <option value="active">Active Operator Event</option>
-                        {events.map((e) => (
-                          <option key={e.id} value={e.id}>{e.name}</option>
+                        {events.map((e, i) => (
+                          <option key={`${e.id}-${i}`} value={e.id}>{e.name}</option>
                         ))}
                       </select>
                     </div>
@@ -3901,6 +3997,7 @@ export default function App() {
           events={events}
           isSyncing={isSyncing}
           boutNumberingMode={boutNumberingMode}
+          matchHistory={matchHistory}
         />
       )}
 
@@ -4054,7 +4151,8 @@ export default function App() {
                 category: updates.category?.toUpperCase() || '',
                 eventId: currentEventId || null,
                 isManuallyEdited: true,
-                privacy_mode: false
+                privacy_mode: false,
+                allowCompleted: true
               };
               
               if (newMatchData.category && !categories.includes(newMatchData.category)) {
@@ -4342,6 +4440,13 @@ export default function App() {
               <span className="text-[10px] font-bold">AI Setup</span>
             </button>
             <button 
+              onClick={() => setActiveTab('search-winner')}
+              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'search-winner' ? "text-red-600" : "text-slate-400")}
+            >
+              <Search size={20} />
+              <span className="text-[10px] font-bold">Search</span>
+            </button>
+            <button 
               onClick={() => setActiveTab('settings')}
               className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'settings' ? "text-red-600" : "text-slate-400")}
             >
@@ -4618,8 +4723,8 @@ function MissingBoutModal({ prompt, onClose, onSubmitReason, onSubmitManual, cat
                     autoComplete="off"
                   >
                     <option value="" disabled>Select Category</option>
-                    {categories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
+                    {categories.map((cat, i) => (
+                      <option key={`${cat}-${i}`} value={cat}>{cat}</option>
                     ))}
                   </select>
                 </div>
@@ -4643,8 +4748,8 @@ function MissingBoutModal({ prompt, onClose, onSubmitReason, onSubmitManual, cat
                       autoComplete="off"
                     >
                       <option value="" disabled>Select Club</option>
-                      {clubs.map(club => (
-                        <option key={club} value={club}>{club}</option>
+                      {clubs.map((club, i) => (
+                        <option key={`${club}-${i}`} value={club}>{club}</option>
                       ))}
                     </select>
                   </div>
@@ -4667,8 +4772,8 @@ function MissingBoutModal({ prompt, onClose, onSubmitReason, onSubmitManual, cat
                       autoComplete="off"
                     >
                       <option value="" disabled>Select Club</option>
-                      {clubs.map(club => (
-                        <option key={club} value={club}>{club}</option>
+                      {clubs.map((club, i) => (
+                        <option key={`${club}-${i}`} value={club}>{club}</option>
                       ))}
                     </select>
                   </div>
@@ -4869,8 +4974,8 @@ function EditResultModal({ onClose, onSubmit, rings, queue, user, boutNumberingM
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
               >
                 <option value="">All Events</option>
-                {events.map((e) => (
-                  <option key={e.id} value={e.id}>{e.name}</option>
+                {events.map((e, i) => (
+                  <option key={`${e.id}-${i}`} value={e.id}>{e.name}</option>
                 ))}
               </select>
             </div>
@@ -5008,9 +5113,10 @@ interface NewBoutModalProps {
   events: EventData[];
   isSyncing: boolean;
   boutNumberingMode?: 'numeric' | 'alphanumeric';
+  matchHistory: MatchHistoryItem[];
 }
 
-function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user, initialRing, currentEventId, events, isSyncing, boutNumberingMode = 'alphanumeric' }: NewBoutModalProps) {
+function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user, initialRing, currentEventId, events, isSyncing, boutNumberingMode = 'alphanumeric', matchHistory = [] }: NewBoutModalProps) {
   const defaultRing = initialRing || (user?.role === 'admin' ? (rings[0]?.ringNumber || 1) : (Number(user?.assignedRing) || 1));
   
   const getNextBoutNumber = (ringNum: number) => {
@@ -5121,7 +5227,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
     }
     
     // Update formData with normalized bout number before submitting
-    const finalData = { ...formData, bout: targetBout, eventId: formData.eventId || null };
+    const finalData = { ...formData, bout: targetBout, eventId: formData.eventId || null, allowCompleted: true };
     
     onSubmit(formData.ring, finalData);
     onClose();
@@ -5134,6 +5240,19 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
   const displayRings = availableRings.length > 0 
     ? availableRings 
     : (user?.assignedRing ? [{ ringNumber: Number(user.assignedRing) } as RingStatus] : rings);
+
+  const targetBoutVal = normalizeBoutWithRing(formData.bout, formData.ring);
+  const isAlreadyCompleted = matchHistory.some(h => {
+    if ((h.eventId || currentEventId || 'default') !== (formData.eventId || currentEventId || 'default')) return false;
+    
+    // Match 1: Using strict logic with ring combination
+    if (normalizeBoutWithRing(h.bout, formData.ring) === targetBoutVal) return true;
+    
+    // Match 2: Direct raw equality 
+    if (normalizeBoutNumber(h.bout) === normalizeBoutNumber(formData.bout)) return true;
+    
+    return false;
+  });
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -5163,6 +5282,14 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
               {errorMsg}
             </div>
           )}
+          {isAlreadyCompleted && (
+            <div className="bg-amber-50 text-amber-700 p-4 rounded-xl text-xs font-bold border border-amber-100 flex items-center gap-3">
+              <AlertTriangle size={18} className="shrink-0 text-amber-500 animate-pulse" />
+              <div>
+                This bout is already marked as completed. Submitting will add it back to the standby queue to run again.
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2 col-span-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Event</label>
@@ -5172,8 +5299,8 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
               >
                 <option value="">All Events</option>
-                {events.map((e) => (
-                  <option key={e.id} value={e.id}>{e.name}</option>
+                {events.map((e, i) => (
+                  <option key={`${e.id}-${i}`} value={e.id}>{e.name}</option>
                 ))}
               </select>
             </div>
@@ -5283,7 +5410,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                 autoComplete="off"
               />
               <datalist id="new-bout-cats">
-                {categories.map(cat => <option key={cat} value={cat} />)}
+                {categories.map((cat, i) => <option key={`${cat}-${i}`} value={cat} />)}
               </datalist>
             </div>
           </div>
@@ -5351,7 +5478,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
             )}
           </div>
           <datalist id="new-bout-clubs">
-            {clubs.map(club => <option key={club} value={club} />)}
+            {clubs.map((club, i) => <option key={`${club}-${i}`} value={club} />)}
           </datalist>
 
           <div className="pt-4 flex gap-3">
@@ -5427,8 +5554,8 @@ function AddRingModal({ onClose, onAdd, existingRings, namingMode }: AddRingModa
                 onChange={(e) => setSelectedRing(parseInt(e.target.value))}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-red-500"
               >
-                {availableRings.map(r => (
-                  <option key={r} value={r}>Ring {getRingName(r)}</option>
+                {availableRings.map((r, i) => (
+                  <option key={`${r}-${i}`} value={r}>Ring {getRingName(r)}</option>
                 ))}
               </select>
             </div>
@@ -6461,7 +6588,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
       </div>
 
       <div className="flex-1 p-4 space-y-4">
-        {displayedRings.map((ring) => {
+        {displayedRings.map((ring, i) => {
           const ringQueue = boutQueue
             .filter(q => 
               q.data.ring === ring.ringNumber && 
@@ -6481,7 +6608,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                                (current?.category?.toUpperCase().includes('POOMSAE') && !current.red_name);
           
           return (
-            <div key={ring.ringNumber} className="flex gap-1 h-48">
+            <div key={`${ring.ringNumber}-${i}`} className="flex gap-1 h-48">
               {/* Left: Current Match */}
               <div className="flex-[3] flex flex-col bg-[#0d1526] border border-white/10 rounded-lg overflow-hidden">
                 {/* Header */}
@@ -6720,7 +6847,7 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
       </div>
 
       <div className="flex-1 p-4 space-y-4">
-        {displayedRings.map((ring) => {
+        {displayedRings.map((ring, i) => {
           const ringQueue = boutQueue
             .filter(q => 
               q.data.ring === ring.ringNumber && 
@@ -6740,7 +6867,7 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                                (current?.category?.toUpperCase().includes('POOMSAE') && !current.red_name);
           
           return (
-            <div key={ring.ringNumber} className="flex gap-1 h-48">
+            <div key={`${ring.ringNumber}-${i}`} className="flex gap-1 h-48">
               {/* Left: Current Match */}
               <div className="flex-[4] flex flex-col bg-[#0d1526] border border-white/10 rounded-lg overflow-hidden">
                 {/* Header */}
@@ -7104,7 +7231,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
         "flex-1 overflow-y-auto custom-scrollbar px-4",
         isFullscreen ? "flex flex-col justify-around pt-24 pb-4 gap-y-8" : "space-y-24 py-12"
       )}>
-        {displayedRings.map((ring) => {
+        {displayedRings.map((ring, i) => {
           const ringQueue = boutQueue
             .filter(q => 
               q.data.ring === ring.ringNumber && 
@@ -7123,7 +7250,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                                (current?.category?.toUpperCase().includes('POOMSAE') && !current.red_name);
           
           return (
-            <div key={ring.ringNumber} className="grid grid-cols-12 gap-8 items-center">
+            <div key={`${ring.ringNumber}-${i}`} className="grid grid-cols-12 gap-8 items-center">
               {/* Ring Number */}
               <div className="col-span-1 flex flex-col items-center justify-center">
                 <div className="text-7xl font-black text-white italic leading-none tracking-tighter">{ringName}</div>
@@ -7397,7 +7524,7 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
               Live Ring Status
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-              {displayedRings.map((ring) => {
+              {displayedRings.map((ring, i) => {
                 const ringQueueAll = boutQueue
                   .filter(q => q.data.ring === ring.ringNumber)
                   .sort((a, b) => {
@@ -7897,8 +8024,8 @@ function LoginScreen({ onLogin, events, onBack }: { onLogin: (u: string, p: stri
                 <option value="" disabled>
                   {events.length === 0 ? "No events available (Admin must create one)" : "Select an Event"}
                 </option>
-                {events.map(ev => (
-                  <option key={ev.id} value={ev.id}>{ev.name}</option>
+                {events.map((ev, i) => (
+                  <option key={`${ev.id}-${i}`} value={ev.id}>{ev.name}</option>
                 ))}
               </select>
               {/* Custom dropdown arrow to replace the default one since we use appearance-none */}
@@ -8328,8 +8455,8 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
       </form>
 
       <div className="space-y-2">
-        {events.map(ev => (
-          <div key={ev.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+        {events.map((ev, i) => (
+          <div key={`${ev.id}-${i}`} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
             <div>
               <p className="text-sm font-bold text-slate-800">{ev.name}</p>
               <p className="text-[10px] text-slate-500">
