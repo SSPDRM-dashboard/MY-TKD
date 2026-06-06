@@ -656,11 +656,19 @@ export default function App() {
           return null;
         };
 
-        const hRing = getBoutRing(h.bout);
+        const hRing = h.ring || getBoutRing(h.bout);
         const itemRing = Number(ringNum);
 
         // If the history item has a detected ring and it doesn't match the queue item's ring, then they are absolutely different bouts!
         if (hRing && itemRing && hRing !== itemRing) {
+          return false;
+        }
+
+        // If the history item has NO ring information (lacks ring field and has no implicit ring prefix in h.bout)
+        // and is a relative small number (e.g. "1"), it is highly ambiguous in a multi-ring setup.
+        // We should skip matching it to avoid false positive matches on other rings.
+        const isAmbiguousRelative = !hRing && parseInt(h.bout.toString()) < 1000;
+        if (isAmbiguousRelative && rings.length > 1) {
           return false;
         }
         
@@ -1426,6 +1434,7 @@ export default function App() {
                       category: category,
                       winner: winner,
                       eventId: currentEventId,
+                      ring: ringNo,
                       syncedAt: new Date().toISOString()
                     };
                     
@@ -1937,7 +1946,8 @@ export default function App() {
         winner: winnerName || winner,
         winnerClub: winner === 'Blue' ? currentBout.blue_club : (winner === 'Red' ? currentBout.red_club : '-'),
         winnerSide: (winner === 'Blue' || winner === 'Red') ? (winner as 'Blue' | 'Red') : undefined,
-        eventId: currentEventId
+        eventId: currentEventId,
+        ring: ringNumber
       };
       
       setMatchHistory(prev => {
@@ -3972,7 +3982,8 @@ export default function App() {
                 winner: winName,
                 winnerClub: winClub,
                 winnerSide: (winner === 'Blue' || winner === 'Red') ? winner : undefined,
-                eventId: currentEventId
+                eventId: currentEventId,
+                ring: Number(ringNumber)
               };
               
               setMatchHistory(prev => {
@@ -4167,7 +4178,8 @@ export default function App() {
                       ...existingHist, 
                       winner: newWinName, 
                       winnerClub: newWinClub,
-                      winnerSide: side
+                      winnerSide: side,
+                      ring: ringNumber
                     };
                     setMatchHistory(prev => prev.map(h => h.id === histId ? updatedHistItem : h));
 

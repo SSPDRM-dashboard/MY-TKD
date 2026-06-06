@@ -71,5 +71,6 @@ export interface MatchHistoryItem {
   winnerClub?: string;
   winnerSide?: 'Blue' | 'Red';
   eventId: string;
+  ring?: number;
   syncedAt?: string | Date | any;
 }
