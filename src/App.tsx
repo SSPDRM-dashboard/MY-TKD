@@ -131,6 +131,7 @@ function useSyncedState<T>(key: string, initialValue: T) {
   const lastRemoteValue = useRef<string>('');
   const timeoutRef = useRef<any>(null);
   const latestValueRef = useRef<T>(state);
+  const inFlightValueRef = useRef<string | null>(null);
 
   // Keep latestValueRef synced with the current state as a fallback
   useEffect(() => {
@@ -165,10 +166,22 @@ function useSyncedState<T>(key: string, initialValue: T) {
           const remoteValueStr = JSON.stringify(remoteValue);
           
           if (remoteValueStr !== lastRemoteValue.current) {
-            // If we have a pending local write, ignore incoming snapshots to prevent jumping
-            if (timeoutRef.current) {
+            // Guard: If we currently have a pending local change (either in the debounce delay
+            // or actively in-flight being written to Firestore), do NOT let an older stale remote snapshot
+            // overwrite our current local state.
+            const hasPendingWrite = timeoutRef.current !== null || inFlightValueRef.current !== null;
+            if (hasPendingWrite) {
+              const currentPendingStr = JSON.stringify(latestValueRef.current);
+              if (remoteValueStr === currentPendingStr || remoteValueStr === inFlightValueRef.current) {
+                lastRemoteValue.current = remoteValueStr;
+                if (inFlightValueRef.current === remoteValueStr) {
+                  inFlightValueRef.current = null;
+                }
+              }
+              // Skip updating state to prevent the flashing-back/jumping visual feedback loop
               return;
             }
+
             lastRemoteValue.current = remoteValueStr;
             setState(remoteValue);
             localStorage.setItem(key, remoteValueStr);
@@ -198,50 +211,60 @@ function useSyncedState<T>(key: string, initialValue: T) {
   }, [key]);
 
   const setSyncedState = React.useCallback((updater: T | ((prev: T) => T)) => {
-    setState(prev => typeof updater === 'function' ? (updater as any)(prev) : updater);
-  }, []);
-
-  useEffect(() => {
-    const currentValStr = JSON.stringify(state);
-    const localValStr = localStorage.getItem(key);
-    
-    if (currentValStr !== localValStr) {
-      localStorage.setItem(key, currentValStr);
-    }
-    
-    // Guard against writing the same value back to Firestore
-    if (currentValStr !== lastRemoteValue.current) {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    setState(prev => {
+      const newValue = typeof updater === 'function' ? (updater as any)(prev) : updater;
       
-      const syncToFirestore = () => {
-        timeoutRef.current = null; // Clear pending flag
-        const currentStr = JSON.stringify(latestValueRef.current);
-        if (currentStr !== lastRemoteValue.current) {
-          lastRemoteValue.current = currentStr;
-          if (!isFirestoreQuotaExceeded) {
-            setDoc(doc(db, 'sync', key), { value: sanitizeForFirestore(latestValueRef.current) })
-              .catch(err => {
-                if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
-                  console.warn(`Firestore Quota Exceeded for ${key}. Updates will stay local until reset.`);
-                  handleGlobalQuotaTrigger();
-                } else {
-                  console.error(`Error syncing key ${key} to Firestore:`, err);
-                }
-              });
-          }
+      // Safety: Only write to local & remote if value actually changed
+      if (!isEqual(prev, newValue)) {
+        const valStr = JSON.stringify(newValue);
+        localStorage.setItem(key, valStr);
+        latestValueRef.current = newValue;
+        
+        // Clear previous pending write to avoid extra intermediate updates
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
         }
-      };
 
-      timeoutRef.current = setTimeout(syncToFirestore, 1000);
+        // Guard against writing the same value back to Firestore
+        if (valStr !== lastRemoteValue.current) {
+          const syncToFirestore = () => {
+            const currentPending = latestValueRef.current;
+            const currentStr = JSON.stringify(currentPending);
+            
+            if (currentStr !== lastRemoteValue.current) {
+              // Update the in-flight reference to track active network write
+              inFlightValueRef.current = currentStr;
+              
+              if (!isFirestoreQuotaExceeded) {
+                setDoc(doc(db, 'sync', key), { value: sanitizeForFirestore(currentPending) })
+                  .then(() => {
+                    // Update our last known remote string ONLY after confirmation from Firestore
+                    lastRemoteValue.current = currentStr;
+                    if (inFlightValueRef.current === currentStr) {
+                      inFlightValueRef.current = null;
+                    }
+                  })
+                  .catch(err => {
+                    if (inFlightValueRef.current === currentStr) {
+                      inFlightValueRef.current = null;
+                    }
+                    if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
+                      console.warn(`Firestore Quota Exceeded for ${key}. Updates will stay local until reset.`);
+                      handleGlobalQuotaTrigger();
+                    } else {
+                      console.error(`Error syncing key ${key} to Firestore:`, err);
+                    }
+                  });
+              }
+            }
+          };
 
-      const handleUnload = () => syncToFirestore();
-      window.addEventListener('beforeunload', handleUnload);
-      
-      return () => {
-        window.removeEventListener('beforeunload', handleUnload);
-      };
-    }
-  }, [state, key]);
+          timeoutRef.current = setTimeout(syncToFirestore, 1000);
+        }
+      }
+      return newValue;
+    });
+  }, [key]);
 
   return [state, setSyncedState] as const;
 }
@@ -314,8 +337,8 @@ function AnnouncementPopup({ announcement, onClose, size = 'normal' }: { announc
 import { EditBoutDetailsModal } from './components/EditBoutDetailsModal';
 
 export default function App() {
-  const [events, setEvents] = useSyncedState<EventData[]>('tkd_events', []);
-  const [currentEventId, setCurrentEventId] = useSyncedState<string | null>('tkd_current_event', null);
+  const [events, setEvents] = useSyncedState<EventData[]>('tkd_events_v3', []);
+  const [currentEventId, setCurrentEventId] = useSyncedState<string | null>('tkd_current_event_v3', null);
 
   const [user, setUser] = useState<UserAccount | null>(() => {
     const saved = localStorage.getItem('tkd_user');
@@ -357,13 +380,7 @@ export default function App() {
   const [autoPullRings, setAutoPullRings] = useSyncedState<Record<number, boolean>>('tkd_autopull', {});
   const [isAutoUpdateNames, setIsAutoUpdateNames] = useSyncedState<boolean>('tkd_auto_update_names', true);
   const [boutQueue, setBoutQueue] = useSyncedState<{id: string, data: MatchData}[]>('tkd_bout_queue', []);
-  const [matchHistory, setMatchHistory] = useState<MatchHistoryItem[]>(() => {
-    const saved = localStorage.getItem('tkd_match_history');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { return []; }
-    }
-    return [];
-  });
+  const [matchHistory, setMatchHistory] = useState<MatchHistoryItem[]>([]);
   
   // Track the absolute newest data to avoid stale closures in event listeners
   const latestDataRef = useRef({
@@ -462,10 +479,6 @@ export default function App() {
     };
   }, [currentEventId]);
 
-  useEffect(() => {
-    localStorage.setItem('tkd_match_history', JSON.stringify(matchHistory));
-  }, [matchHistory]);
-
   // Real-time automatic deduplication and active-mats eviction from the Match Queue
   useEffect(() => {
     if (!boutQueue || boutQueue.length === 0) return;
@@ -496,10 +509,17 @@ export default function App() {
       const uniqueKey = `${eventId}_${ringNum}_${normalizedBout}`;
 
       // Check if it's already in match history (completed)
-      const isCompleted = matchHistory.some(h => 
-        (h.eventId || currentEventId || 'default') === eventId && 
-        normalizeBoutWithRing(h.bout, ringNum) === normalizedBout
-      );
+      const isCompleted = matchHistory.some(h => {
+        if ((h.eventId || currentEventId || 'default') !== eventId) return false;
+        
+        // Match 1: Using strict logic with ring combination
+        if (normalizeBoutWithRing(h.bout, ringNum) === normalizedBout) return true;
+        
+        // Match 2: Direct raw equality 
+        if (normalizeBoutNumber(h.bout) === normalizeBoutNumber(rawBout)) return true;
+        
+        return false;
+      });
 
       // If already active in the ring slots or already completed, remove from the standby queue
       if (activeRingBouts.has(uniqueKey) || isCompleted) {
@@ -917,7 +937,13 @@ export default function App() {
         }
         
         // Fallback to stable string comparison and ID-based tiebreaker
-        const strCmp = (a.data.bout || '').toString().localeCompare((b.data.bout || '').toString());
+        const strA = (a.data.bout || '').toString();
+        const strB = (b.data.bout || '').toString();
+        
+        // Exact identical IDs should not jump
+        if (a.id === b.id) return 0;
+        
+        const strCmp = strA.localeCompare(strB, undefined, { numeric: true, sensitivity: 'base' });
         if (strCmp !== 0) return strCmp;
         return a.id.localeCompare(b.id);
       });
@@ -1409,6 +1435,7 @@ export default function App() {
 
   useEffect(() => {
     // Advancement logic: Pull winners to next bouts based on mappings
+    return; // DISABLED TO PREVENT RACE CONDITIONS
     if (!currentEventId) {
       return;
     }
@@ -2202,7 +2229,7 @@ export default function App() {
       localStorage.setItem('tkd_login_time', new Date().getTime().toString());
       if (eventId) {
         setCurrentEventId(eventId);
-        localStorage.setItem('tkd_current_event', eventId);
+        localStorage.setItem('tkd_current_event_v3', eventId);
         const event = events.find(e => e.id === eventId);
         if (event && event.sheetUrl) {
           setGoogleSheetUrl(event.sheetUrl);
@@ -2249,7 +2276,7 @@ export default function App() {
   const handleAddEvent = (newEvent: EventData) => {
     const updated = [...events, newEvent];
     setEvents(updated);
-    localStorage.setItem('tkd_events', JSON.stringify(updated));
+    localStorage.setItem('tkd_events_v3', JSON.stringify(updated));
     
     // Also auto-generate rings up to ringQuantity if they don't exist
     // For simplicity, we just set the rings to the new quantity
@@ -2266,7 +2293,7 @@ export default function App() {
   const handleDeleteEvent = (id: string) => {
     const updated = events.filter(e => e.id !== id);
     setEvents(updated);
-    localStorage.setItem('tkd_events', JSON.stringify(updated));
+    localStorage.setItem('tkd_events_v3', JSON.stringify(updated));
     
     if (updated.length === 0) {
       setBoutQueue([]);
@@ -2276,7 +2303,7 @@ export default function App() {
       setMappings([]);
       localStorage.removeItem('tkd_bout_mappings');
       setCurrentEventId(null);
-      localStorage.removeItem('tkd_current_event');
+      localStorage.removeItem('tkd_current_event_v3');
       const clearedRings = Array.from({ length: 12 }, (_, i) => ({
         ringNumber: i + 1,
         currentBout: null,
@@ -2303,7 +2330,7 @@ export default function App() {
 
       if (currentEventId === id) {
         setCurrentEventId(null);
-        localStorage.removeItem('tkd_current_event');
+        localStorage.removeItem('tkd_current_event_v3');
         // Clear rings if current event is deleted
         const clearedRings = Array.from({ length: 12 }, (_, i) => ({
           ringNumber: i + 1,
@@ -2720,11 +2747,11 @@ export default function App() {
                       const id = e.target.value;
                       if (!id) {
                         setCurrentEventId(null);
-                        localStorage.removeItem('tkd_current_event');
+                        localStorage.removeItem('tkd_current_event_v3');
                         return;
                       }
                       setCurrentEventId(id);
-                      localStorage.setItem('tkd_current_event', id);
+                      localStorage.setItem('tkd_current_event_v3', id);
                       const event = events.find(ev => ev.id === id);
                       if (event && event.sheetUrl) {
                         setGoogleSheetUrl(event.sheetUrl);
@@ -3200,7 +3227,7 @@ export default function App() {
               events={events}
               onSelectEvent={(id) => {
                 setCurrentEventId(id);
-                localStorage.setItem('tkd_current_event', id);
+                localStorage.setItem('tkd_current_event_v3', id);
                 const event = events.find(ev => ev.id === id);
                 if (event && event.sheetUrl) {
                   setGoogleSheetUrl(event.sheetUrl);
