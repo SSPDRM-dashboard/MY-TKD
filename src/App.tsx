@@ -165,6 +165,10 @@ function useSyncedState<T>(key: string, initialValue: T) {
           const remoteValueStr = JSON.stringify(remoteValue);
           
           if (remoteValueStr !== lastRemoteValue.current) {
+            // If we have a pending local write, ignore incoming snapshots to prevent jumping
+            if (timeoutRef.current) {
+              return;
+            }
             lastRemoteValue.current = remoteValueStr;
             setState(remoteValue);
             localStorage.setItem(key, remoteValueStr);
@@ -194,60 +198,50 @@ function useSyncedState<T>(key: string, initialValue: T) {
   }, [key]);
 
   const setSyncedState = React.useCallback((updater: T | ((prev: T) => T)) => {
-    setState(prev => {
-      const newValue = typeof updater === 'function' ? (updater as any)(prev) : updater;
+    setState(prev => typeof updater === 'function' ? (updater as any)(prev) : updater);
+  }, []);
+
+  useEffect(() => {
+    const currentValStr = JSON.stringify(state);
+    const localValStr = localStorage.getItem(key);
+    
+    if (currentValStr !== localValStr) {
+      localStorage.setItem(key, currentValStr);
+    }
+    
+    // Guard against writing the same value back to Firestore
+    if (currentValStr !== lastRemoteValue.current) {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
       
-      // Safety: Only write to local & remote if value actually changed
-      if (!isEqual(prev, newValue)) {
-        const valStr = JSON.stringify(newValue);
-        localStorage.setItem(key, valStr);
-        latestValueRef.current = newValue;
-        
-        // Clear previous pending write to avoid extra intermediate updates
-        if (timeoutRef.current) {
-          clearTimeout(timeoutRef.current);
+      const syncToFirestore = () => {
+        timeoutRef.current = null; // Clear pending flag
+        const currentStr = JSON.stringify(latestValueRef.current);
+        if (currentStr !== lastRemoteValue.current) {
+          lastRemoteValue.current = currentStr;
+          if (!isFirestoreQuotaExceeded) {
+            setDoc(doc(db, 'sync', key), { value: sanitizeForFirestore(latestValueRef.current) })
+              .catch(err => {
+                if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
+                  console.warn(`Firestore Quota Exceeded for ${key}. Updates will stay local until reset.`);
+                  handleGlobalQuotaTrigger();
+                } else {
+                  console.error(`Error syncing key ${key} to Firestore:`, err);
+                }
+              });
+          }
         }
+      };
 
-        // Guard against writing the same value back to Firestore
-        if (valStr !== lastRemoteValue.current) {
-          const syncToFirestore = () => {
-            const currentPending = latestValueRef.current;
-            const currentStr = JSON.stringify(currentPending);
-            
-            if (currentStr !== lastRemoteValue.current) {
-              lastRemoteValue.current = currentStr;
-              if (!isFirestoreQuotaExceeded) {
-                setDoc(doc(db, 'sync', key), { value: sanitizeForFirestore(currentPending) })
-                  .catch(err => {
-                    if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
-                      console.warn(`Firestore Quota Exceeded for ${key}. Updates will stay local until reset.`);
-                      handleGlobalQuotaTrigger();
-                    } else {
-                      console.error(`Error syncing key ${key} to Firestore:`, err);
-                    }
-                  });
-              }
-            }
-          };
+      timeoutRef.current = setTimeout(syncToFirestore, 1000);
 
-          timeoutRef.current = setTimeout(syncToFirestore, 1000);
-
-          // Flush on unload to prevent data loss if user closes tab
-          const handleUnload = () => {
-             // In beforeunload, sync operations might be cancelled by the browser,
-             // but we'll attempt it anyway. For better reliability, we use beacon or keepalive if we could, 
-             // but setDoc doesn't support them. At least we try.
-             syncToFirestore();
-          };
-          window.addEventListener('beforeunload', handleUnload);
-          // We can't easily remove this listener without keeping a ref to it, 
-          // but memory leak is small as it's an app-level hook.
-          // Better yet, just don't add uncountable listeners:
-        }
-      }
-      return newValue;
-    });
-  }, [key]);
+      const handleUnload = () => syncToFirestore();
+      window.addEventListener('beforeunload', handleUnload);
+      
+      return () => {
+        window.removeEventListener('beforeunload', handleUnload);
+      };
+    }
+  }, [state, key]);
 
   return [state, setSyncedState] as const;
 }
@@ -363,7 +357,13 @@ export default function App() {
   const [autoPullRings, setAutoPullRings] = useSyncedState<Record<number, boolean>>('tkd_autopull', {});
   const [isAutoUpdateNames, setIsAutoUpdateNames] = useSyncedState<boolean>('tkd_auto_update_names', true);
   const [boutQueue, setBoutQueue] = useSyncedState<{id: string, data: MatchData}[]>('tkd_bout_queue', []);
-  const [matchHistory, setMatchHistory] = useState<MatchHistoryItem[]>([]);
+  const [matchHistory, setMatchHistory] = useState<MatchHistoryItem[]>(() => {
+    const saved = localStorage.getItem('tkd_match_history');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { return []; }
+    }
+    return [];
+  });
   
   // Track the absolute newest data to avoid stale closures in event listeners
   const latestDataRef = useRef({
@@ -461,6 +461,10 @@ export default function App() {
       window.removeEventListener('firestore-quota-exceeded', handleGlobalQuota);
     };
   }, [currentEventId]);
+
+  useEffect(() => {
+    localStorage.setItem('tkd_match_history', JSON.stringify(matchHistory));
+  }, [matchHistory]);
 
   // Real-time automatic deduplication and active-mats eviction from the Match Queue
   useEffect(() => {
