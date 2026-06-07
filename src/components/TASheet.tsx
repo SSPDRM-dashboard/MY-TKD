@@ -583,11 +583,29 @@ export function TASheet({
       }
     });
 
-    // Sort matches by bout number
+    // Sort matches by bout number to correctly handle alphanumeric combinations (e.g., A01, B02)
     allMatches.sort((a, b) => {
-      const numA = parseInt(a.matchNo.replace(/[^0-9]/g, '')) || 0;
-      const numB = parseInt(b.matchNo.replace(/[^0-9]/g, '')) || 0;
-      return numA - numB;
+      const parseBout = (bout: string | number) => {
+        let s = bout.toString().replace(/\s+/g, '').toUpperCase();
+        s = s.replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
+        if (/^[A-Z]/.test(s)) return s;
+        const parsed = parseInt(s.replace(/[^0-9]/g, ''));
+        return isNaN(parsed) ? s : parsed;
+      };
+
+      const valA = parseBout(a.matchNo);
+      const valB = parseBout(b.matchNo);
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        if (valA !== valB) return valA - valB;
+      } else if (typeof valA === 'string' && typeof valB === 'string') {
+        if (valA !== valB) return valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+      } else if (typeof valA === 'number') {
+        return -1;
+      } else {
+        return 1;
+      }
+      return 0;
     });
 
     setMatches(allMatches);

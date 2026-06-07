@@ -99,7 +99,25 @@ export function RingSummary({
     // 3. Pending/standby bouts in the queue
     const queuedBouts = boutQueue
       .filter(q => q.data.ring === ringNum && q.data.eventId === currentEventId)
-      .map(q => q.data);
+      .map(q => q.data)
+      .sort((a, b) => {
+        const parseBout = (bout: string | number) => {
+          let s = bout.toString().replace(/\s+/g, '').toUpperCase().replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
+          if (/^[A-Z]/.test(s)) return s;
+          const parsed = parseInt(s.replace(/[^0-9]/g, ''));
+          return isNaN(parsed) ? s : parsed;
+        };
+        const numA = parseBout(a.bout);
+        const numB = parseBout(b.bout);
+        if (typeof numA === 'number' && typeof numB === 'number') {
+          return numA - numB;
+        } else if (typeof numA === 'string' && typeof numB === 'string') {
+          return numA.localeCompare(numB, undefined, { numeric: true, sensitivity: 'base' });
+        } else if (typeof numA === 'number') {
+          return -1;
+        }
+        return 1;
+      });
     const queuedCount = queuedBouts.length;
 
     // Absolute total bouts in system

@@ -700,8 +700,8 @@ export default function App() {
         // Match 1: Using strict logic with ring combination
         if (normalizeBoutWithRing(h.bout, ringNum) === normalizedBout) return true;
         
-        // Match 2: Direct raw equality 
-        if (normalizeBoutNumber(h.bout) === normalizeBoutNumber(rawBout)) return true;
+        // Match 2: Direct raw equality is removed because rings have overlapping bout numbers (e.g., Bout 1 exists in all rings)
+        // if (normalizeBoutNumber(h.bout) === normalizeBoutNumber(rawBout)) return true;
         
         return false;
       });
@@ -1122,18 +1122,24 @@ export default function App() {
         return matchesEvent && matchesRing && matchesUserRing;
       })
       .sort((a, b) => {
-        const boutA = parseInt(normalizeBoutNumber(a.data.bout));
-        const boutB = parseInt(normalizeBoutNumber(b.data.bout));
-        const isValidA = !isNaN(boutA);
-        const isValidB = !isNaN(boutB);
-        
-        if (isValidA && isValidB) {
-          if (boutA !== boutB) {
-            return boutA - boutB;
-          }
-        } else if (isValidA) {
+        const parseBout = (bout: string | number) => {
+          let s = bout.toString().replace(/\s+/g, '').toUpperCase();
+          s = s.replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
+          if (/^[A-Z]/.test(s)) return s;
+          const parsed = parseInt(s.replace(/[^0-9]/g, ''));
+          return isNaN(parsed) ? s : parsed;
+        };
+
+        const valA = parseBout(a.data.bout);
+        const valB = parseBout(b.data.bout);
+
+        if (typeof valA === 'number' && typeof valB === 'number') {
+          if (valA !== valB) return valA - valB;
+        } else if (typeof valA === 'string' && typeof valB === 'string') {
+          if (valA !== valB) return valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+        } else if (typeof valA === 'number') {
           return -1;
-        } else if (isValidB) {
+        } else {
           return 1;
         }
         
@@ -1239,11 +1245,13 @@ export default function App() {
       const dataRows = rows.slice(1);
       const currentEventName = getCurrentEventName();
 
-       // Filter by event name AND assigned ring
+      // Filter by event name AND assigned ring
       const ringBouts = dataRows.filter(row => {
         const rowEventName = row[1]?.trim(); // Column B
         const rowRingNo = parseRingNumber(row[2]); // Column C
-        return rowEventName === currentEventName && rowRingNo === Number(user.assignedRing);
+        return rowEventName && currentEventName &&
+               rowEventName.toLowerCase().replace(/\s+/g, '') === currentEventName.toLowerCase().replace(/\s+/g, '') && 
+               rowRingNo === Number(user.assignedRing);
       });
       
       if (ringBouts.length === 0) {
@@ -1255,11 +1263,11 @@ export default function App() {
         const ringNo = parseRingNumber(row[2]);
         const boutNo = normalizeBoutWithRing(row[3]?.trim(), ringNo);
         // Check if bout already exists in queue or rings
-        const existsInQueue = boutQueue.some(q => normalizeBoutWithRing(q.data.bout, q.data.ring) === boutNo);
+        const existsInQueue = boutQueue.some(q => q.data.eventId === currentEventId && normalizeBoutWithRing(q.data.bout, q.data.ring) === boutNo);
         const existsInRings = rings.some(r => 
-          (r.currentBout && normalizeBoutWithRing(r.currentBout.bout, r.ringNumber) === boutNo) ||
-          (r.onDeck && normalizeBoutWithRing(r.onDeck.bout, r.ringNumber) === boutNo) ||
-          (r.inTheHole && normalizeBoutWithRing(r.inTheHole.bout, r.ringNumber) === boutNo)
+          (r.currentBout && r.currentBout.eventId === currentEventId && normalizeBoutWithRing(r.currentBout.bout, r.ringNumber) === boutNo) ||
+          (r.onDeck && r.onDeck.eventId === currentEventId && normalizeBoutWithRing(r.onDeck.bout, r.ringNumber) === boutNo) ||
+          (r.inTheHole && r.inTheHole.eventId === currentEventId && normalizeBoutWithRing(r.inTheHole.bout, r.ringNumber) === boutNo)
         );
         const existsInHistory = matchHistory.some(h => normalizeBoutWithRing(h.bout, ringNo) === boutNo && h.eventId === currentEventId);
         return !existsInQueue && !existsInRings && !existsInHistory;
@@ -1329,7 +1337,8 @@ export default function App() {
 
       const eventBouts = dataRows.filter(row => {
         const rowEventName = row[1]?.trim(); // Column B
-        return rowEventName === currentEventName;
+        return rowEventName && currentEventName &&
+               rowEventName.toLowerCase().replace(/\s+/g, '') === currentEventName.toLowerCase().replace(/\s+/g, '');
       });
       
       if (eventBouts.length === 0) {
@@ -1340,11 +1349,11 @@ export default function App() {
       const newBouts = eventBouts.filter(row => {
         const ringNo = parseRingNumber(row[2]);
         const boutNo = normalizeBoutWithRing(row[3]?.trim(), ringNo);
-        const existsInQueue = boutQueue.some(q => normalizeBoutWithRing(q.data.bout, q.data.ring) === boutNo);
+        const existsInQueue = boutQueue.some(q => q.data.eventId === currentEventId && normalizeBoutWithRing(q.data.bout, q.data.ring) === boutNo);
         const existsInRings = rings.some(r => 
-          (r.currentBout && normalizeBoutWithRing(r.currentBout.bout, r.ringNumber) === boutNo) ||
-          (r.onDeck && normalizeBoutWithRing(r.onDeck.bout, r.ringNumber) === boutNo) ||
-          (r.inTheHole && normalizeBoutWithRing(r.inTheHole.bout, r.ringNumber) === boutNo)
+          (r.currentBout && r.currentBout.eventId === currentEventId && normalizeBoutWithRing(r.currentBout.bout, r.ringNumber) === boutNo) ||
+          (r.onDeck && r.onDeck.eventId === currentEventId && normalizeBoutWithRing(r.onDeck.bout, r.ringNumber) === boutNo) ||
+          (r.inTheHole && r.inTheHole.eventId === currentEventId && normalizeBoutWithRing(r.inTheHole.bout, r.ringNumber) === boutNo)
         );
         const existsInHistory = matchHistory.some(h => normalizeBoutWithRing(h.bout, ringNo) === boutNo && h.eventId === currentEventId);
         return !existsInQueue && !existsInRings && !existsInHistory;
@@ -1443,7 +1452,7 @@ export default function App() {
                 if (row.length >= 10) {
                   // Filter by Event Name (Column B)
                   const rowEventName = row[1]?.trim();
-                  if (currentEventName && rowEventName && rowEventName.toLowerCase() !== currentEventName.toLowerCase()) {
+                  if (currentEventName && rowEventName && rowEventName.toLowerCase().replace(/\s+/g, '') !== currentEventName.toLowerCase().replace(/\s+/g, '')) {
                     continue; // Skip bouts that belong to a different event
                   }
 
@@ -2095,11 +2104,55 @@ export default function App() {
       red_club: '',
       points: {},
       eventId: currentEventId,
-      allowCompleted: true
+      allowCompleted: true,
+      privacy_mode: false
     };
 
+    setRings(prevRings => {
+      let ringUpdated = false;
+      const updatedRings = prevRings.map(r => {
+        let newRing = { ...r };
+        let changed = false;
+        ['currentBout', 'onDeck', 'inTheHole'].forEach(slot => {
+          const slotBout = newRing[slot as keyof typeof newRing] as MatchData | null;
+          if (slotBout && slotBout.bout && isBoutMatch(slotBout.bout, matchToRestore.bout)) {
+            (newRing as any)[slot] = null;
+            changed = true;
+            ringUpdated = true;
+          }
+        });
+        
+        // Compact slots if needed
+        if (changed) {
+           if (!newRing.currentBout && newRing.onDeck) {
+             newRing.currentBout = newRing.onDeck;
+             newRing.onDeck = newRing.inTheHole;
+             newRing.inTheHole = null;
+           } else if (!newRing.onDeck && newRing.inTheHole) {
+             newRing.onDeck = newRing.inTheHole;
+             newRing.inTheHole = null;
+           }
+        }
+        return newRing;
+      });
+      
+      if (ringUpdated) {
+        localStorage.setItem('tkd_rings', JSON.stringify(updatedRings));
+        return updatedRings;
+      }
+      return prevRings;
+    });
+
     setBoutQueue(prev => {
-      const updated = [...prev, { id: newBoutId, data: restoredMatchData }];
+      // Actively remove any existing queue items for this bout to prevent uniqueQueue collision
+      const filtered = prev.filter(q => {
+        const qRing = q.data.ring || 1;
+        if (isBoutMatch(q.data.bout, matchToRestore.bout) && qRing === ringToUse) {
+           return false;
+        }
+        return true;
+      });
+      const updated = [...filtered, { id: newBoutId, data: restoredMatchData }];
       return updated;
     });
 
@@ -3259,7 +3312,7 @@ export default function App() {
                                     <div className="flex items-center gap-1">
                                       <span className="text-[10px] font-bold text-slate-400">Move:</span>
                                       <select
-                                        value={item.data.ring}
+                                        value={item.data.ring || ''}
                                         onChange={(e) => {
                                           const targetRing = parseInt(e.target.value);
                                           if (targetRing) {
@@ -3461,7 +3514,7 @@ export default function App() {
                                       <div className="flex items-center gap-1">
                                         <span className="text-[10px] font-bold text-slate-400">Move:</span>
                                         <select
-                                          value={item.data.ring}
+                                          value={item.data.ring || ''}
                                           onChange={(e) => {
                                             const targetRing = parseInt(e.target.value);
                                             if (targetRing) {
@@ -5248,8 +5301,8 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
     // Match 1: Using strict logic with ring combination
     if (normalizeBoutWithRing(h.bout, formData.ring) === targetBoutVal) return true;
     
-    // Match 2: Direct raw equality 
-    if (normalizeBoutNumber(h.bout) === normalizeBoutNumber(formData.bout)) return true;
+    // Match 2: Direct raw equality removed to prevent overlapping false positives
+    // if (normalizeBoutNumber(h.bout) === normalizeBoutNumber(formData.bout)) return true;
     
     return false;
   });
@@ -5307,8 +5360,8 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Ring</label>
               <select 
-                value={formData.ring}
-                onChange={(e) => handleRingChange(parseInt(e.target.value))}
+                value={isNaN(formData.ring) ? '' : formData.ring}
+                onChange={(e) => handleRingChange(parseInt(e.target.value) || 1)}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
                 required
                 autoComplete="off"
@@ -5550,8 +5603,8 @@ function AddRingModal({ onClose, onAdd, existingRings, namingMode }: AddRingModa
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Select Ring Number</label>
               <select 
-                value={selectedRing}
-                onChange={(e) => setSelectedRing(parseInt(e.target.value))}
+                value={isNaN(selectedRing) ? '' : selectedRing}
+                onChange={(e) => setSelectedRing(parseInt(e.target.value) || 1)}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-red-500"
               >
                 {availableRings.map((r, i) => (
@@ -5902,7 +5955,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                                 ? "bg-[#00a2e8] text-white scale-110 shadow-md ring-4 ring-blue-300 border-transparent" 
                                 : "bg-white text-slate-800"
                             )} 
-                            value={points.r1Blue} 
+                            value={points.r1Blue || ''} 
                             onChange={(e) => { 
                               const val = e.target.value; 
                               setPoints(p => {
@@ -5930,7 +5983,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                                 ? "bg-[#00a2e8] text-white scale-110 shadow-md ring-4 ring-blue-300 border-transparent" 
                                 : "bg-white text-slate-800"
                             )} 
-                            value={points.r2Blue} 
+                            value={points.r2Blue || ''} 
                             onChange={(e) => { 
                               const val = e.target.value; 
                               setPoints(p => {
@@ -5958,7 +6011,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                                 ? "bg-[#00a2e8] text-white scale-110 shadow-md ring-4 ring-blue-300 border-transparent" 
                                 : "bg-white text-slate-800"
                             )} 
-                            value={points.r3Blue} 
+                            value={points.r3Blue || ''} 
                             onChange={(e) => { 
                               const val = e.target.value; 
                               setPoints(p => {
@@ -5988,7 +6041,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                                 ? "bg-[#ed1c24] text-white scale-110 shadow-md ring-4 ring-red-300 border-transparent" 
                                 : "bg-white text-slate-800"
                             )} 
-                            value={points.r1Red} 
+                            value={points.r1Red || ''} 
                             onChange={(e) => { 
                               const val = e.target.value; 
                               setPoints(p => {
@@ -6016,7 +6069,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                                 ? "bg-[#ed1c24] text-white scale-110 shadow-md ring-4 ring-red-300 border-transparent" 
                                 : "bg-white text-slate-800"
                             )} 
-                            value={points.r2Red} 
+                            value={points.r2Red || ''} 
                             onChange={(e) => { 
                               const val = e.target.value; 
                               setPoints(p => {
@@ -6044,7 +6097,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                                 ? "bg-[#ed1c24] text-white scale-110 shadow-md ring-4 ring-red-300 border-transparent" 
                                 : "bg-white text-slate-800"
                             )} 
-                            value={points.r3Red} 
+                            value={points.r3Red || ''} 
                             onChange={(e) => { 
                               const val = e.target.value; 
                               setPoints(p => {
@@ -6595,9 +6648,15 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
               q.data.eventId === currentEventId
             )
             .sort((a, b) => {
-              const boutA = parseInt(normalizeBoutNumber(a.data.bout)) || 0;
-              const boutB = parseInt(normalizeBoutNumber(b.data.bout)) || 0;
-              return boutA - boutB;
+              const parseBout = (bout: string | number) => {
+                const s = bout.toString().replace(/\s+/g, '').toUpperCase().replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
+                if (/^[A-Z]/.test(s)) return s;
+                return parseInt(s.replace(/[^0-9]/g, '')) || 0;
+              };
+              const valA = parseBout(a.data.bout);
+              const valB = parseBout(b.data.bout);
+              if (typeof valA === 'number' && typeof valB === 'number') return valA - valB;
+              return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
             })
             .slice(0, 3);
           const current = ring.currentBout;
@@ -6854,9 +6913,15 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
               q.data.eventId === currentEventId
             )
             .sort((a, b) => {
-              const boutA = parseInt(normalizeBoutNumber(a.data.bout)) || 0;
-              const boutB = parseInt(normalizeBoutNumber(b.data.bout)) || 0;
-              return boutA - boutB;
+              const parseBout = (bout: string | number) => {
+                const s = bout.toString().replace(/\s+/g, '').toUpperCase().replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
+                if (/^[A-Z]/.test(s)) return s;
+                return parseInt(s.replace(/[^0-9]/g, '')) || 0;
+              };
+              const valA = parseBout(a.data.bout);
+              const valB = parseBout(b.data.bout);
+              if (typeof valA === 'number' && typeof valB === 'number') return valA - valB;
+              return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
             })
             .slice(0, 3);
           const current = ring.currentBout;
@@ -7238,9 +7303,15 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
               q.data.eventId === currentEventId
             )
             .sort((a, b) => {
-              const boutA = parseInt(normalizeBoutNumber(a.data.bout)) || 0;
-              const boutB = parseInt(normalizeBoutNumber(b.data.bout)) || 0;
-              return boutA - boutB;
+              const parseBout = (bout: string | number) => {
+                const s = bout.toString().replace(/\s+/g, '').toUpperCase().replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
+                if (/^[A-Z]/.test(s)) return s;
+                return parseInt(s.replace(/[^0-9]/g, '')) || 0;
+              };
+              const valA = parseBout(a.data.bout);
+              const valB = parseBout(b.data.bout);
+              if (typeof valA === 'number' && typeof valB === 'number') return valA - valB;
+              return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
             })
             .slice(0, 3);
           const current = ring.currentBout;
@@ -7528,10 +7599,16 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
                 const ringQueueAll = boutQueue
                   .filter(q => q.data.ring === ring.ringNumber)
                   .sort((a, b) => {
-                    const boutA = parseInt(normalizeBoutNumber(a.data.bout)) || 0;
-                    const boutB = parseInt(normalizeBoutNumber(b.data.bout)) || 0;
-                    return boutA - boutB;
-                  });
+              const parseBout = (bout: string | number) => {
+                const s = bout.toString().replace(/\s+/g, '').toUpperCase().replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
+                if (/^[A-Z]/.test(s)) return s;
+                return parseInt(s.replace(/[^0-9]/g, '')) || 0;
+              };
+              const valA = parseBout(a.data.bout);
+              const valB = parseBout(b.data.bout);
+              if (typeof valA === 'number' && typeof valB === 'number') return valA - valB;
+              return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+            });
 
                 const isPoomsaeRing = ring.currentBout?.category?.toUpperCase().includes('POOMSAE') || 
                                       ring.currentBout?.category?.toUpperCase().includes('FREESTYLE') ||
@@ -8179,8 +8256,8 @@ function DataUpdater({
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Select Ring</label>
             <select 
-              value={selectedRing}
-              onChange={(e) => setSelectedRing(parseInt(e.target.value))}
+              value={isNaN(selectedRing) ? '' : selectedRing}
+              onChange={(e) => setSelectedRing(parseInt(e.target.value) || 1)}
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold"
             >
               {Array.from({ length: 12 }, (_, i) => i + 1).map(num => (
@@ -8412,7 +8489,7 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
             type="number" 
             min="1"
             max="20"
-            value={ringQuantity}
+            value={isNaN(ringQuantity) ? '' : ringQuantity}
             onChange={(e) => setRingQuantity(parseInt(e.target.value))}
             className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
             required
@@ -8551,7 +8628,7 @@ function UserManagement({ accounts, onAdd, onDelete, onEditPassword }: { account
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Assigned Ring</label>
                 <input 
                   type="number" 
-                  value={assignedRing}
+                  value={isNaN(assignedRing) ? '' : assignedRing}
                   onChange={(e) => setAssignedRing(parseInt(e.target.value))}
                   className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold"
                   min="1"

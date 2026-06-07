@@ -54,9 +54,9 @@ export function AdminMapping({
     try {
       let activeUrl = CATEGORIES_SHEET_URL;
       const event = events.find(e => e.id === selectedEventId);
-      if (event && event.sheetUrl && event.sheetUrl.includes('docs.google.com/spreadsheets')) {
+      if (event && event.sheetUrl) {
         activeUrl = event.sheetUrl;
-        if (!activeUrl.includes('/export?')) {
+        if (activeUrl.includes('docs.google.com/spreadsheets') && !activeUrl.includes('/export?')) {
           activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
         }
       }
@@ -95,9 +95,9 @@ export function AdminMapping({
     try {
       let activeUrl = RESULTS_SHEET_URL;
       const event = events.find(e => e.id === selectedEventId);
-      if (event && event.sheetUrl && event.sheetUrl.includes('docs.google.com/spreadsheets')) {
+      if (event && event.sheetUrl) {
         activeUrl = event.sheetUrl;
-        if (!activeUrl.includes('/export?')) {
+        if (activeUrl.includes('docs.google.com/spreadsheets') && !activeUrl.includes('/export?')) {
           activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
         }
       }
@@ -284,9 +284,22 @@ export function AdminMapping({
   };
 
   const sortedMappings = [...mappings].sort((a, b) => {
-    const aNum = parseInt(a.sourceBout?.replace(/[^0-9]/g, '') || '0');
-    const bNum = parseInt(b.sourceBout?.replace(/[^0-9]/g, '') || '0');
-    return aNum - bNum;
+    const parseBout = (bout: string | number) => {
+      let s = (bout || '').toString().replace(/\s+/g, '').toUpperCase();
+      s = s.replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
+      if (/^[A-Z]/.test(s)) return s;
+      const parsed = parseInt(s.replace(/[^0-9]/g, ''));
+      return isNaN(parsed) ? s : parsed;
+    };
+    const valA = parseBout(a.sourceBout || '');
+    const valB = parseBout(b.sourceBout || '');
+    if (typeof valA === 'number' && typeof valB === 'number') {
+      if (valA !== valB) return valA - valB;
+    } else if (typeof valA === 'string' && typeof valB === 'string') {
+      if (valA !== valB) return valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+    } else if (typeof valA === 'number') return -1;
+    else return 1;
+    return 0;
   });
 
   return (
@@ -475,8 +488,8 @@ export function AdminMapping({
                   </td>
                 </tr>
               ) : (
-                sortedMappings.map((m) => (
-                  <tr key={`${m.id}-${i}`} className="hover:bg-slate-50 transition-colors">
+                sortedMappings.map((m, idx) => (
+                  <tr key={`${m.id}-${idx}`} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
                       <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">{m.eventName || 'Unknown'}</span>
                     </td>

@@ -634,16 +634,42 @@ export function AIBracketSetup({
       
       // Sort mappings by source bout number
       normalizedResult.mappings.sort((a: any, b: any) => {
-        const aNum = parseInt((a.sourceBout || '').toString().replace(/[^0-9]/g, '') || '0');
-        const bNum = parseInt((b.sourceBout || '').toString().replace(/[^0-9]/g, '') || '0');
-        return aNum - bNum;
+        const parseBout = (bout: string | number) => {
+          let s = bout.toString().replace(/\s+/g, '').toUpperCase();
+          s = s.replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
+          if (/^[A-Z]/.test(s)) return s;
+          const parsed = parseInt(s.replace(/[^0-9]/g, ''));
+          return isNaN(parsed) ? s : parsed;
+        };
+        const valA = parseBout(a.sourceBout || '');
+        const valB = parseBout(b.sourceBout || '');
+        if (typeof valA === 'number' && typeof valB === 'number') {
+          if (valA !== valB) return valA - valB;
+        } else if (typeof valA === 'string' && typeof valB === 'string') {
+          if (valA !== valB) return valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+        } else if (typeof valA === 'number') return -1;
+        else return 1;
+        return 0;
       });
 
       // Sort matches by bout number
       normalizedResult.matches.sort((a: any, b: any) => {
-        const aNum = parseInt((a.bout || '').toString().replace(/[^0-9]/g, '') || '0');
-        const bNum = parseInt((b.bout || '').toString().replace(/[^0-9]/g, '') || '0');
-        return aNum - bNum;
+        const parseBout = (bout: string | number) => {
+          let s = bout.toString().replace(/\s+/g, '').toUpperCase();
+          s = s.replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
+          if (/^[A-Z]/.test(s)) return s;
+          const parsed = parseInt(s.replace(/[^0-9]/g, ''));
+          return isNaN(parsed) ? s : parsed;
+        };
+        const valA = parseBout(a.bout || '');
+        const valB = parseBout(b.bout || '');
+        if (typeof valA === 'number' && typeof valB === 'number') {
+          if (valA !== valB) return valA - valB;
+        } else if (typeof valA === 'string' && typeof valB === 'string') {
+          if (valA !== valB) return valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+        } else if (typeof valA === 'number') return -1;
+        else return 1;
+        return 0;
       });
 
       setPreviewData({
@@ -923,9 +949,9 @@ export function AIBracketSetup({
             
             <div className="flex flex-col items-center gap-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg mx-auto">
-                {events.map((e) => (
+                {events.map((e, idx) => (
                   <button
-                    key={`${e.id}-${i}`}
+                    key={`${e.id}-${idx}`}
                     onClick={() => onSelectEvent?.(e.id)}
                     className="p-4 bg-white border border-indigo-100 rounded-2xl text-left hover:border-indigo-400 hover:shadow-lg transition-all group"
                   >
