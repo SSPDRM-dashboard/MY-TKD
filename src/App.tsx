@@ -959,6 +959,7 @@ export default function App() {
   const [showPublicStandbyQueue, setShowPublicStandbyQueue] = useSyncedState<boolean>('tkd_show_public_standby_queue', true);
   const [showInspectionPopupSetting, setShowInspectionPopupSetting] = useSyncedState<boolean>('tkd_show_inspection_popup_setting', true);
   const [publicEventId, setPublicEventId] = useSyncedState<string>('tkd_public_event_id', 'active');
+  const [visibleRingsCount, setVisibleRingsCount] = useSyncedState<number>('tkd_visible_rings_count', 12);
   const [backupData, setBackupData] = useSyncedState<Record<string, { mappings: BoutMapping[], matches: MatchData[] }>>('tkd_backup_data_v3', {});
   const [backupToLoad, setBackupToLoad] = useState<{ mappings: Partial<BoutMapping>[], matches: MatchData[] } | null>(null);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
@@ -2952,7 +2953,7 @@ export default function App() {
   }, [boutQueue, currentEventId]);
 
   const currentRings = React.useMemo(() => {
-    const nonDeleted = rings.filter(r => !r.isDeleted);
+    const nonDeleted = rings.filter(r => !r.isDeleted && r.ringNumber <= visibleRingsCount);
     if (!currentEventId) {
       return nonDeleted.map(r => ({ ...r, currentBout: null, onDeck: null, inTheHole: null }));
     }
@@ -2962,7 +2963,7 @@ export default function App() {
       onDeck: r.onDeck && r.onDeck.eventId === currentEventId ? r.onDeck : null,
       inTheHole: r.inTheHole && r.inTheHole.eventId === currentEventId ? r.inTheHole : null,
     }));
-  }, [rings, currentEventId]);
+  }, [rings, currentEventId, visibleRingsCount]);
 
   const effectivePublicEventId = React.useMemo(() => {
     if (publicEventId === 'active') {
@@ -2977,7 +2978,7 @@ export default function App() {
   }, [boutQueue, effectivePublicEventId]);
 
   const publicRings = React.useMemo(() => {
-    const nonDeleted = rings.filter(r => !r.isDeleted);
+    const nonDeleted = rings.filter(r => !r.isDeleted && r.ringNumber <= visibleRingsCount);
     if (!effectivePublicEventId) {
       return nonDeleted.map(r => ({ ...r, currentBout: null, onDeck: null, inTheHole: null }));
     }
@@ -2987,7 +2988,7 @@ export default function App() {
       onDeck: r.onDeck && r.onDeck.eventId === effectivePublicEventId ? r.onDeck : null,
       inTheHole: r.inTheHole && r.inTheHole.eventId === effectivePublicEventId ? r.inTheHole : null,
     }));
-  }, [rings, effectivePublicEventId]);
+  }, [rings, effectivePublicEventId, visibleRingsCount]);
 
   const publicEventName = React.useMemo(() => {
     if (!effectivePublicEventId) return '';
@@ -3404,7 +3405,7 @@ export default function App() {
           </div>
 
           {activeTab === 'dashboard' && (() => {
-            const nonDeletedRings = rings.filter(r => !r.isDeleted);
+            const nonDeletedRings = rings.filter(r => !r.isDeleted && r.ringNumber <= visibleRingsCount);
             const activeCount = nonDeletedRings.filter(r => r.currentBout).length;
             const selectedRingObj = nonDeletedRings.find(r => r.ringNumber === dashboardSelectedRing) || nonDeletedRings[0] || rings[0];
             const activeDashboardSelectedRing = selectedRingObj ? selectedRingObj.ringNumber : dashboardSelectedRing;
@@ -3719,7 +3720,7 @@ export default function App() {
               </div>
               <div className={user?.role === 'admin' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"}>
                 {user?.role === 'admin' ? (
-                  rings.filter(r => !r.isDeleted).map((ring) => (
+                  rings.filter(r => !r.isDeleted && r.ringNumber <= visibleRingsCount).map((ring) => (
                     <RingCard 
                       key={ring.ringNumber} 
                       ring={ring} 
@@ -3750,7 +3751,7 @@ export default function App() {
                 ) : (
                   <>
                     <div className="lg:col-span-2">
-                      {rings.filter(r => r.ringNumber === Number(user?.assignedRing) && !r.isDeleted).map((ring) => (
+                      {rings.filter(r => r.ringNumber === Number(user?.assignedRing) && !r.isDeleted && r.ringNumber <= visibleRingsCount).map((ring) => (
                         <RingCard 
                           key={ring.ringNumber} 
                           ring={ring} 
@@ -3860,7 +3861,7 @@ export default function App() {
               <TASheet 
                 key="ta-sheet-view"
                 boutQueue={boutQueue} 
-                rings={rings.filter(r => !r.isDeleted)} 
+                rings={rings.filter(r => !r.isDeleted && r.ringNumber <= visibleRingsCount)} 
                 currentEventName={getCurrentEventName()} 
                 currentEventDate={getCurrentEventDate()}
                 currentEventId={currentEventId}
@@ -3880,7 +3881,7 @@ export default function App() {
               <TASheet 
                 key="signature-view"
                 boutQueue={boutQueue} 
-                rings={rings.filter(r => !r.isDeleted)} 
+                rings={rings.filter(r => !r.isDeleted && r.ringNumber <= visibleRingsCount)} 
                 currentEventName={getCurrentEventName()} 
                 currentEventDate={getCurrentEventDate()}
                 currentEventId={currentEventId}
@@ -3962,7 +3963,7 @@ export default function App() {
 
           {activeTab === 'inspection-logs' && (user?.role === 'admin' || user?.role === 'ta') && (
             <div className="max-w-5xl mx-auto">
-              <InspectionLogs boutQueue={boutQueue} rings={rings.filter(r => !r.isDeleted)} matchHistory={matchHistory} boutNumberingMode={boutNumberingMode} currentEventId={currentEventId} />
+              <InspectionLogs boutQueue={boutQueue} rings={rings.filter(r => !r.isDeleted && r.ringNumber <= visibleRingsCount)} matchHistory={matchHistory} boutNumberingMode={boutNumberingMode} currentEventId={currentEventId} />
             </div>
           )}
 
@@ -4170,6 +4171,23 @@ export default function App() {
                         <option value="active">Active Operator Event</option>
                         {events.map((e, i) => (
                           <option key={`${e.id}-${i}`} value={e.id}>{e.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-700 font-sans">Number of Visible Rings</p>
+                        <p className="text-[10px] text-slate-500 font-sans">Choose how many rings are visible across all views (1 to 12)</p>
+                      </div>
+                      <select
+                        value={visibleRingsCount}
+                        onChange={(e) => setVisibleRingsCount(Number(e.target.value))}
+                        className="px-4 py-2 bg-white rounded-xl text-[10px] md:text-xs font-black text-slate-600 border border-slate-200 focus:ring-2 focus:ring-red-500 outline-none w-full sm:w-auto min-w-[200px] cursor-pointer"
+                      >
+                        {Array.from({ length: 12 }, (_, i) => i + 1).map((num) => (
+                          <option key={num} value={num}>
+                            {num} {num === 1 ? 'Ring' : 'Rings'} (1 - {ringNamingMode === 'alphabet' ? String.fromCharCode(64 + num) : num})
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -4867,7 +4885,7 @@ export default function App() {
         <TournamentAssistant 
           currentEventId={currentEventId}
           events={events}
-          rings={rings.filter(r => !r.isDeleted)}
+          rings={rings.filter(r => !r.isDeleted && r.ringNumber <= visibleRingsCount)}
           boutQueue={boutQueue}
           athletes={athletes}
           boutNumberingMode={boutNumberingMode}
