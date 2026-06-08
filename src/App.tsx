@@ -4982,7 +4982,7 @@ function MissingBoutModal({ prompt, onClose, onSubmitReason, onSubmitManual, cat
         <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
           <div>
             <h2 className="text-xl font-black">Queue Empty</h2>
-            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Bout {formatBoutNumber(prompt.ringNumber, prompt.expectedBout, boutNumberingMode)} of {prompt.totalBouts}</p>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Bout {formatBoutNumber(prompt.ringNumber, prompt.expectedBout, boutNumberingMode)} of {formatBoutNumber(prompt.ringNumber, prompt.totalBouts, boutNumberingMode)}</p>
           </div>
         </div>
 
@@ -6062,7 +6062,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
               <span className="font-bold text-sm uppercase tracking-wider block leading-none">Ring {ringName}</span>
               {current && (
                 <span className="text-[26px] font-black text-slate-300 uppercase tracking-widest border border-slate-700 bg-slate-800 rounded-lg px-3 py-1 leading-none">
-                  {formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode)} {ring.totalBouts ? `/ ${ring.totalBouts}` : ''}
+                  {formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode)} {ring.totalBouts ? `/ ${formatBoutNumber(ring.ringNumber, ring.totalBouts, boutNumberingMode)}` : ''}
                 </span>
               )}
             </div>
@@ -6617,7 +6617,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                       </div>
                       {isSessionInProgress && (
                         <p className="text-[9px] text-red-500 font-bold uppercase mt-1 text-center">
-                          Finish current session ({ring.nextBoutNumber - 1}/{ring.totalBouts}) to change
+                          Finish current session ({formatBoutNumber(ring.ringNumber, ring.nextBoutNumber - 1, boutNumberingMode)}/{formatBoutNumber(ring.ringNumber, ring.totalBouts, boutNumberingMode)}) to change
                         </p>
                       )}
                     </>
@@ -7069,12 +7069,12 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                           "flex-1 bg-blue-600/90 flex flex-col justify-center px-4 relative",
                           !isPoomsaeModeCurrent && "border-b border-white/10"
                         )}>
-                          <p className="text-[15px] font-bold text-yellow-200 uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
+                          <p className="text-[15px] font-bold text-white uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
                           <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.blue_name || "") : "---"}</h4>
                         </div>
                         {!isPoomsaeModeCurrent && (
                           <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
-                            <p className="text-[15px] font-bold text-yellow-200 uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
+                            <p className="text-[15px] font-bold text-white uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
                             <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.red_name || "") : "---"}</h4>
                           </div>
                         )}
@@ -7108,7 +7108,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                         isPoomsaeItem ? "col-span-9" : "col-span-5 border-r border-white/10",
                         isRingInactive ? "bg-slate-800" : "bg-blue-600/80"
                       )}>
-                        <span className="text-[13px] font-bold text-yellow-200 uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.blue_club || "")}</span>
+                        <span className="text-[13px] font-bold text-white uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.blue_club || "")}</span>
                         <span className={cn(
                           "text-[16px] font-black uppercase leading-tight break-words whitespace-normal w-full mt-0.5",
                           isRingInactive ? "text-slate-400" : "text-white"
@@ -7127,7 +7127,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                           "col-span-4 flex flex-col justify-center px-3 relative",
                           isRingInactive ? "bg-slate-800" : "bg-red-600/80"
                         )}>
-                          <span className="text-[13px] font-bold text-yellow-200 uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.red_club || "")}</span>
+                          <span className="text-[13px] font-bold text-white uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.red_club || "")}</span>
                           <span className={cn(
                             "text-[16px] font-black uppercase leading-tight break-words whitespace-normal w-full mt-0.5",
                             isRingInactive ? "text-slate-400" : "text-white"
@@ -7335,12 +7335,12 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                             "flex-1 bg-blue-600/90 flex flex-col justify-center px-4 relative",
                             !isPoomsaeModeCurrent && "border-b border-white/10"
                           )}>
-                            <p className="text-[15px] font-bold text-yellow-200 uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
+                            <p className="text-[15px] font-bold text-white uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
                             <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.blue_name || "") : "---"}</h4>
                           </div>
                           {!isPoomsaeModeCurrent && (
                             <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
-                              <p className="text-[15px] font-bold text-yellow-200 uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
+                              <p className="text-[15px] font-bold text-white uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
                               <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.red_name || "") : "---"}</h4>
                             </div>
                           )}
@@ -7471,7 +7471,7 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                         isPoomsaeItem ? "col-span-9" : "col-span-5 border-r border-white/10",
                         isRingInactive ? "bg-slate-800" : "bg-blue-600/80"
                       )}>
-                        <span className="text-[13px] font-bold text-yellow-200 uppercase leading-none">{cleanPlaceholder(b?.data.blue_club || "")}</span>
+                        <span className="text-[13px] font-bold text-white uppercase leading-none">{cleanPlaceholder(b?.data.blue_club || "")}</span>
                         <span className={cn(
                           "text-[16px] font-black uppercase truncate leading-tight",
                           isRingInactive ? "text-slate-400" : "text-white"
@@ -7483,7 +7483,7 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                           "col-span-4 flex flex-col justify-center px-3 relative",
                           isRingInactive ? "bg-slate-800" : "bg-red-600/80"
                         )}>
-                          <span className="text-[13px] font-bold text-yellow-200 uppercase leading-none">{cleanPlaceholder(b?.data.red_club || "")}</span>
+                          <span className="text-[13px] font-bold text-white uppercase leading-none">{cleanPlaceholder(b?.data.red_club || "")}</span>
                           <span className={cn(
                             "text-[16px] font-black uppercase truncate leading-tight",
                             isRingInactive ? "text-slate-400" : "text-white"
@@ -7728,7 +7728,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                         )}>
                           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/20 to-transparent pointer-events-none" />
                           <div className="absolute -right-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">{(!current || !hasPlayers(current)) ? 'BLURRED' : 'BLUE'}</div>
-                          <p className="text-[15px] font-black text-yellow-200 uppercase tracking-[0.2em] mb-1 relative z-10">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
+                          <p className="text-[15px] font-black text-white uppercase tracking-[0.2em] mb-1 relative z-10">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
                           <h4 className={cn(
                             "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
                             getDynamicFontSize(current?.blue_name || "")
@@ -7752,7 +7752,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                           <div className="flex-1 h-full bg-red-600 flex flex-col justify-center px-10 text-right relative overflow-hidden group">
                             <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/20 to-transparent pointer-events-none" />
                             <div className="absolute -left-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">{(!current || !hasPlayers(current)) ? 'BLURRED' : 'RED'}</div>
-                            <p className="text-[15px] font-black text-yellow-200 uppercase tracking-[0.2em] mb-1 relative z-10">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
+                            <p className="text-[15px] font-black text-white uppercase tracking-[0.2em] mb-1 relative z-10">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
                             <h4 className={cn(
                               "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
                               getDynamicFontSize(current?.red_name || "")
@@ -7798,7 +7798,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                           isRingInactive ? "bg-slate-800" : "bg-blue-600/90"
                         )}>
                           {!isRingInactive && <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />}
-                          <p className="text-[13px] font-bold text-yellow-200 uppercase leading-none mb-0.5 relative z-10">
+                          <p className="text-[13px] font-bold text-white uppercase leading-none mb-0.5 relative z-10">
                             {bout ? cleanPlaceholder(bout.data.blue_club) : ""}
                           </p>
                           <p className={cn(
@@ -7826,7 +7826,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                             isRingInactive ? "bg-slate-800" : "bg-red-600/90"
                           )}>
                             {!isRingInactive && <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/10 to-transparent pointer-events-none" />}
-                            <p className="text-[13px] font-bold text-yellow-200 uppercase leading-none mb-0.5 relative z-10">
+                            <p className="text-[13px] font-bold text-white uppercase leading-none mb-0.5 relative z-10">
                               {bout ? cleanPlaceholder(bout.data.red_club) : ""}
                             </p>
                             <p className={cn(
@@ -8095,7 +8095,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
               {showTotalBouts && (
                 <>
                   <span className="mx-1 sm:mx-2 text-white/40">/</span>
-                  <span className="text-xs sm:text-2xl md:text-[30px]">{ring.totalBouts || queueCount || 0}</span>
+                  <span className="text-xs sm:text-2xl md:text-[30px]">{ring.totalBouts ? formatBoutNumber(ring.ringNumber, ring.totalBouts, boutNumberingMode) : (queueCount || 0)}</span>
                 </>
               )}
             </p>
@@ -8124,7 +8124,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                   <p className="text-[18px] sm:text-[26px] md:text-[34px] font-black text-[#00a2e8] leading-tight uppercase tracking-tight break-words mx-auto w-full">
                     {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_name)) : ""}
                   </p>
-                  <p className="text-[#00a2e8] font-black text-[8px] sm:text-sm uppercase tracking-widest leading-snug break-words whitespace-normal w-full">
+                  <p className="text-white font-black text-[8px] sm:text-sm uppercase tracking-widest leading-snug break-words whitespace-normal w-full">
                     {current ? cleanPlaceholder(current.blue_club) : ""}
                   </p>
                 </div>
@@ -8140,7 +8140,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                       <p className="text-[18px] sm:text-[26px] md:text-[34px] font-black text-[#ed1c24] leading-tight uppercase tracking-tight break-words mx-auto w-full">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.red_name)) : ""}
                       </p>
-                      <p className="text-[#ed1c24] font-black text-[8px] sm:text-sm uppercase tracking-widest leading-snug break-words whitespace-normal w-full">
+                      <p className="text-white font-black text-[8px] sm:text-sm uppercase tracking-widest leading-snug break-words whitespace-normal w-full">
                         {current ? cleanPlaceholder(current.red_club) : ""}
                       </p>
                     </div>
@@ -8242,7 +8242,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                       <span className="font-bold text-[#00a2e8] text-[18px] sm:text-[24px] leading-tight whitespace-normal break-words text-left">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_name)) : ""}
                       </span>
-                      <span className="font-bold text-[#00a2e8] text-[9px] sm:text-sm leading-tight whitespace-normal break-words text-left mt-0.5">
+                      <span className="font-bold text-white text-[9px] sm:text-sm leading-tight whitespace-normal break-words text-left mt-0.5">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_club)) : ""}
                       </span>
                     </div>
@@ -8254,7 +8254,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                       <span className="font-bold text-[#ed1c24] text-[18px] sm:text-[24px] leading-tight whitespace-normal break-words text-left">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.red_name)) : ""}
                       </span>
-                      <span className="font-bold text-[#ed1c24] text-[9px] sm:text-sm leading-tight whitespace-normal break-words text-left mt-0.5">
+                      <span className="font-bold text-white text-[9px] sm:text-sm leading-tight whitespace-normal break-words text-left mt-0.5">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.red_club)) : ""}
                       </span>
                     </div>
@@ -8265,7 +8265,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                     <span className="font-bold text-[#00a2e8] text-[18px] sm:text-[24px] leading-tight whitespace-normal break-words text-center">
                       {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_name)) : ""}
                     </span>
-                    <span className="font-bold text-[#00a2e8] text-[9px] sm:text-sm leading-tight whitespace-normal break-words text-center mt-0.5">
+                    <span className="font-bold text-white text-[9px] sm:text-sm leading-tight whitespace-normal break-words text-center mt-0.5">
                       {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_club)) : ""}
                     </span>
                   </div>
@@ -8314,7 +8314,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                             {!isRingInactive && <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-blue-900/10 to-transparent pointer-events-none" />}
                             <p className={cn(
                               "text-[9px] sm:text-[13px] font-bold uppercase leading-normal sm:leading-tight mb-0.5 break-words whitespace-normal",
-                              isRingInactive ? "text-slate-400" : "text-[#00a2e8]"
+                              isRingInactive ? "text-slate-400" : "text-white"
                             )}>
                               {bout ? cleanPlaceholder(bout.data.blue_club) : ""}
                             </p>
@@ -8335,7 +8335,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                               {!isRingInactive && <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-red-900/10 to-transparent pointer-events-none" />}
                               <p className={cn(
                                 "text-[9px] sm:text-[13px] font-bold uppercase leading-normal sm:leading-tight mb-0.5 break-words whitespace-normal",
-                                isRingInactive ? "text-slate-400" : "text-[#ed1c24]"
+                                isRingInactive ? "text-slate-400" : "text-white"
                               )}>
                                 {bout ? cleanPlaceholder(bout.data.red_club) : ""}
                               </p>

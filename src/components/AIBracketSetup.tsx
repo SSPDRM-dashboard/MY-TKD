@@ -20,7 +20,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { MatchData, BoutMapping, EventData, RingStatus } from '../types';
-import { cn, normalizeBoutNumber, formatBoutNumber, isBoutMatch } from '../lib/utils';
+import { cn, normalizeBoutNumber, formatBoutNumber, isBoutMatch, normalizeBoutWithRing } from '../lib/utils';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { handleGlobalQuotaTrigger, isFirestoreQuotaExceeded } from '../App';
 import { db } from '../firebase';
@@ -766,7 +766,7 @@ export function AIBracketSetup({
         });
       });
       
-      // 2. Update Ring Total Bouts (based on matches and mappings to keep ring sizes accurate)
+      // 2. Update Ring Total Bouts (based on matches and mappings to keep ring sizes accurate) AND update active match contents if they exist in the uploaded records
       const ringTotals = new Map<number, number>();
       
       // Helper to get ring from bout prefix or number
@@ -813,15 +813,79 @@ export function AIBracketSetup({
         if (nextNum > (ringTotals.get(nRing) || 0)) ringTotals.set(nRing, nextNum);
       });
 
-      setRings(rings.map(r => {
+      // Update rings (and merge matching newly uploaded details into existing active/on-deck/in-the-hole matches)
+      const updatedRings = rings.map(r => {
+        let ringChanged = false;
+        let currentBout = r.currentBout;
+        let onDeck = r.onDeck;
+        let inTheHole = r.inTheHole;
+        
         const total = ringTotals.get(r.ringNumber);
-        if (total && total > r.totalBouts) {
-          return { ...r, totalBouts: total };
+        const nextMaxTotal = total !== undefined ? total : r.totalBouts;
+        
+        // Match and update currentBout
+        if (currentBout && (!currentBout.eventId || currentBout.eventId === currentEventId)) {
+          const match = previewData.matches.find((m: MatchData) => 
+            Number(m.ring || getRingFromBout(m.bout)) === r.ringNumber && 
+            isBoutMatch(m.bout, currentBout.bout)
+          );
+          if (match) {
+            currentBout = {
+              ...currentBout,
+              ...match,
+              eventId: currentEventId
+            };
+            ringChanged = true;
+          }
+        }
+        
+        // Match and update onDeck
+        if (onDeck && (!onDeck.eventId || onDeck.eventId === currentEventId)) {
+          const match = previewData.matches.find((m: MatchData) => 
+            Number(m.ring || getRingFromBout(m.bout)) === r.ringNumber && 
+            isBoutMatch(m.bout, onDeck.bout)
+          );
+          if (match) {
+            onDeck = {
+              ...onDeck,
+              ...match,
+              eventId: currentEventId
+            };
+            ringChanged = true;
+          }
+        }
+        
+        // Match and update inTheHole
+        if (inTheHole && (!inTheHole.eventId || inTheHole.eventId === currentEventId)) {
+          const match = previewData.matches.find((m: MatchData) => 
+            Number(m.ring || getRingFromBout(m.bout)) === r.ringNumber && 
+            isBoutMatch(m.bout, inTheHole.bout)
+          );
+          if (match) {
+            inTheHole = {
+              ...inTheHole,
+              ...match,
+              eventId: currentEventId
+            };
+            ringChanged = true;
+          }
+        }
+        
+        if (ringChanged || total !== undefined) {
+          return {
+            ...r,
+            totalBouts: nextMaxTotal,
+            currentBout,
+            onDeck,
+            inTheHole
+          };
         }
         return r;
-      }));
+      });
+      localStorage.setItem('tkd_rings', JSON.stringify(updatedRings));
+      setRings(updatedRings);
       
-      // 3. Update Bout Queue
+      // 3. Update Bout Queue (merge newly uploaded matches with existing ones to avoid discarding or duplicate records)
       setBoutQueue(prev => {
         const newBouts = previewData.matches.map(m => ({
           id: Math.random().toString(36).substr(2, 9),
@@ -831,16 +895,35 @@ export function AIBracketSetup({
           }
         }));
         
-        // Filter out matches that already exist (by Bout Number and Ring)
-        const uniqueNewBouts = newBouts.filter(nb => 
-          !prev.some(pb => 
+        const updatedQueue = [...prev];
+        
+        newBouts.forEach(nb => {
+          const existingIndex = updatedQueue.findIndex(pb => 
             pb.data.ring === nb.data.ring && 
-            pb.data.bout.toString() === nb.data.bout.toString() &&
-            pb.data.eventId === currentEventId
-          )
-        );
-
-        return [...prev, ...uniqueNewBouts];
+            pb.data.eventId === currentEventId &&
+            isBoutMatch(pb.data.bout, nb.data.bout)
+          );
+          
+          if (existingIndex !== -1) {
+            // Overwrite details of the existing placeholder match while keeping its unique ID and base properties
+            const existingBout = updatedQueue[existingIndex];
+            updatedQueue[existingIndex] = {
+              ...existingBout,
+              data: {
+                ...existingBout.data,
+                ...nb.data,
+                bout: typeof existingBout.data.bout === 'number' || /^\d+$/.test(existingBout.data.bout.toString())
+                  ? normalizeBoutWithRing(nb.data.bout, nb.data.ring)
+                  : nb.data.bout
+              }
+            };
+          } else {
+            updatedQueue.push(nb);
+          }
+        });
+        
+        localStorage.setItem('tkd_bout_queue', JSON.stringify(updatedQueue));
+        return updatedQueue;
       });
 
       await Promise.all(mappingPromises);
