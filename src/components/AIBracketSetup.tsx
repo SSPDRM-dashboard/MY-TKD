@@ -160,7 +160,9 @@ interface AIBracketSetupProps {
   setRings: (rings: RingStatus[]) => void;
   setBoutQueue: React.Dispatch<React.SetStateAction<{id: string, data: MatchData}[]>>;
   boutNumberingMode: 'numeric' | 'alphanumeric';
-  setBackupMappings: React.Dispatch<React.SetStateAction<Record<string, BoutMapping[]>>>;
+  setBackupData: React.Dispatch<React.SetStateAction<Record<string, { mappings: BoutMapping[], matches: MatchData[] }>>>;
+  backupToLoad?: { mappings: Partial<BoutMapping>[], matches: MatchData[] } | null;
+  clearBackupToLoad?: () => void;
 }
 
 export function AIBracketSetup({ 
@@ -172,7 +174,9 @@ export function AIBracketSetup({
   setRings, 
   setBoutQueue,
   boutNumberingMode,
-  setBackupMappings
+  setBackupData,
+  backupToLoad,
+  clearBackupToLoad
 }: AIBracketSetupProps) {
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -184,6 +188,14 @@ export function AIBracketSetup({
     fileName?: string;
     fileType?: string;
   } | null>(() => {
+    if (backupToLoad && (backupToLoad.mappings.length > 0 || backupToLoad.matches.length > 0)) {
+      return {
+        matches: backupToLoad.matches || [],
+        mappings: backupToLoad.mappings || [],
+        fileName: 'Recovered Bracket Logic',
+        fileType: 'backup'
+      };
+    }
     const key = currentEventId ? `tkd_ai_preview_data_${currentEventId}` : 'tkd_ai_preview_data';
     const saved = localStorage.getItem(key);
     if (saved) {
@@ -218,6 +230,17 @@ export function AIBracketSetup({
     return new Set();
   });
 
+  // Handle backup file loading
+  React.useEffect(() => {
+    if (backupToLoad) {
+      setActivePreviewTab('mappings');
+      if (clearBackupToLoad) {
+        // Clear it on a slight delay so it doesn't trigger Immediate parent re-renders that clash
+        setTimeout(() => clearBackupToLoad(), 100);
+      }
+    }
+  }, [backupToLoad, clearBackupToLoad]);
+
   // Persist state changes
   React.useEffect(() => {
     if (currentEventId) {
@@ -239,7 +262,7 @@ export function AIBracketSetup({
 
   // Load data when event changes
   React.useEffect(() => {
-    if (currentEventId) {
+    if (currentEventId && !backupToLoad) {
       const savedData = localStorage.getItem(`tkd_ai_preview_data_${currentEventId}`);
       if (savedData) {
         try {
@@ -251,6 +274,13 @@ export function AIBracketSetup({
         setPreviewData(null);
       }
 
+      const savedNote = localStorage.getItem(`tkd_ai_admin_note_${currentEventId}`);
+      setAdminNote(savedNote || '');
+
+      const savedPoomsae = localStorage.getItem(`tkd_ai_poomsae_mode_${currentEventId}`);
+      setIsPoomsaeMode(savedPoomsae === 'true');
+    } else if (currentEventId && backupToLoad) {
+      // Just load the note and poomsae mode
       const savedNote = localStorage.getItem(`tkd_ai_admin_note_${currentEventId}`);
       setAdminNote(savedNote || '');
 
@@ -722,7 +752,7 @@ export function AIBracketSetup({
         const matchingMatch = previewData.matches.find((match: MatchData) => 
           isBoutMatch(match.bout, m.sourceBout) || isBoutMatch(match.bout, m.nextBout)
         );
-        const resolvedCategory = matchingMatch ? matchingMatch.category : "Auto-Extracted from File";
+        const resolvedCategory = m.categoryName || (matchingMatch ? matchingMatch.category : "Auto-Extracted from File");
 
         if (isFirestoreQuotaExceeded) return Promise.resolve();
         return addDoc(collection(db, 'event_logic'), {
@@ -819,13 +849,13 @@ export function AIBracketSetup({
       const mappingsByRing: Record<string, BoutMapping[]> = {};
       previewData.mappings.forEach(m => {
         const sourceStr = (m.sourceBout || '').toString();
-        const sRing = getRingFromBout(sourceStr);
+        const sRing = getRingFromBout(sourceStr).toString();
         if (!mappingsByRing[sRing]) mappingsByRing[sRing] = [];
         
         const matchingMatch = previewData.matches.find((match: MatchData) => 
           isBoutMatch(match.bout, m.sourceBout) || isBoutMatch(match.bout, m.nextBout)
         );
-        const resolvedCategory = matchingMatch ? matchingMatch.category : "Auto-Extracted from File";
+        const resolvedCategory = m.categoryName || (matchingMatch ? matchingMatch.category : "Auto-Extracted from File");
         
         mappingsByRing[sRing].push({
            ...m,
@@ -836,12 +866,24 @@ export function AIBracketSetup({
            categoryName: resolvedCategory
         });
       });
+
+      const matchesByRing: Record<string, MatchData[]> = {};
+      previewData.matches.forEach(m => {
+        const boutStr = (m.bout || '').toString();
+        const sRing = (m.ring || getRingFromBout(boutStr)).toString();
+        if (!matchesByRing[sRing]) matchesByRing[sRing] = [];
+        matchesByRing[sRing].push(m);
+      });
       
-      setBackupMappings(prev => {
+      setBackupData(prev => {
         const next = { ...prev };
-        Object.keys(mappingsByRing).forEach(sRing => {
+        const allRings = new Set([...Object.keys(mappingsByRing), ...Object.keys(matchesByRing)]);
+        allRings.forEach(sRing => {
            const key = `${currentEventId}_${sRing}`;
-           next[key] = mappingsByRing[sRing];
+           next[key] = {
+             mappings: mappingsByRing[sRing] || [],
+             matches: matchesByRing[sRing] || []
+           };
         });
         return next;
       });

@@ -3,11 +3,13 @@ import { BoutMapping, MatchData, MatchHistoryItem } from '../types';
 import { formatBoutNumber, normalizeBoutNumber, getBoutNumber, parseRingNumber } from '../lib/utils';
 import { Layers } from 'lucide-react';
 
-interface BoutChartProps {
+export interface BoutChartProps {
   mappings: BoutMapping[];
   boutQueue: {id: string, data: MatchData}[];
   matchHistory: MatchHistoryItem[];
   boutNumberingMode?: 'numeric' | 'alphanumeric';
+  onUpdateBoutNumber?: (oldBoutId: string, newBoutId: string) => void;
+  onUpdateBoutName?: (boutId: string, color: 'blue' | 'red', newName: string) => void;
 }
 
 interface BracketNode {
@@ -20,8 +22,13 @@ interface BracketNode {
   y: number;
 }
 
-export function BoutChart({ mappings, boutQueue, matchHistory, boutNumberingMode = 'alphanumeric' }: BoutChartProps) {
+export function BoutChart({ mappings, boutQueue, matchHistory, boutNumberingMode = 'alphanumeric', onUpdateBoutNumber, onUpdateBoutName }: BoutChartProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState<string>('');
+  const [editingNameNodeId, setEditingNameNodeId] = useState<string | null>(null);
+  const [editingNameColor, setEditingNameColor] = useState<'blue' | 'red' | null>(null);
+  const [editNameValue, setEditNameValue] = useState<string>('');
 
   const categories = useMemo(() => {
     const cats = new Set<string>();
@@ -193,7 +200,7 @@ export function BoutChart({ mappings, boutQueue, matchHistory, boutNumberingMode
                   <p className="text-slate-500 font-bold p-8 text-center">No brackets found for this category.</p>
                ) : (
                   <div style={{ width: Math.max(width, 600), height: Math.max(height, 400), position: 'relative' }}>
-                     <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }}>
+                     <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}>
                         {edges.map((e, i) => {
                            // Define Path. Simple curve or right-angle lines.
                            // Standard bracket line: Horizontal, vertical, horizontal.
@@ -232,20 +239,130 @@ export function BoutChart({ mappings, boutQueue, matchHistory, boutNumberingMode
                              style={{ left: node.x, top: node.y, width: 220, height: 80 }}
                           >
                              <div className="bg-slate-100 border-b border-slate-200 px-2 py-1 flex justify-between items-center text-[10px] font-black uppercase text-slate-500">
-                                <span>Bout {formatBoutNumber(nodeRing, node.id, boutNumberingMode)}</span>
+                                {editingNodeId === node.id ? (
+                                   <input
+                                      autoFocus
+                                      type="text"
+                                      className="border border-blue-400 bg-white rounded px-1 w-20 outline-none text-black"
+                                      value={editValue}
+                                      onChange={(e) => setEditValue(e.target.value)}
+                                      onKeyDown={(e) => {
+                                         if (e.key === 'Enter') {
+                                            if (editValue.trim() && editValue !== node.id) {
+                                               onUpdateBoutNumber?.(node.id, editValue.trim());
+                                            }
+                                            setEditingNodeId(null);
+                                         }
+                                         if (e.key === 'Escape') setEditingNodeId(null);
+                                      }}
+                                      onBlur={() => {
+                                         if (editValue.trim() && editValue !== node.id) {
+                                            onUpdateBoutNumber?.(node.id, editValue.trim());
+                                         }
+                                         setEditingNodeId(null);
+                                      }}
+                                   />
+                                ) : (
+                                   <span 
+                                      className="cursor-pointer hover:text-blue-600 transition-colors"
+                                      onClick={() => {
+                                         setEditingNodeId(node.id);
+                                         setEditValue(node.id); // Or formatBoutNumber if you want to edit formatted? Best to edit raw ID
+                                      }}
+                                      title="Click to edit bout number"
+                                   >
+                                      Bout {formatBoutNumber(nodeRing, node.id, boutNumberingMode)}
+                                   </span>
+                                )}
                                 {winner && <span className="text-green-600">Completed</span>}
                              </div>
                              <div className="flex-1 flex flex-col justify-center">
                                 <div className={`flex justify-between items-center px-2 py-1 ${winner === 'Blue' ? 'font-bold bg-blue-50 text-blue-700' : 'text-slate-700'}`}>
-                                   <span className="truncate w-full pr-2">
-                                      {m ? cleanName(m.blue_name) || <span className="italic text-slate-300">TBD</span> : <span className="italic text-slate-300">Unknown</span>}
-                                   </span>
+                                   {editingNameNodeId === node.id && editingNameColor === 'blue' ? (
+                                      <input
+                                         autoFocus
+                                         type="text"
+                                         className="border border-blue-400 bg-white rounded px-1 w-full outline-none text-black text-xs"
+                                         value={editNameValue}
+                                         onChange={(e) => setEditNameValue(e.target.value)}
+                                         onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                               if (editNameValue.trim() !== (m?.blue_name || '')) {
+                                                  onUpdateBoutName?.(node.id, 'blue', editNameValue.trim());
+                                               }
+                                               setEditingNameNodeId(null);
+                                               setEditingNameColor(null);
+                                            }
+                                            if (e.key === 'Escape') {
+                                               setEditingNameNodeId(null);
+                                               setEditingNameColor(null);
+                                            }
+                                         }}
+                                         onBlur={() => {
+                                            if (editNameValue.trim() !== (m?.blue_name || '')) {
+                                               onUpdateBoutName?.(node.id, 'blue', editNameValue.trim());
+                                            }
+                                            setEditingNameNodeId(null);
+                                            setEditingNameColor(null);
+                                         }}
+                                      />
+                                   ) : (
+                                      <span 
+                                         className="truncate w-full pr-2 cursor-pointer hover:bg-slate-200 hover:text-slate-900 transition-colors"
+                                         onClick={() => {
+                                            setEditingNameNodeId(node.id);
+                                            setEditingNameColor('blue');
+                                            setEditNameValue(m?.blue_name || '');
+                                         }}
+                                         title="Click to edit name"
+                                      >
+                                         {m ? cleanName(m.blue_name) || <span className="italic text-slate-300">TBD</span> : <span className="italic text-slate-300">Unknown</span>}
+                                      </span>
+                                   )}
                                 </div>
                                 <div className="border-t border-slate-100"></div>
                                 <div className={`flex justify-between items-center px-2 py-1 ${winner === 'Red' ? 'font-bold bg-red-50 text-red-700' : 'text-slate-700'}`}>
-                                   <span className="truncate w-full pr-2">
-                                      {m ? cleanName(m.red_name) || <span className="italic text-slate-300">TBD</span> : <span className="italic text-slate-300">Unknown</span>}
-                                   </span>
+                                   {editingNameNodeId === node.id && editingNameColor === 'red' ? (
+                                      <input
+                                         autoFocus
+                                         type="text"
+                                         className="border border-red-400 bg-white rounded px-1 w-full outline-none text-black text-xs"
+                                         value={editNameValue}
+                                         onChange={(e) => setEditNameValue(e.target.value)}
+                                         onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                               if (editNameValue.trim() !== (m?.red_name || '')) {
+                                                  onUpdateBoutName?.(node.id, 'red', editNameValue.trim());
+                                               }
+                                               setEditingNameNodeId(null);
+                                               setEditingNameColor(null);
+                                            }
+                                            if (e.key === 'Escape') {
+                                               setEditingNameNodeId(null);
+                                               setEditingNameColor(null);
+                                            }
+                                         }}
+                                         onBlur={() => {
+                                            if (editNameValue.trim() !== (m?.red_name || '')) {
+                                               onUpdateBoutName?.(node.id, 'red', editNameValue.trim());
+                                            }
+                                            setEditingNameNodeId(null);
+                                            setEditingNameColor(null);
+                                         }}
+                                      />
+                                   ) : (
+                                      <span 
+                                         className="truncate w-full pr-2 cursor-pointer hover:bg-slate-200 hover:text-slate-900 transition-colors"
+                                         onClick={() => {
+                                            setEditingNameNodeId(node.id);
+                                            setEditingNameColor('red');
+                                            setEditNameValue(m?.red_name || '');
+                                         }}
+                                         title="Click to edit name"
+                                      >
+                                         {m ? cleanName(m.red_name) || <span className="italic text-slate-300">TBD</span> : <span className="italic text-slate-300">Unknown</span>}
+                                      </span>
+                                   )}
                                 </div>
                              </div>
                           </div>

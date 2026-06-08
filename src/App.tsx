@@ -1073,7 +1073,8 @@ export default function App() {
   const [showPublicStandbyQueue, setShowPublicStandbyQueue] = useSyncedState<boolean>('tkd_show_public_standby_queue', true);
   const [showInspectionPopupSetting, setShowInspectionPopupSetting] = useSyncedState<boolean>('tkd_show_inspection_popup_setting', true);
   const [publicEventId, setPublicEventId] = useSyncedState<string>('tkd_public_event_id', 'active');
-  const [backupMappings, setBackupMappings] = useSyncedState<Record<string, BoutMapping[]>>('tkd_backup_mappings_v2', {});
+  const [backupData, setBackupData] = useSyncedState<Record<string, { mappings: BoutMapping[], matches: MatchData[] }>>('tkd_backup_data_v3', {});
+  const [backupToLoad, setBackupToLoad] = useState<{ mappings: Partial<BoutMapping>[], matches: MatchData[] } | null>(null);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
   const [showRebootModal, setShowRebootModal] = useState(false);
 
@@ -1616,6 +1617,142 @@ export default function App() {
     // Always close the prompt after recording a reason.
     // If there's no next bout in the queue, the ring will just become inactive.
     setMissingBoutPrompt(null);
+  };
+
+  const handleUpdateBoutNumberFromBracket = async (oldBoutId: string, newBoutId: string) => {
+    // Determine the ring number from newBoutId if possible, or keep the old one?
+    // Wait, oldBoutId looks like 'E09', newBoutId looks like 'E11'.
+    // The bout property is 'E09'. We need to update it to 'E11'.
+    
+    // 1. Update matching bout in boutQueue
+    let oldBoutRing = 1;
+    let modifiedItems: MatchData[] = [];
+    
+    // We compute the new queue directly using the current boutQueue state, so we have immediate access to modifiedItems
+    const updatedQueue = boutQueue.map(item => {
+      const itemBout = normalizeBoutNumber(item.data.bout.toString());
+      const oldBoutNorm = normalizeBoutNumber(oldBoutId);
+      
+      let newItem = { ...item };
+      let modified = false;
+
+      if (itemBout === oldBoutNorm) {
+        // This is the bout being renamed
+        newItem.data = { ...newItem.data, bout: newBoutId };
+        oldBoutRing = item.data.ring;
+        modified = true;
+      }
+
+      // 2. Update dependent future matches
+      const oldWinnerPlaceholderStr = `WINNER OF ${oldBoutId.toUpperCase()}`;
+      const oldWinnerPlaceholderNorm = `WINNER OF ${oldBoutNorm.toUpperCase()}`;
+      
+      if (newItem.data.blue_name && (newItem.data.blue_name.toUpperCase().includes(oldWinnerPlaceholderStr) || newItem.data.blue_name.toUpperCase().includes(oldWinnerPlaceholderNorm))) {
+         newItem.data = { ...newItem.data, blue_name: newItem.data.blue_name.replace(new RegExp(`WINNER OF ${oldBoutId}`, 'i'), `WINNER OF ${newBoutId}`).replace(new RegExp(`WINNER OF ${oldBoutNorm}`, 'i'), `WINNER OF ${newBoutId}`) };
+         modified = true;
+      }
+      if (newItem.data.red_name && (newItem.data.red_name.toUpperCase().includes(oldWinnerPlaceholderStr) || newItem.data.red_name.toUpperCase().includes(oldWinnerPlaceholderNorm))) {
+         newItem.data = { ...newItem.data, red_name: newItem.data.red_name.replace(new RegExp(`WINNER OF ${oldBoutId}`, 'i'), `WINNER OF ${newBoutId}`).replace(new RegExp(`WINNER OF ${oldBoutNorm}`, 'i'), `WINNER OF ${newBoutId}`) };
+         modified = true;
+      }
+      
+      if (modified) modifiedItems.push(newItem.data);
+      return modified ? newItem : item;
+    });
+
+    // 3. Sort chronologically by their ID sequence
+    updatedQueue.sort((a, b) => String(a.data.bout).localeCompare(String(b.data.bout)));
+    
+    setBoutQueue(updatedQueue);
+    localStorage.setItem('tkd_bout_queue', JSON.stringify(updatedQueue));
+
+    // 4. Update Mappings
+    if (currentEventId) {
+       // Search local mappings for sourceBout or nextBout
+       setMappings(prev => {
+          return prev.map(m => {
+             let mChanged = false;
+             let mObj = { ...m };
+             if (normalizeBoutNumber(m.sourceBout) === normalizeBoutNumber(oldBoutId)) {
+                mObj.sourceBout = newBoutId;
+                mChanged = true;
+             }
+             if (normalizeBoutNumber(m.nextBout) === normalizeBoutNumber(oldBoutId)) {
+                mObj.nextBout = newBoutId;
+                mChanged = true;
+             }
+             if (mChanged) {
+                // Also update in firestore
+                if (!isFirestoreQuotaExceeded) {
+                   setDoc(doc(db, 'event_logic', m.id), mObj).catch(() => {});
+                }
+             }
+             return mChanged ? mObj : m;
+          });
+       });
+    }
+
+    // 5. Trigger broadcast to Firebase/Sheets if needed
+    // The handleBoutUpdate can update sheets
+    setTimeout(() => {
+       if (googleSheetUrl) {
+           modifiedItems.forEach(updatedQueueItem => {
+               updateBoutDetailsInGoogleSheets(
+                  googleSheetUrl, 
+                  updatedQueueItem.ring, // Use its own ring or oldBoutRing? Safe to use its current ring
+                  updatedQueueItem.bout, 
+                  updatedQueueItem.blue_name || '',
+                  updatedQueueItem.blue_club || '',
+                  updatedQueueItem.red_name || '',
+                  updatedQueueItem.red_club || '',
+                  getCurrentEventName()
+               ).catch(console.error);
+           });
+       }
+       window.dispatchEvent(new CustomEvent('tkd_force_propagate_winners'));
+    }, 500);
+  };
+
+  const handleUpdateBoutNameFromBracket = async (boutId: string, color: 'blue' | 'red', newName: string) => {
+    let oldBoutRing = 1;
+    let modifiedItem: MatchData | null = null;
+    
+    const updatedQueue = boutQueue.map(item => {
+      const itemBout = normalizeBoutNumber(item.data.bout.toString());
+      const targetBoutNorm = normalizeBoutNumber(boutId);
+      
+      let newItem = { ...item };
+      
+      if (itemBout === targetBoutNorm) {
+        if (color === 'blue') {
+          newItem.data = { ...newItem.data, blue_name: newName };
+        } else {
+          newItem.data = { ...newItem.data, red_name: newName };
+        }
+        modifiedItem = newItem.data;
+        return newItem;
+      }
+      return item;
+    });
+
+    setBoutQueue(updatedQueue);
+    localStorage.setItem('tkd_bout_queue', JSON.stringify(updatedQueue));
+    
+    setTimeout(() => {
+       if (googleSheetUrl && modifiedItem) {
+           updateBoutDetailsInGoogleSheets(
+              googleSheetUrl, 
+              modifiedItem.ring, 
+              modifiedItem.bout, 
+              modifiedItem.blue_name || '',
+              modifiedItem.blue_club || '',
+              modifiedItem.red_name || '',
+              modifiedItem.red_club || '',
+              getCurrentEventName()
+           ).catch(console.error);
+       }
+       window.dispatchEvent(new CustomEvent('tkd_force_propagate_winners'));
+    }, 500);
   };
 
   const handleUpdateMatchInspection = async (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean, signature?: string, checklist?: string[]) => {
@@ -3272,7 +3409,7 @@ export default function App() {
                           <Database size={20} className="text-amber-600" />
                           Backup Mapping Recovery
                         </h3>
-                        <p className="text-xs text-slate-500 mt-0.5">Click a ring to immediately restore its AI bracket mappings to the system.</p>
+                        <p className="text-xs text-slate-500 mt-0.5">Click a ring to recover and review its previous bracket logic in AI Setup.</p>
                       </div>
                     </div>
                     
@@ -3280,37 +3417,28 @@ export default function App() {
                       {Array.from({ length: 12 }, (_, i) => {
                         const ringNum = i + 1;
                         const groupKey = `${currentEventId}_${ringNum}`;
-                        const hasBackup = backupMappings && backupMappings[groupKey] && backupMappings[groupKey].length > 0;
+                        const hasBackup = backupData && backupData[groupKey] && backupData[groupKey].mappings && backupData[groupKey].mappings.length > 0;
                         
                         return (
                           <button
                             key={ringNum}
                             type="button"
-                            disabled={!hasBackup || isSyncing}
+                            disabled={isSyncing}
                             onClick={async () => {
-                              if (!hasBackup || !currentEventId) return;
-                              if (window.confirm(`Restore ${backupMappings[groupKey].length} AI mappings for Ring ${ringNamingMode === 'alphabet' ? String.fromCharCode(64 + ringNum) : ringNum} to the system?`)) {
-                                 try {
-                                   setIsSyncing(true);
-                                   const promises = backupMappings[groupKey].map(m => addDoc(collection(db, 'event_logic'), {
-                                      ...m,
-                                      createdAt: serverTimestamp()
-                                   }));
-                                   await Promise.all(promises);
-                                   alert(`Successfully restored mappings for Ring ${ringNamingMode === 'alphabet' ? String.fromCharCode(64 + ringNum) : ringNum}!`);
-                                 } catch (e: any) {
-                                   console.error("Restore mapping error:", e);
-                                   alert("Failed to restore: " + e.message);
-                                 } finally {
-                                   setIsSyncing(false);
-                                 }
+                              if (!currentEventId) return;
+                              const toLoad = backupData[groupKey] || { mappings: [], matches: [] };
+                              if (toLoad.mappings.length === 0) {
+                                alert("No backup mappings found for this ring.");
+                                return;
                               }
+                              setBackupToLoad(toLoad);
+                              setActiveTab('ai-setup');
                             }}
                             className={cn(
                               "flex-1 min-w-[70px] h-12 flex flex-col items-center justify-center rounded-2xl border text-xs font-black transition-all duration-200 shadow-sm relative",
-                              hasBackup
-                                ? "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 cursor-pointer"
-                                : "bg-slate-50 border-slate-100 text-slate-300 cursor-not-allowed hidden lg:flex"
+                              hasBackup 
+                                ? "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
+                                : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 flex"
                             )}
                           >
                             <span className="text-[9px] opacity-75 font-bold leading-none uppercase">Ring</span>
@@ -3795,7 +3923,9 @@ export default function App() {
               setRings={setRings}
               setBoutQueue={setBoutQueue}
               boutNumberingMode={boutNumberingMode}
-              setBackupMappings={setBackupMappings}
+              setBackupData={setBackupData}
+              backupToLoad={backupToLoad}
+              clearBackupToLoad={() => setBackupToLoad(null)}
             />
           )}
 
@@ -3806,6 +3936,8 @@ export default function App() {
                   boutQueue={boutQueue}
                   matchHistory={matchHistory}
                   boutNumberingMode={boutNumberingMode}
+                  onUpdateBoutNumber={handleUpdateBoutNumberFromBracket}
+                  onUpdateBoutName={handleUpdateBoutNameFromBracket}
                />
             </div>
           )}
@@ -7848,13 +7980,13 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
   
   return (
     <div className="bg-slate-800 border border-slate-700 rounded-xl md:rounded-3xl overflow-hidden shadow-2xl">
-      <div className="p-2 sm:p-4 bg-slate-700/50 flex items-center justify-between">
-        <div className="flex items-center gap-1.5 sm:gap-4">
+      <div className="p-2 sm:p-4 bg-slate-700/50 flex items-center relative">
+        <div className="flex items-center gap-1.5 sm:gap-4 z-10 relative">
           <div className="w-8 h-8 sm:w-12 sm:h-12 bg-red-600 rounded-lg sm:rounded-2xl flex items-center justify-center font-black text-sm sm:text-xl shadow-lg shadow-red-900/20">
             {ringName}
           </div>
           <div>
-            <h4 className="font-black text-xs sm:text-[20px] uppercase tracking-wider sm:tracking-widest text-white">Ring {ringName}</h4>
+            <h4 className="font-black text-xs sm:text-[20px] uppercase tracking-wider sm:tracking-widest text-white mt-0">Ring {ringName}</h4>
             {!isRingInactive && (
               <div className="flex items-center gap-1.5">
                 <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-green-500 rounded-full animate-pulse" />
@@ -7864,8 +7996,8 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
           </div>
         </div>
         {current && (
-          <div className="text-right">
-            <p className="text-base sm:text-3xl md:text-[40px] font-black text-white leading-none">
+          <div className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center pointer-events-none">
+            <p className="text-xl sm:text-3xl md:text-[40px] font-black text-white leading-none drop-shadow-md pointer-events-auto">
               {hasPlayers(current) ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
               {showTotalBouts && (
                 <>
