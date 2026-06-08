@@ -118,6 +118,28 @@ export function isBoutMatch(bout1: string | number, bout2: string | number): boo
     // If one is < 1000 and the other is exactly (Ring * 1000) + that number
     if (num1 < 1000 && num2 >= 1000 && num2 % 1000 === num1) return true;
     if (num2 < 1000 && num1 >= 1000 && num1 % 1000 === num2) return true;
+    
+    // Support lenient comparison if one starts with B/b (Bout shorthand) and they share the same relative remainder (mod 1000)
+    // For example: D03 (4003) vs B03 or b03 (2003)
+    const originalStr1 = bout1.toString().toUpperCase().trim();
+    const originalStr2 = bout2.toString().toUpperCase().trim();
+    
+    // If they have different explicit genuine ring prefixes, they are NOT a match
+    const letter1Match = originalStr1.match(/^([A-Z])/);
+    const letter2Match = originalStr2.match(/^([A-Z])/);
+    const isGenuineRingBout1 = /^[A-Z]\d+/.test(originalStr1);
+    const isGenuineRingBout2 = /^[A-Z]\d+/.test(originalStr2);
+    if (letter1Match && letter2Match && isGenuineRingBout1 && isGenuineRingBout2) {
+      if (letter1Match[1] !== letter2Match[1]) {
+        return false;
+      }
+    }
+
+    const startsWithB1 = originalStr1.startsWith('B');
+    const startsWithB2 = originalStr2.startsWith('B');
+    if ((startsWithB1 || startsWithB2) && num1 >= 1000 && num2 >= 1000) {
+      if (num1 % 1000 === num2 % 1000) return true;
+    }
   }
   
   return false;
@@ -129,6 +151,19 @@ export function normalizeBoutWithRing(bout: string | number, ringNum: number): s
   
   // Normalize O to 0
   s = s.replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
+  
+  // Align letters to the current ring's expected letter prefix if they don't match
+  if (ringNum >= 1 && ringNum <= 12) {
+    const expectedPrefix = String.fromCharCode(64 + ringNum);
+    const letterPrefixMatch = s.match(/^([A-Z])(\d+)([A-Z]*)$/);
+    if (letterPrefixMatch) {
+      const currentPrefix = letterPrefixMatch[1];
+      if (currentPrefix !== expectedPrefix) {
+        // Correct prefix to align with expected letter prefix (e.g., B03 -> D03 in Ring 4)
+        s = expectedPrefix + s.substring(1);
+      }
+    }
+  }
   
   // If it already has a letter, use standard normalization
   if (/^[A-Z]/.test(s)) return normalizeBoutNumber(s);

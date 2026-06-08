@@ -1175,9 +1175,11 @@ export default function App() {
         // Check if bout already exists in queue or rings
         const existsInQueue = boutQueue.some(q => q.data.eventId === currentEventId && normalizeBoutWithRing(q.data.bout, q.data.ring) === boutNo);
         const existsInRings = rings.some(r => 
-          (r.currentBout && r.currentBout.eventId === currentEventId && normalizeBoutWithRing(r.currentBout.bout, r.ringNumber) === boutNo) ||
-          (r.onDeck && r.onDeck.eventId === currentEventId && normalizeBoutWithRing(r.onDeck.bout, r.ringNumber) === boutNo) ||
-          (r.inTheHole && r.inTheHole.eventId === currentEventId && normalizeBoutWithRing(r.inTheHole.bout, r.ringNumber) === boutNo)
+          !r.isDeleted && (
+            (r.currentBout && r.currentBout.eventId === currentEventId && normalizeBoutWithRing(r.currentBout.bout, r.ringNumber) === boutNo) ||
+            (r.onDeck && r.onDeck.eventId === currentEventId && normalizeBoutWithRing(r.onDeck.bout, r.ringNumber) === boutNo) ||
+            (r.inTheHole && r.inTheHole.eventId === currentEventId && normalizeBoutWithRing(r.inTheHole.bout, r.ringNumber) === boutNo)
+          )
         );
         const existsInHistory = matchHistory.some(h => normalizeBoutWithRing(h.bout, ringNo) === boutNo && h.eventId === currentEventId);
         return !existsInQueue && !existsInRings && !existsInHistory;
@@ -1261,9 +1263,11 @@ export default function App() {
         const boutNo = normalizeBoutWithRing(row[3]?.trim(), ringNo);
         const existsInQueue = boutQueue.some(q => q.data.eventId === currentEventId && normalizeBoutWithRing(q.data.bout, q.data.ring) === boutNo);
         const existsInRings = rings.some(r => 
-          (r.currentBout && r.currentBout.eventId === currentEventId && normalizeBoutWithRing(r.currentBout.bout, r.ringNumber) === boutNo) ||
-          (r.onDeck && r.onDeck.eventId === currentEventId && normalizeBoutWithRing(r.onDeck.bout, r.ringNumber) === boutNo) ||
-          (r.inTheHole && r.inTheHole.eventId === currentEventId && normalizeBoutWithRing(r.inTheHole.bout, r.ringNumber) === boutNo)
+          !r.isDeleted && (
+            (r.currentBout && r.currentBout.eventId === currentEventId && normalizeBoutWithRing(r.currentBout.bout, r.ringNumber) === boutNo) ||
+            (r.onDeck && r.onDeck.eventId === currentEventId && normalizeBoutWithRing(r.onDeck.bout, r.ringNumber) === boutNo) ||
+            (r.inTheHole && r.inTheHole.eventId === currentEventId && normalizeBoutWithRing(r.inTheHole.bout, r.ringNumber) === boutNo)
+          )
         );
         const existsInHistory = matchHistory.some(h => normalizeBoutWithRing(h.bout, ringNo) === boutNo && h.eventId === currentEventId);
         return !existsInQueue && !existsInRings && !existsInHistory;
@@ -2095,7 +2099,7 @@ export default function App() {
       });
 
       // Also save to Firestore
-      const historyId = `${currentEventId}_${boutNumber}`;
+      const historyId = `${currentEventId}_${normalizeBoutNumber(boutNumber)}`;
       const toSave: any = {
         ...historyItem,
         syncedAt: serverTimestamp()
@@ -2736,7 +2740,22 @@ export default function App() {
 
   const addRing = (ringNumber: number) => {
     setRings(prev => {
-      if (prev.some(r => r.ringNumber === ringNumber)) return prev;
+      const existingIndex = prev.findIndex(r => r.ringNumber === ringNumber);
+      if (existingIndex >= 0) {
+        if (prev[existingIndex].isDeleted) {
+          const updated = prev.map(r => r.ringNumber === ringNumber ? { 
+            ...r, 
+            isDeleted: false,
+            currentBout: null,
+            onDeck: null,
+            inTheHole: null,
+            nextBoutNumber: 1 
+          } : r);
+          localStorage.setItem('tkd_rings', JSON.stringify(updated));
+          return updated;
+        }
+        return prev;
+      }
       const newRing: RingStatus = {
         ringNumber: ringNumber,
         currentBout: null,
@@ -2752,7 +2771,7 @@ export default function App() {
 
   const deleteRing = (ringNumber: number) => {
     setRings(prev => {
-      const next = prev.filter(r => r.ringNumber !== ringNumber);
+      const next = prev.map(r => r.ringNumber === ringNumber ? { ...r, isDeleted: true } : r);
       localStorage.setItem('tkd_rings', JSON.stringify(next));
       return next;
     });
@@ -2933,10 +2952,11 @@ export default function App() {
   }, [boutQueue, currentEventId]);
 
   const currentRings = React.useMemo(() => {
+    const nonDeleted = rings.filter(r => !r.isDeleted);
     if (!currentEventId) {
-      return rings.map(r => ({ ...r, currentBout: null, onDeck: null, inTheHole: null }));
+      return nonDeleted.map(r => ({ ...r, currentBout: null, onDeck: null, inTheHole: null }));
     }
-    return rings.map(r => ({
+    return nonDeleted.map(r => ({
       ...r,
       currentBout: r.currentBout && r.currentBout.eventId === currentEventId ? r.currentBout : null,
       onDeck: r.onDeck && r.onDeck.eventId === currentEventId ? r.onDeck : null,
@@ -2957,10 +2977,11 @@ export default function App() {
   }, [boutQueue, effectivePublicEventId]);
 
   const publicRings = React.useMemo(() => {
+    const nonDeleted = rings.filter(r => !r.isDeleted);
     if (!effectivePublicEventId) {
-      return rings.map(r => ({ ...r, currentBout: null, onDeck: null, inTheHole: null }));
+      return nonDeleted.map(r => ({ ...r, currentBout: null, onDeck: null, inTheHole: null }));
     }
-    return rings.map(r => ({
+    return nonDeleted.map(r => ({
       ...r,
       currentBout: r.currentBout && r.currentBout.eventId === effectivePublicEventId ? r.currentBout : null,
       onDeck: r.onDeck && r.onDeck.eventId === effectivePublicEventId ? r.onDeck : null,
@@ -3383,8 +3404,10 @@ export default function App() {
           </div>
 
           {activeTab === 'dashboard' && (() => {
-            const activeCount = rings.filter(r => r.currentBout).length;
-            const selectedRingObj = rings.find(r => r.ringNumber === dashboardSelectedRing) || rings[0];
+            const nonDeletedRings = rings.filter(r => !r.isDeleted);
+            const activeCount = nonDeletedRings.filter(r => r.currentBout).length;
+            const selectedRingObj = nonDeletedRings.find(r => r.ringNumber === dashboardSelectedRing) || nonDeletedRings[0] || rings[0];
+            const activeDashboardSelectedRing = selectedRingObj ? selectedRingObj.ringNumber : dashboardSelectedRing;
 
             return (
               <>
@@ -3401,8 +3424,8 @@ export default function App() {
                     </div>
                     
                     <div className="flex items-center gap-2 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-none flex-nowrap lg:flex-wrap">
-                      {Array.from({ length: 12 }, (_, i) => {
-                        const ringNum = i + 1;
+                      {nonDeletedRings.map((ringObj) => {
+                        const ringNum = ringObj.ringNumber;
                         const groupKey = `${currentEventId}_${ringNum}`;
                         const hasBackup = backupData && backupData[groupKey] && backupData[groupKey].mappings && backupData[groupKey].mappings.length > 0;
                         
@@ -3459,11 +3482,10 @@ export default function App() {
                   </div>
                   
                   <div className="flex items-center gap-2 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-none flex-nowrap lg:flex-wrap">
-                    {Array.from({ length: 12 }, (_, i) => {
-                      const ringNum = i + 1;
-                      const ringObj = rings.find(r => r.ringNumber === ringNum);
-                      const isRingActive = ringObj && !!ringObj.currentBout;
-                      const isSelected = dashboardSelectedRing === ringNum;
+                    {nonDeletedRings.map((ringObj) => {
+                      const ringNum = ringObj.ringNumber;
+                      const isRingActive = !!ringObj.currentBout;
+                      const isSelected = activeDashboardSelectedRing === ringNum;
                       
                       return (
                         <button
@@ -3495,7 +3517,7 @@ export default function App() {
                     <div className="flex items-center justify-between">
                       <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
                         <LayoutDashboard size={20} className="text-red-600" />
-                        Active Ring Overview (Ring {getRingName(dashboardSelectedRing)})
+                        Active Ring Overview (Ring {getRingName(activeDashboardSelectedRing)})
                       </h3>
                       <div className="flex items-center gap-2">
                         {selectedRingObj.currentBout ? (
@@ -3553,18 +3575,18 @@ export default function App() {
                       <div className="flex items-center justify-between">
                         <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
                           <Calendar size={20} className="text-red-600" />
-                          Upcoming Bouts (Ring {getRingName(dashboardSelectedRing)})
+                          Upcoming Bouts (Ring {getRingName(activeDashboardSelectedRing)})
                         </h3>
                         <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full">
-                          {getFilteredQueue(dashboardSelectedRing).length}
+                          {getFilteredQueue(activeDashboardSelectedRing).length}
                         </span>
                       </div>
                       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col max-h-[400px]">
                         <div className="p-4 overflow-y-auto space-y-3">
-                            {getFilteredQueue(dashboardSelectedRing).length === 0 ? (
-                            <p className="text-sm text-slate-500 text-center py-8">No upcoming bouts for Ring {getRingName(dashboardSelectedRing)}.</p>
+                            {getFilteredQueue(activeDashboardSelectedRing).length === 0 ? (
+                            <p className="text-sm text-slate-500 text-center py-8">No upcoming bouts for Ring {getRingName(activeDashboardSelectedRing)}.</p>
                           ) : (
-                            getFilteredQueue(dashboardSelectedRing).map((item, idx) => (
+                            getFilteredQueue(activeDashboardSelectedRing).map((item, idx) => (
                               <div key={`${item.id}-${idx}`} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm gap-3">
                                 <button 
                                   onClick={() => deleteBoutFromQueue(item.id)}
@@ -3697,7 +3719,7 @@ export default function App() {
               </div>
               <div className={user?.role === 'admin' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"}>
                 {user?.role === 'admin' ? (
-                  rings.map((ring) => (
+                  rings.filter(r => !r.isDeleted).map((ring) => (
                     <RingCard 
                       key={ring.ringNumber} 
                       ring={ring} 
@@ -3728,7 +3750,7 @@ export default function App() {
                 ) : (
                   <>
                     <div className="lg:col-span-2">
-                      {rings.filter(r => r.ringNumber === Number(user?.assignedRing)).map((ring) => (
+                      {rings.filter(r => r.ringNumber === Number(user?.assignedRing) && !r.isDeleted).map((ring) => (
                         <RingCard 
                           key={ring.ringNumber} 
                           ring={ring} 
@@ -3838,7 +3860,7 @@ export default function App() {
               <TASheet 
                 key="ta-sheet-view"
                 boutQueue={boutQueue} 
-                rings={rings} 
+                rings={rings.filter(r => !r.isDeleted)} 
                 currentEventName={getCurrentEventName()} 
                 currentEventDate={getCurrentEventDate()}
                 currentEventId={currentEventId}
@@ -3858,7 +3880,7 @@ export default function App() {
               <TASheet 
                 key="signature-view"
                 boutQueue={boutQueue} 
-                rings={rings} 
+                rings={rings.filter(r => !r.isDeleted)} 
                 currentEventName={getCurrentEventName()} 
                 currentEventDate={getCurrentEventDate()}
                 currentEventId={currentEventId}
@@ -3940,7 +3962,7 @@ export default function App() {
 
           {activeTab === 'inspection-logs' && (user?.role === 'admin' || user?.role === 'ta') && (
             <div className="max-w-5xl mx-auto">
-              <InspectionLogs boutQueue={boutQueue} rings={rings} matchHistory={matchHistory} boutNumberingMode={boutNumberingMode} currentEventId={currentEventId} />
+              <InspectionLogs boutQueue={boutQueue} rings={rings.filter(r => !r.isDeleted)} matchHistory={matchHistory} boutNumberingMode={boutNumberingMode} currentEventId={currentEventId} />
             </div>
           )}
 
@@ -4845,7 +4867,7 @@ export default function App() {
         <TournamentAssistant 
           currentEventId={currentEventId}
           events={events}
-          rings={rings}
+          rings={rings.filter(r => !r.isDeleted)}
           boutQueue={boutQueue}
           athletes={athletes}
           boutNumberingMode={boutNumberingMode}
