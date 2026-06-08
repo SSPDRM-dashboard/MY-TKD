@@ -890,6 +890,20 @@ export default function App() {
     }
   }, [setMatchHistory, isAutoUpdateNames]);
 
+  // 3. Mandatory Multi-Device Network Throttling
+  // Since 12 devices are querying data simultaneously, implement randomized polling jitter to prevent server crashing.
+  useEffect(() => {
+    const syncDashboardWithServer = () => {
+      // Background synchronization loop logic
+      window.dispatchEvent(new CustomEvent('tkd_force_propagate_winners'));
+    };
+
+    // Example exactly as requested: setInterval(syncDashboardWithServer, 3000 + Math.random() * 1000);
+    const intervalId = setInterval(syncDashboardWithServer, 3000 + Math.random() * 1000);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
   // Ensure TA and report accounts exist for returning users
   useEffect(() => {
     let changed = false;
@@ -1176,6 +1190,14 @@ export default function App() {
   }, [currentEventId, events, googleSheetUrl, setGoogleSheetUrl]);
 
   const handleNewBoutSubmit = async (ringNumber: number, newData: MatchData) => {
+    const userRole = sessionStorage.getItem('user_role');
+    const assignedRing = sessionStorage.getItem('assigned_ring');
+    const targetRingLetter = String.fromCharCode(64 + ringNumber);
+    if (userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
+        alert("You are not authorized to modify this ring.");
+        return;
+    }
+
     console.log("Creating new bout:", newData);
     
     // Capitalize all letters
@@ -1542,6 +1564,14 @@ export default function App() {
   };
 
   const handleMissingBoutReason = async (ringNumber: number, boutNumber: number, reason: string) => {
+    const userRole = sessionStorage.getItem('user_role');
+    const assignedRing = sessionStorage.getItem('assigned_ring');
+    const targetRingLetter = String.fromCharCode(64 + ringNumber);
+    if (userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
+        alert("You are not authorized to modify this ring.");
+        return;
+    }
+
     // Close prompt immediately for responsiveness
     setMissingBoutPrompt(null);
 
@@ -1589,6 +1619,14 @@ export default function App() {
   };
 
   const handleUpdateMatchInspection = async (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean, signature?: string, checklist?: string[]) => {
+    const userRole = sessionStorage.getItem('user_role');
+    const assignedRing = sessionStorage.getItem('assigned_ring');
+    const targetRingLetter = String.fromCharCode(64 + parseInt(ringNo));
+    if (userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
+        alert("You are not authorized to modify this ring.");
+        return;
+    }
+
     const updateData = (match: MatchData) => {
       const updated = { 
         ...match, 
@@ -1642,6 +1680,14 @@ export default function App() {
   };
 
   const handleMissingBoutManual = async (ringNumber: number, data: MatchData) => {
+    const userRole = sessionStorage.getItem('user_role');
+    const assignedRing = sessionStorage.getItem('assigned_ring');
+    const targetRingLetter = String.fromCharCode(64 + ringNumber);
+    if (userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
+        alert("You are not authorized to modify this ring.");
+        return;
+    }
+
     setMissingBoutPrompt(null);
     handleBoutUpdate(ringNumber, data);
   };
@@ -1936,6 +1982,14 @@ export default function App() {
   // Auto-pull logic removed as per user request (manual pull only)
   
   const handleWinnerSelect = async (ringNumber: number, boutNumber: string | number, winner: string) => {
+    const userRole = sessionStorage.getItem('user_role');
+    const assignedRing = sessionStorage.getItem('assigned_ring');
+    const targetRingLetter = String.fromCharCode(64 + ringNumber);
+    if (userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
+        alert("You are not authorized to modify this ring.");
+        return;
+    }
+
     let activeUrl = googleSheetUrl;
     if (!activeUrl && currentEventId && events.length > 0) {
       const event = events.find(e => e.id === currentEventId);
@@ -2390,6 +2444,14 @@ export default function App() {
   };
 
   const handlePointsUpdateApp = async (ringNumber: number, boutNumber: string | number, newPoints: any) => {
+    const userRole = sessionStorage.getItem('user_role');
+    const assignedRing = sessionStorage.getItem('assigned_ring');
+    const targetRingLetter = String.fromCharCode(64 + ringNumber);
+    if (userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
+        alert("You are not authorized to modify this ring.");
+        return;
+    }
+
     const ring = rings.find(r => r.ringNumber === ringNumber);
     const targetSyncRing = ring?.currentBout?.originalRing || ringNumber;
 
@@ -2408,6 +2470,14 @@ export default function App() {
   };
 
   const handleBoutUpdate = async (ringNumber: number, newData: MatchData) => {
+    const userRole = sessionStorage.getItem('user_role');
+    const assignedRing = sessionStorage.getItem('assigned_ring');
+    const targetRingLetter = String.fromCharCode(64 + ringNumber);
+    if (userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
+        alert("You are not authorized to modify this ring.");
+        return;
+    }
+
     // Capitalize all letters for ring controller and normalize bout number
     const capitalizedData: MatchData = {
       ...newData,
@@ -2577,9 +2647,20 @@ export default function App() {
     });
   };
 
+  const ringMapping: Record<string, string> = {
+    "ring1": "A", "ring2": "B", "ring3": "C", "ring4": "D",
+    "ring5": "E", "ring6": "F", "ring7": "G", "ring8": "H",
+    "ring9": "I", "ring10": "J", "ring11": "K", "ring12": "L"
+  };
+
   const handleLogin = (username: string, pass: string, eventId?: string) => {
     const found = accounts.find(a => a.username === username && a.password === pass);
     if (found) {
+      if (ringMapping[username]) {
+        sessionStorage.setItem('assigned_ring', ringMapping[username]);
+        sessionStorage.setItem('user_role', 'court_clerk');
+      }
+      
       setUser(found);
       localStorage.setItem('tkd_user', JSON.stringify(found));
       localStorage.setItem('tkd_login_time', new Date().getTime().toString());
@@ -2595,7 +2676,7 @@ export default function App() {
       
       if (found.role === 'viewer') {
         setActiveTab('general');
-      } else if (found.role === 'user') {
+      } else if (found.role === 'user' || sessionStorage.getItem('user_role') === 'court_clerk') {
         setActiveTab('mats');
       } else if (found.role === 'report') {
         setActiveTab('report');
@@ -3366,8 +3447,15 @@ export default function App() {
                             <p className="text-sm text-slate-500 text-center py-8">No upcoming bouts for Ring {getRingName(dashboardSelectedRing)}.</p>
                           ) : (
                             getFilteredQueue(dashboardSelectedRing).map((item, idx) => (
-                              <div key={`${item.id}-${idx}`} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
-                                <div>
+                              <div key={`${item.id}-${idx}`} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm gap-3">
+                                <button 
+                                  onClick={() => deleteBoutFromQueue(item.id)}
+                                  className="p-1.5 text-slate-300 hover:text-red-500 transition-all shrink-0"
+                                  title="Remove from Queue"
+                                >
+                                  <X size={14} />
+                                </button>
+                                <div className="flex-1">
                                   <div className="flex items-center gap-2 mb-2 flex-wrap">
                                     <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-md">Ring {getRingName(item.data.ring)}</span>
                                     <span className="text-[11px] font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">Bout {formatBoutNumber(item.data.ring, item.data.bout, boutNumberingMode)}</span>
@@ -3395,20 +3483,13 @@ export default function App() {
                                   <p className="text-sm font-bold text-slate-800">{cleanPlaceholder(item.data.blue_name)} vs {cleanPlaceholder(item.data.red_name)}</p>
                                   <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{cleanPlaceholder(item.data.category)}</p>
                                 </div>
-                                <div className="flex flex-col items-end gap-2">
+                                <div className="flex flex-col items-end gap-2 shrink-0">
                                   <button 
                                     onClick={() => pullBout(item.id)}
                                     className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors"
                                     title="Pull to Active Ring"
                                   >
                                     <ChevronLeft size={18} />
-                                  </button>
-                                  <button 
-                                    onClick={() => deleteBoutFromQueue(item.id)}
-                                    className="p-1.5 text-slate-300 hover:text-red-500 transition-all"
-                                    title="Remove from Queue"
-                                  >
-                                    <X size={14} />
                                   </button>
                                 </div>
                               </div>
@@ -3569,48 +3650,50 @@ export default function App() {
                             ) : (
                               getFilteredQueue().map((item, idx) => (
                                 <div key={`${item.id}-${idx}`} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
-                                  <div>
-                                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                      <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-md">Ring {item.data.ring}</span>
-                                      <span className="text-[11px] font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">Bout {formatBoutNumber(item.data.ring, item.data.bout, boutNumberingMode)}</span>
-                                      <div className="flex items-center gap-1">
-                                        <span className="text-[10px] font-bold text-slate-400">Move:</span>
-                                        <select
-                                          value={item.data.ring || ''}
-                                          onChange={(e) => {
-                                            const targetRing = parseInt(e.target.value);
-                                            if (targetRing) {
-                                              setBoutQueue(prev => prev.map(q => q.id === item.id ? { ...q, data: { ...q.data, ring: targetRing, originalRing: q.data.originalRing || q.data.ring } } : q));
-                                              addToSyncLog("Transfer Bout Ring", "success", `Transferred Bout ${item.data.bout} from Ring ${item.data.ring} to Ring ${targetRing}`);
-                                            }
-                                          }}
-                                          className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded px-1 py-0.5 outline-none cursor-pointer hover:bg-indigo-100 transition-colors"
-                                        >
-                                          {currentRings.map(r => (
-                                            <option key={r.ringNumber} value={r.ringNumber}>
-                                              Ring {getRingName(r.ringNumber)}
-                                            </option>
-                                          ))}
-                                        </select>
+                                  <div className="flex items-center gap-3 w-full">
+                                    <button 
+                                      onClick={() => deleteBoutFromQueue(item.id)}
+                                      className="p-1.5 text-slate-300 hover:text-red-500 transition-all shrink-0"
+                                      title="Remove from Queue"
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                        <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-md">Ring {item.data.ring}</span>
+                                        <span className="text-[11px] font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">Bout {formatBoutNumber(item.data.ring, item.data.bout, boutNumberingMode)}</span>
+                                        <div className="flex items-center gap-1">
+                                          <span className="text-[10px] font-bold text-slate-400">Move:</span>
+                                          <select
+                                            value={item.data.ring || ''}
+                                            onChange={(e) => {
+                                              const targetRing = parseInt(e.target.value);
+                                              if (targetRing) {
+                                                setBoutQueue(prev => prev.map(q => q.id === item.id ? { ...q, data: { ...q.data, ring: targetRing, originalRing: q.data.originalRing || q.data.ring } } : q));
+                                                addToSyncLog("Transfer Bout Ring", "success", `Transferred Bout ${item.data.bout} from Ring ${item.data.ring} to Ring ${targetRing}`);
+                                              }
+                                            }}
+                                            className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded px-1 py-0.5 outline-none cursor-pointer hover:bg-indigo-100 transition-colors"
+                                          >
+                                            {currentRings.map(r => (
+                                              <option key={r.ringNumber} value={r.ringNumber}>
+                                                Ring {getRingName(r.ringNumber)}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
                                       </div>
+                                      <p className="text-sm font-bold text-slate-800">{cleanPlaceholder(item.data.blue_name)} vs {cleanPlaceholder(item.data.red_name)}</p>
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{cleanPlaceholder(item.data.category)}</p>
                                     </div>
-                                    <p className="text-sm font-bold text-slate-800">{cleanPlaceholder(item.data.blue_name)} vs {cleanPlaceholder(item.data.red_name)}</p>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{cleanPlaceholder(item.data.category)}</p>
                                   </div>
-                                  <div className="flex flex-col items-end gap-2">
+                                  <div className="flex flex-col items-end gap-2 shrink-0">
                                     <button 
                                       onClick={() => pullBout(item.id)}
                                       className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors"
                                       title="Pull to Active Ring"
                                     >
                                       <ChevronLeft size={18} />
-                                    </button>
-                                    <button 
-                                      onClick={() => deleteBoutFromQueue(item.id)}
-                                      className="p-1.5 text-slate-300 hover:text-red-500 transition-all"
-                                      title="Remove from Queue"
-                                    >
-                                      <X size={14} />
                                     </button>
                                   </div>
                                 </div>
