@@ -7084,7 +7084,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                 {/* Header */}
                 <div className="grid grid-cols-12 bg-[#1a2235] border-b border-white/10 py-2 px-4">
                   <div className="col-span-2 bg-lime-500 text-slate-950 text-[16px] font-black px-3 py-1 rounded flex items-center justify-center mr-4">
-                    {cleanPlaceholder(current?.category?.split(' ')[0] || "")}
+                    Ring {ringName}
                   </div>
                   <div className="col-span-10 text-white text-[18px] font-bold flex items-center">
                     {cleanPlaceholder(current?.category || "")}
@@ -7349,7 +7349,7 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                 {/* Header */}
                 <div className="grid grid-cols-12 bg-[#1a2235] border-b border-white/10 py-2 px-4">
                   <div className="col-span-2 bg-lime-500 text-slate-950 text-[16px] font-black px-3 py-1 rounded flex items-center justify-center mr-4">
-                    {cleanPlaceholder(current?.category?.split(' ')[0] || "")}
+                    Ring {ringName}
                   </div>
                   <div className="col-span-10 text-white text-[18px] font-bold flex items-center">
                     {cleanPlaceholder(current?.category || "")}
