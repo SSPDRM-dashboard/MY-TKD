@@ -1,5 +1,5 @@
 import { MatchData } from '../types';
-import { normalizeBoutNumber } from '../lib/utils';
+import { normalizeBoutNumber, formatBoutNumber } from '../lib/utils';
 
 const getMalaysiaTimestamp = () => {
   try {
@@ -13,31 +13,19 @@ const getMalaysiaTimestamp = () => {
   }
 };
 
+const getBoutMode = (): 'numeric' | 'alphanumeric' => {
+  if (typeof window !== 'undefined') {
+    const mode = localStorage.getItem('tkd_bout_numbering_mode');
+    if (mode === 'numeric') return 'numeric';
+  }
+  return 'alphanumeric';
+};
+
 const formatBout = (ring: number, bout: string | number) => {
   if (bout === undefined || bout === null) return '0';
   const s = bout.toString().trim().toUpperCase();
   if (!s) return '';
-
-  // 1. If it already has a letter prefix (e.g., A01), keep it
-  if (/^[A-Z]/.test(s)) return s;
-
-  // Extract digits and any trailing characters
-  const match = s.match(/^(\d+)(.*)$/);
-  if (!match) return s;
-
-  const num = parseInt(match[1]);
-  const suffix = match[2] || '';
-
-  if (isNaN(num)) return s;
-
-  // 2. We determine the bout number within the ring
-  // If it's 1001, boutInRing is 1. If it's 1, boutInRing is 1.
-  const boutInRing = num >= 1000 ? num % 1000 : num;
-
-  // 3. Format into Alphanumeric (A01) based on the active ring
-  // This matches what the user sees in the "active ring" display
-  const letter = String.fromCharCode(64 + (ring || 1));
-  return `${letter}${boutInRing.toString().padStart(2, '0')}${suffix}`;
+  return formatBoutNumber(ring, s, getBoutMode());
 };
 
 export async function syncToGoogleSheets(url: string, data: MatchData, eventName: string = '', reason: string = '') {
@@ -179,7 +167,7 @@ export async function updateBoutDetailsInGoogleSheets(url: string, ring: number,
   }
 }
 
-export async function updateWinnerInGoogleSheets(url: string, ring: number, bout: string | number, winner: string, eventName: string = '', winnerSide?: string, blueName?: string, redName?: string, points?: any) {
+export async function updateWinnerInGoogleSheets(url: string, ring: number, bout: string | number, winner: string, eventName: string = '', winnerSide?: string, blueName?: string, redName?: string, points?: any, winnerClub?: string) {
   const targetUrl = url?.trim();
   if (!targetUrl) return false;
 
@@ -191,6 +179,8 @@ export async function updateWinnerInGoogleSheets(url: string, ring: number, bout
       winner: (winner || '-').toUpperCase(),
       winner_name: (winner || '-').toUpperCase(),
       winner_side: (winnerSide || '-').toUpperCase(),
+      winner_club: (winnerClub || '-').toUpperCase(),
+      club_name: (winnerClub || '-').toUpperCase(),
       blue_name: (blueName || '-').toUpperCase(),
       red_name: (redName || '-').toUpperCase(),
       timestamp: getMalaysiaTimestamp(),

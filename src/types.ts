@@ -62,6 +62,7 @@ export interface RingStatus {
   eventId?: string | null;
   version?: number;
   updatedAt?: number;
+  suspendedBouts?: MatchData[];
 }
 
 export interface MatchHistoryItem {

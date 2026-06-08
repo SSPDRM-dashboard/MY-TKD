@@ -453,7 +453,7 @@ export function TASheet({
                   winnerSide = 'Red';
                 }
 
-                const historyId = `${currentEventId || currentEventName}_${normalizedMatchNo}`;
+                const historyId = `${currentEventId || 'unknown'}_${normalizedMatchNo}`;
                 
                 const existingItem = matchHistory.find((h) => h.id === historyId);
                 const isDifferent = !existingItem || 
@@ -468,7 +468,7 @@ export function TASheet({
                   winner: winnerTrimmed,
                   winnerClub: winnerClub,
                   ...(winnerSide && { winnerSide }),
-                  eventId: currentEventId || currentEventName,
+                  eventId: currentEventId || 'unknown',
                   syncedAt: existingItem ? existingItem.syncedAt : new Date().toISOString()
                 };
                 

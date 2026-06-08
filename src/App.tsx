@@ -33,11 +33,13 @@ import {
   X,
   Database,
   Download,
+  Play,
   ArrowLeft,
   ClipboardCheck,
   PieChart,
   Layers,
-  RotateCcw
+  RotateCcw,
+  Pause
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -609,123 +611,7 @@ export default function App() {
     };
   }, [currentEventId]);
 
-  // Real-time automatic deduplication and active-mats eviction from the Match Queue
-  useEffect(() => {
-    if (!boutQueue || boutQueue.length === 0) return;
 
-    const seen = new Set<string>();
-    let hasDuplicates = false;
-
-    // Build a set of all active bout numbers currently on the mats/rings
-    const activeRingBouts = new Set<string>();
-    rings.forEach(r => {
-      const ringNum = r.ringNumber;
-      ['currentBout', 'onDeck', 'inTheHole'].forEach(slot => {
-        const boutObj = r[slot as 'currentBout' | 'onDeck' | 'inTheHole'];
-        if (boutObj && boutObj.bout) {
-          const normalized = normalizeBoutWithRing(boutObj.bout, ringNum);
-          const key = `${boutObj.eventId || currentEventId || 'default'}_${ringNum}_${normalized}`;
-          activeRingBouts.add(key);
-        }
-      });
-    });
-
-    const uniqueQueue = boutQueue.filter(item => {
-      if (!item || !item.data) return false;
-      const ringNum = item.data.ring || 1;
-      const rawBout = item.data.bout;
-      const eventId = item.data.eventId || currentEventId || 'default';
-      const normalizedBout = normalizeBoutWithRing(rawBout, ringNum);
-      const uniqueKey = `${eventId}_${ringNum}_${normalizedBout}`;
-
-      // Check if it's already in match history (completed)
-      const isCompleted = matchHistory.some(h => {
-        if ((h.eventId || currentEventId || 'default') !== eventId) return false;
-
-        // Ring extraction helper to prevent cross-ring comparison errors
-        const getBoutRing = (boutStr: string | number) => {
-          const s = boutStr.toString().replace(/\s+/g, '').toUpperCase();
-          const match = s.match(/^([A-H])(\d+)([A-Z]*)$/);
-          if (match) {
-            return match[1].charCodeAt(0) - 'A'.charCodeAt(0) + 1;
-          }
-          const num = parseInt(s);
-          if (!isNaN(num) && num >= 1000) {
-            return Math.floor(num / 1000);
-          }
-          return null;
-        };
-
-        const hRing = h.ring || getBoutRing(h.bout);
-        const itemRing = Number(ringNum);
-
-        // If the history item has a detected ring and it doesn't match the queue item's ring, then they are absolutely different bouts!
-        if (hRing && itemRing && hRing !== itemRing) {
-          return false;
-        }
-
-        // If the history item has NO ring information (lacks ring field and has no implicit ring prefix in h.bout)
-        // and is a relative small number (e.g. "1"), it is highly ambiguous in a multi-ring setup.
-        // We should skip matching it to avoid false positive matches on other rings.
-        const isAmbiguousRelative = !hRing && parseInt(h.bout.toString()) < 1000;
-        if (isAmbiguousRelative && rings.length > 1) {
-          return false;
-        }
-        
-        // Category validation: If categories are present and do not match, they are different bouts!
-        const hCat = h.category?.toString().replace(/\s+/g, '').toUpperCase() || '';
-        const qCat = item.data.category?.toString().replace(/\s+/g, '').toUpperCase() || '';
-        if (hCat && qCat && hCat !== qCat) {
-          return false;
-        }
-
-        // Competitor checklist: If real names are present in the queue and a real winner side/name is present in history,
-        // and the winner is neither of the competitors, then they are absolutely different bouts!
-        const normalizeName = (name?: string) => name?.toString().replace(/[^A-Z0-9]/gi, '').toUpperCase() || '';
-        const qBlue = normalizeName(item.data.blue_name);
-        const qRed = normalizeName(item.data.red_name);
-        const hWinner = normalizeName(h.winner);
-
-        const hasRealNamesInQueue = qBlue && !qBlue.includes('WINNEROF') && !qBlue.includes('LOSEROF') && !qBlue.includes('CHUNG') && !qBlue.includes('HONG') && qBlue !== '---' &&
-                              qRed && !qRed.includes('WINNEROF') && !qRed.includes('LOSEROF') && !qRed.includes('CHUNG') && !qRed.includes('HONG') && qRed !== '---';
-                              
-        const hasRealWinnerInHistory = hWinner && !hWinner.includes('WINNEROF') && !hWinner.includes('LOSEROF') && hWinner !== '---' && hWinner !== '-';
-
-        if (hasRealNamesInQueue && hasRealWinnerInHistory) {
-          if (hWinner !== qBlue && hWinner !== qRed) {
-            return false;
-          }
-        }
-        
-        // Match 1: Using strict logic with ring combination
-        if (normalizeBoutWithRing(h.bout, ringNum) === normalizedBout) return true;
-        
-        // Match 2: Direct raw equality is removed because rings have overlapping bout numbers (e.g., Bout 1 exists in all rings)
-        // if (normalizeBoutNumber(h.bout) === normalizeBoutNumber(rawBout)) return true;
-        
-        return false;
-      });
-
-      // If already active in the ring slots or already completed, remove from the standby queue
-      if (activeRingBouts.has(uniqueKey) || (isCompleted && !item.data.allowCompleted)) {
-        hasDuplicates = true;
-        return false;
-      }
-
-      if (seen.has(uniqueKey)) {
-        hasDuplicates = true;
-        return false;
-      }
-      seen.add(uniqueKey);
-      return true;
-    });
-
-    if (hasDuplicates) {
-      console.log('tkd_match_centre: Automatically removed duplicate, completed, or ring-active elements from Match Queue');
-      setBoutQueue(uniqueQueue);
-      localStorage.setItem('tkd_bout_queue', JSON.stringify(uniqueQueue));
-    }
-  }, [boutQueue, rings, matchHistory, currentEventId, setBoutQueue]);
 
   useEffect(() => {
     const handleSyncHistory = (e: any) => {
@@ -767,13 +653,13 @@ export default function App() {
         if (blueBoutId) {
           let historyMatch = matchHistory.find((h: MatchHistoryItem) => 
             isBoutMatch(h.bout, blueBoutId) && 
-            (h.eventId === currentEventId || h.eventId === currentEvtName) &&
+            h.eventId === currentEventId &&
             normalizeStr(h.category) === normalizeStr(bout.category)
           );
           if (!historyMatch) {
             historyMatch = matchHistory.find((h: MatchHistoryItem) => 
               isBoutMatch(h.bout, blueBoutId) && 
-              (h.eventId === currentEventId || h.eventId === currentEvtName)
+              h.eventId === currentEventId
             );
           }
           if (historyMatch && historyMatch.winner && historyMatch.winner !== '-' && historyMatch.winner.trim() !== '') {
@@ -787,13 +673,13 @@ export default function App() {
         if (redBoutId) {
           let historyMatch = matchHistory.find((h: MatchHistoryItem) => 
             isBoutMatch(h.bout, redBoutId) && 
-            (h.eventId === currentEventId || h.eventId === currentEvtName) &&
+            h.eventId === currentEventId &&
             normalizeStr(h.category) === normalizeStr(bout.category)
           );
           if (!historyMatch) {
             historyMatch = matchHistory.find((h: MatchHistoryItem) => 
               isBoutMatch(h.bout, redBoutId) && 
-              (h.eventId === currentEventId || h.eventId === currentEvtName)
+              h.eventId === currentEventId
             );
           }
           if (historyMatch && historyMatch.winner && historyMatch.winner !== '-' && historyMatch.winner.trim() !== '') {
@@ -1545,6 +1431,29 @@ export default function App() {
     const item = boutQueue.find(q => q.id === queueId);
     if (!item) return;
 
+    // Put current active match into suspended list instead of returning to queue
+    const ring = rings.find(r => r.ringNumber === item.data.ring);
+    if (ring && ring.currentBout && hasPlayers(ring.currentBout)) {
+      const currentBout = ring.currentBout;
+      setRings(prev => {
+        const updated = prev.map(r => {
+          if (r.ringNumber === item.data.ring) {
+            const suspended = r.suspendedBouts ? [...r.suspendedBouts] : [];
+            if (!suspended.some(b => isBoutMatch(b.bout, currentBout.bout))) {
+              suspended.push({ ...currentBout, eventId: currentEventId || null });
+            }
+            return {
+              ...r,
+              suspendedBouts: suspended
+            };
+          }
+          return r;
+        });
+        localStorage.setItem('tkd_rings', JSON.stringify(updated));
+        return updated;
+      });
+    }
+
     // Remove from queue
     setBoutQueue(prev => {
       const updated = prev.filter(q => q.id !== queueId);
@@ -1930,14 +1839,14 @@ export default function App() {
         if (sourceBoutStr) {
           let historyMatch = matchHistory.find(h => 
             isBoutMatch(h.bout, sourceBoutStr) && 
-            (h.eventId === currentEventId || h.eventId === getCurrentEventName()) &&
+            h.eventId === currentEventId &&
             normalizeStr(h.category) === normalizeStr(boutData.category)
           );
           
           if (!historyMatch) {
             historyMatch = matchHistory.find(h => 
               isBoutMatch(h.bout, sourceBoutStr) && 
-              (h.eventId === currentEventId || h.eventId === getCurrentEventName())
+              h.eventId === currentEventId
             );
           }
           
@@ -2141,6 +2050,7 @@ export default function App() {
     const winnerName = winner === 'Blue' ? currentBout?.blue_name : currentBout?.red_name;
 
     const targetSyncRing = currentBout?.originalRing || ringNumber;
+    const winnerClub = winner === 'Blue' ? currentBout?.blue_club : (winner === 'Red' ? currentBout?.red_club : '-');
 
     if (activeUrl) {
       setIsSyncing(true);
@@ -2154,7 +2064,8 @@ export default function App() {
         winner,
         currentBout?.blue_name,
         currentBout?.red_name,
-        currentBout?.points
+        currentBout?.points,
+        winnerClub
       ).then(() => {
         addToSyncLog('Winner', 'success', `Winner for Bout ${boutNumber} sent`);
       }).catch(e => {
@@ -2678,7 +2589,83 @@ export default function App() {
     }
   };
 
-  const returnActiveBoutToQueue = async (ringNumber: number) => {
+  const suspendActiveBout = (ringNumber: number) => {
+    const ring = rings.find(r => r.ringNumber === ringNumber);
+    const currentBout = ring?.currentBout;
+    if (!currentBout) return;
+
+    setRings(prev => {
+      const updated = prev.map(r => {
+        if (r.ringNumber === ringNumber) {
+          const suspended = r.suspendedBouts ? [...r.suspendedBouts] : [];
+          if (!suspended.some(b => isBoutMatch(b.bout, currentBout.bout))) {
+            suspended.push({ ...currentBout, eventId: currentEventId || null });
+          }
+          return {
+            ...r,
+            currentBout: null,
+            suspendedBouts: suspended
+          };
+        }
+        return r;
+      });
+      localStorage.setItem('tkd_rings', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const resumeSuspendedBout = (ringNumber: number, boutNumber: string | number) => {
+    setRings(prev => {
+      const updated = prev.map(r => {
+        if (r.ringNumber === ringNumber) {
+          const suspended = r.suspendedBouts ? [...r.suspendedBouts] : [];
+          const targetIndex = suspended.findIndex(b => isBoutMatch(b.bout, boutNumber));
+          if (targetIndex === -1) return r;
+
+          const boutToResume = suspended[targetIndex];
+          const nextSuspended = suspended.filter((_, idx) => idx !== targetIndex);
+
+          // If there is currently an active match that is not complete and has players, suspend IT first!
+          const activeBout = r.currentBout;
+          if (activeBout && hasPlayers(activeBout)) {
+            if (!nextSuspended.some(b => isBoutMatch(b.bout, activeBout.bout))) {
+              nextSuspended.push({ ...activeBout, eventId: currentEventId || null });
+            }
+          }
+
+          const resumedBoutNo = getBoutNumber(boutToResume.bout);
+          return {
+            ...r,
+            currentBout: boutToResume,
+            suspendedBouts: nextSuspended,
+            nextBoutNumber: resumedBoutNo > 0 ? resumedBoutNo + 1 : r.nextBoutNumber
+          };
+        }
+        return r;
+      });
+      localStorage.setItem('tkd_rings', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const removeSuspendedBout = (ringNumber: number, boutNumber: string | number) => {
+    setRings(prev => {
+      const updated = prev.map(r => {
+        if (r.ringNumber === ringNumber) {
+          const suspended = r.suspendedBouts ? r.suspendedBouts.filter(b => !isBoutMatch(b.bout, boutNumber)) : [];
+          return {
+            ...r,
+            suspendedBouts: suspended
+          };
+        }
+        return r;
+      });
+      localStorage.setItem('tkd_rings', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const returnActiveBoutToQueue = (ringNumber: number) => {
     const ring = rings.find(r => r.ringNumber === ringNumber);
     const currentBout = ring?.currentBout;
     if (!currentBout) return;
@@ -2690,7 +2677,7 @@ export default function App() {
     };
 
     setBoutQueue(prev => {
-      const updated = [...prev, queueItem];
+      const updated = [queueItem, ...prev];
       localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
       return updated;
     });
@@ -3552,6 +3539,9 @@ export default function App() {
                         layout={ringControlLayout}
                         showInspectionPopupSetting={showInspectionPopupSetting}
                         onReturnToQueue={() => returnActiveBoutToQueue(selectedRingObj.ringNumber)}
+                        onResumeSuspended={(boutNum) => resumeSuspendedBout(selectedRingObj.ringNumber, boutNum)}
+                        onRemoveSuspended={(boutNum) => removeSuspendedBout(selectedRingObj.ringNumber, boutNum)}
+                        onSuspendCurrentBout={() => suspendActiveBout(selectedRingObj.ringNumber)}
                       />
                     </div>
                   </div>
@@ -3730,6 +3720,9 @@ export default function App() {
                       layout={ringControlLayout}
                       showInspectionPopupSetting={showInspectionPopupSetting}
                       onReturnToQueue={() => returnActiveBoutToQueue(ring.ringNumber)}
+                      onResumeSuspended={(boutNum) => resumeSuspendedBout(ring.ringNumber, boutNum)}
+                      onRemoveSuspended={(boutNum) => removeSuspendedBout(ring.ringNumber, boutNum)}
+                      onSuspendCurrentBout={() => suspendActiveBout(ring.ringNumber)}
                     />
                   ))
                 ) : (
@@ -3757,6 +3750,9 @@ export default function App() {
                           layout={ringControlLayout}
                           showInspectionPopupSetting={showInspectionPopupSetting}
                           onReturnToQueue={() => returnActiveBoutToQueue(ring.ringNumber)}
+                          onResumeSuspended={(boutNum) => resumeSuspendedBout(ring.ringNumber, boutNum)}
+                          onRemoveSuspended={(boutNum) => removeSuspendedBout(ring.ringNumber, boutNum)}
+                          onSuspendCurrentBout={() => suspendActiveBout(ring.ringNumber)}
                         />
                       ))}
                     </div>
@@ -4388,6 +4384,7 @@ export default function App() {
             if (googleSheetUrl) {
               setIsSyncing(true);
               const targetSyncRing = found?.originalRing || ringNumber;
+              const winnerClub = winner === 'Blue' ? found?.blue_club : (winner === 'Red' ? found?.red_club : '-');
               updateWinnerInGoogleSheets(
                 googleSheetUrl,
                 targetSyncRing,
@@ -4397,7 +4394,8 @@ export default function App() {
                 winner,
                 found?.blue_name,
                 found?.red_name,
-                found?.points
+                found?.points,
+                winnerClub
               ).finally(() => setIsSyncing(false));
             }
 
@@ -5197,6 +5195,9 @@ interface RingCardProps {
   layout?: 'winner' | 'point';
   showInspectionPopupSetting?: boolean;
   onReturnToQueue?: () => void;
+  onResumeSuspended?: (boutNumber: string | number) => void;
+  onRemoveSuspended?: (boutNumber: string | number) => void;
+  onSuspendCurrentBout?: () => void;
 }
 
 interface EditResultModalProps {
@@ -5574,7 +5575,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
 
   const targetBoutVal = normalizeBoutWithRing(formData.bout, formData.ring);
   const isAlreadyCompleted = matchHistory.some(h => {
-    if ((h.eventId || currentEventId || 'default') !== (formData.eventId || currentEventId || 'default')) return false;
+    if (h.eventId !== currentEventId) return false;
     
     // Match 1: Using strict logic with ring combination
     if (normalizeBoutWithRing(h.bout, formData.ring) === targetBoutVal) return true;
@@ -5914,7 +5915,7 @@ function AddRingModal({ onClose, onAdd, existingRings, namingMode }: AddRingModa
   );
 }
 
-function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onPointsUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, currentEventId, onForceSync, isAutoPull, onToggleAutoPull, user, boutNumberingMode = 'alphanumeric', layout = 'winner', showInspectionPopupSetting = true, onReturnToQueue }: RingCardProps & { currentEventId?: string | null, onForceSync?: (data: MatchData) => void }) {
+function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onPointsUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, currentEventId, onForceSync, isAutoPull, onToggleAutoPull, user, boutNumberingMode = 'alphanumeric', layout = 'winner', showInspectionPopupSetting = true, onReturnToQueue, onResumeSuspended, onRemoveSuspended, onSuspendCurrentBout }: RingCardProps & { currentEventId?: string | null, onForceSync?: (data: MatchData) => void }) {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isFinalBoutSelection, setIsFinalBoutSelection] = useState(false);
   const [isSyncingLocal, setIsSyncingLocal] = useState(false);
@@ -6110,6 +6111,19 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
             >
               <RotateCcw size={11} strokeWidth={3} />
               Return to Queue
+            </button>
+          )}
+          {current && onSuspendCurrentBout && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onSuspendCurrentBout();
+              }}
+              className="px-2.5 py-1 bg-yellow-500/25 border border-yellow-500/35 text-yellow-500 hover:bg-yellow-500/35 rounded text-[10px] font-black uppercase tracking-widest transition-all duration-200 flex items-center gap-1.5 active:scale-95 cursor-pointer shadow-sm text-center"
+              title="Pause and suspend this match into the suspended list"
+            >
+              <Pause size={11} strokeWidth={3} />
+              Suspend
             </button>
           )}
           {onToggleAutoPull && (
@@ -6668,6 +6682,85 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
               </button>
             </div>
           </motion.div>
+        </div>
+      )}
+
+      {ring.suspendedBouts && ring.suspendedBouts.length > 0 && (
+        <div className="p-5 bg-amber-50/60 border-t border-amber-100">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-black text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
+              <span className="flex h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+              Suspended Matches ({ring.suspendedBouts.length})
+            </span>
+          </div>
+          <div className="space-y-3">
+            {ring.suspendedBouts.map((bout, idx) => {
+              const bNo = formatBoutNumber(ring.ringNumber, bout.bout, boutNumberingMode);
+              return (
+                <div 
+                  key={`${bout.bout}_${idx}`} 
+                  className="p-3 bg-white border border-amber-200/60 rounded-2xl flex items-center justify-between shadow-sm hover:border-amber-400 transition-colors"
+                >
+                  <div className="flex-1 min-w-0 pr-2 text-left">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-black uppercase text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-md">
+                        Bout {bNo}
+                      </span>
+                      <span className="text-[9px] font-black uppercase text-slate-500 truncate max-w-[150px]" title={bout.category}>
+                        {bout.category}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#00a2e8]" />
+                        <span className="text-[11px] font-black text-slate-800 truncate">
+                          {bout.privacy_mode ? "---" : cleanPlaceholder(bout.blue_name)}
+                        </span>
+                        <span className="text-[9px] font-black text-[#00a2e8] uppercase">
+                          ({cleanPlaceholder(bout.blue_club)})
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#ed1c24]" />
+                        <span className="text-[11px] font-black text-slate-800 truncate">
+                          {bout.privacy_mode ? "---" : cleanPlaceholder(bout.red_name)}
+                        </span>
+                        <span className="text-[9px] font-black text-[#ed1c24] uppercase">
+                          ({cleanPlaceholder(bout.red_club)})
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {onResumeSuspended && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onResumeSuspended(bout.bout);
+                        }}
+                        className="p-2 bg-amber-500 text-white hover:bg-amber-600 rounded-xl transition-all active:scale-95 flex items-center justify-center cursor-pointer shadow-md shadow-amber-200"
+                        title="Resume: Send back to Active Ring"
+                      >
+                        <Play size={12} className="fill-current text-white" strokeWidth={3} />
+                      </button>
+                    )}
+                    {onRemoveSuspended && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveSuspended(bout.bout);
+                        }}
+                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all active:scale-95 flex items-center justify-center cursor-pointer"
+                        title="Dismiss/Delete Suspended Bout"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
