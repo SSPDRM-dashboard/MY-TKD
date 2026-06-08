@@ -160,6 +160,7 @@ interface AIBracketSetupProps {
   setRings: (rings: RingStatus[]) => void;
   setBoutQueue: React.Dispatch<React.SetStateAction<{id: string, data: MatchData}[]>>;
   boutNumberingMode: 'numeric' | 'alphanumeric';
+  setBackupMappings: React.Dispatch<React.SetStateAction<Record<string, BoutMapping[]>>>;
 }
 
 export function AIBracketSetup({ 
@@ -170,7 +171,8 @@ export function AIBracketSetup({
   rings, 
   setRings, 
   setBoutQueue,
-  boutNumberingMode
+  boutNumberingMode,
+  setBackupMappings
 }: AIBracketSetupProps) {
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -813,6 +815,37 @@ export function AIBracketSetup({
 
       await Promise.all(mappingPromises);
       
+      // Save local backup mapping per ring
+      const mappingsByRing: Record<string, BoutMapping[]> = {};
+      previewData.mappings.forEach(m => {
+        const sourceStr = (m.sourceBout || '').toString();
+        const sRing = getRingFromBout(sourceStr);
+        if (!mappingsByRing[sRing]) mappingsByRing[sRing] = [];
+        
+        const matchingMatch = previewData.matches.find((match: MatchData) => 
+          isBoutMatch(match.bout, m.sourceBout) || isBoutMatch(match.bout, m.nextBout)
+        );
+        const resolvedCategory = matchingMatch ? matchingMatch.category : "Auto-Extracted from File";
+        
+        mappingsByRing[sRing].push({
+           ...m,
+           sourceBout: normalizeBoutNumber(m.sourceBout || ''),
+           nextBout: normalizeBoutNumber(m.nextBout || ''),
+           eventId: currentEventId,
+           eventName: currentEvent.name,
+           categoryName: resolvedCategory
+        });
+      });
+      
+      setBackupMappings(prev => {
+        const next = { ...prev };
+        Object.keys(mappingsByRing).forEach(sRing => {
+           const key = `${currentEventId}_${sRing}`;
+           next[key] = mappingsByRing[sRing];
+        });
+        return next;
+      });
+
       const totalBoutsMsg = Array.from(ringTotals.entries())
         .map(([ring, total]) => `Ring ${ring}: ${total} bouts`)
         .join('\n');

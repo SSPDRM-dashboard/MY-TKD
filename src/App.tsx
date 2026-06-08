@@ -1059,6 +1059,7 @@ export default function App() {
   const [showPublicStandbyQueue, setShowPublicStandbyQueue] = useSyncedState<boolean>('tkd_show_public_standby_queue', true);
   const [showInspectionPopupSetting, setShowInspectionPopupSetting] = useSyncedState<boolean>('tkd_show_inspection_popup_setting', true);
   const [publicEventId, setPublicEventId] = useSyncedState<string>('tkd_public_event_id', 'active');
+  const [backupMappings, setBackupMappings] = useSyncedState<Record<string, BoutMapping[]>>('tkd_backup_mappings_v2', {});
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
   const [showRebootModal, setShowRebootModal] = useState(false);
 
@@ -3182,6 +3183,67 @@ export default function App() {
 
             return (
               <>
+                {user?.role === 'admin' && (
+                  <div className="bg-white border border-slate-200 rounded-3xl p-5 mb-6 shadow-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                      <div>
+                        <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                          <Database size={20} className="text-amber-600" />
+                          Backup Mapping Recovery
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-0.5">Click a ring to immediately restore its AI bracket mappings to the system.</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-none flex-nowrap lg:flex-wrap">
+                      {Array.from({ length: 12 }, (_, i) => {
+                        const ringNum = i + 1;
+                        const groupKey = `${currentEventId}_${ringNum}`;
+                        const hasBackup = backupMappings && backupMappings[groupKey] && backupMappings[groupKey].length > 0;
+                        
+                        return (
+                          <button
+                            key={ringNum}
+                            type="button"
+                            disabled={!hasBackup || isSyncing}
+                            onClick={async () => {
+                              if (!hasBackup || !currentEventId) return;
+                              if (window.confirm(`Restore ${backupMappings[groupKey].length} AI mappings for Ring ${ringNamingMode === 'alphabet' ? String.fromCharCode(64 + ringNum) : ringNum} to the system?`)) {
+                                 try {
+                                   setIsSyncing(true);
+                                   const promises = backupMappings[groupKey].map(m => addDoc(collection(db, 'event_logic'), {
+                                      ...m,
+                                      createdAt: serverTimestamp()
+                                   }));
+                                   await Promise.all(promises);
+                                   alert(`Successfully restored mappings for Ring ${ringNamingMode === 'alphabet' ? String.fromCharCode(64 + ringNum) : ringNum}!`);
+                                 } catch (e: any) {
+                                   console.error("Restore mapping error:", e);
+                                   alert("Failed to restore: " + e.message);
+                                 } finally {
+                                   setIsSyncing(false);
+                                 }
+                              }
+                            }}
+                            className={cn(
+                              "flex-1 min-w-[70px] h-12 flex flex-col items-center justify-center rounded-2xl border text-xs font-black transition-all duration-200 shadow-sm relative",
+                              hasBackup
+                                ? "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 cursor-pointer"
+                                : "bg-slate-50 border-slate-100 text-slate-300 cursor-not-allowed hidden lg:flex"
+                            )}
+                          >
+                            <span className="text-[9px] opacity-75 font-bold leading-none uppercase">Ring</span>
+                            <span className="text-base font-black leading-tight mt-0.5">{ringNamingMode === 'alphabet' ? String.fromCharCode(64 + ringNum) : ringNum}</span>
+                            {hasBackup && (
+                              <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-amber-500 border border-white" title="Backup Available" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Ring 1 to 12 Selection Bar on Top */}
                 <div className="bg-white border border-slate-200 rounded-3xl p-5 mb-6 shadow-sm">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
@@ -3650,6 +3712,7 @@ export default function App() {
               setRings={setRings}
               setBoutQueue={setBoutQueue}
               boutNumberingMode={boutNumberingMode}
+              setBackupMappings={setBackupMappings}
             />
           )}
 

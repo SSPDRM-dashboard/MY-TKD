@@ -82,8 +82,11 @@ export function AdminMapping({
         },
         skipEmptyLines: true
       });
-    } catch (error) {
-      console.error("Error syncing categories from sheet:", error);
+    } catch (error: any) {
+      if (error?.name !== 'TypeError' && !error?.message?.includes('fetch')) {
+        console.error("Error syncing categories from sheet:", error);
+      }
+      setFetchedCategories(categories);
     } finally {
       setIsSyncingCategories(false);
     }
@@ -183,8 +186,12 @@ export function AdminMapping({
         },
         skipEmptyLines: true
       });
-    } catch (error) {
-      console.error("Error syncing results from sheet:", error);
+    } catch (error: any) {
+      if (error?.name !== 'TypeError' && !error?.message?.includes('fetch')) {
+        console.error("Error syncing results from sheet:", error);
+      } else {
+        alert("Failed to sync from Google Sheet. Ensure the sheet is accessible and supports CORS (e.g. published to web).");
+      }
     } finally {
       setIsSyncingResults(false);
     }
