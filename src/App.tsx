@@ -958,6 +958,8 @@ export default function App() {
   const [publicViewLayout, setPublicViewLayout] = useSyncedState<'standard' | 'point'>('tkd_public_view_layout', 'standard');
   const [showPublicStandbyQueue, setShowPublicStandbyQueue] = useSyncedState<boolean>('tkd_show_public_standby_queue', true);
   const [showInspectionPopupSetting, setShowInspectionPopupSetting] = useSyncedState<boolean>('tkd_show_inspection_popup_setting', true);
+  const [confirmResultSubmission, setConfirmResultSubmission] = useSyncedState<boolean>('tkd_confirm_result_submission', false);
+  const [pendingWinnerSelection, setPendingWinnerSelection] = useState<{ ringNumber: number; boutNumber: string | number; winner: string } | null>(null);
   const [publicEventId, setPublicEventId] = useSyncedState<string>('tkd_public_event_id', 'active');
   const [visibleRingsCount, setVisibleRingsCount] = useSyncedState<number>('tkd_visible_rings_count', 12);
   const [backupData, setBackupData] = useSyncedState<Record<string, { mappings: BoutMapping[], matches: MatchData[] }>>('tkd_backup_data_v3', {});
@@ -2037,6 +2039,14 @@ export default function App() {
   // Auto-pull logic removed as per user request (manual pull only)
   
   const handleWinnerSelect = async (ringNumber: number, boutNumber: string | number, winner: string) => {
+    if (confirmResultSubmission) {
+      setPendingWinnerSelection({ ringNumber, boutNumber, winner });
+    } else {
+      executeWinnerSelect(ringNumber, boutNumber, winner);
+    }
+  };
+
+  const executeWinnerSelect = async (ringNumber: number, boutNumber: string | number, winner: string) => {
     const userRole = sessionStorage.getItem('user_role');
     const assignedRing = sessionStorage.getItem('assigned_ring');
     const targetRingLetter = String.fromCharCode(64 + ringNumber);
@@ -4306,6 +4316,32 @@ export default function App() {
                     </div>
                     <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
                       <div>
+                        <p className="text-sm font-bold text-slate-700">Result Submission Confirmation</p>
+                        <p className="text-[10px] text-slate-500">Require conformation pop-up when submitting a match winner result</p>
+                      </div>
+                      <div className="flex bg-slate-200 p-1 rounded-lg">
+                        <button 
+                          onClick={() => setConfirmResultSubmission(true)}
+                          className={cn(
+                            "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                            confirmResultSubmission ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                          )}
+                        >
+                          Enable
+                        </button>
+                        <button 
+                          onClick={() => setConfirmResultSubmission(false)}
+                          className={cn(
+                            "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                            !confirmResultSubmission ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                          )}
+                        >
+                          Disable
+                        </button>
+                      </div>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                      <div>
                         <p className="text-sm font-bold text-slate-700">PDPA Privacy Mode</p>
                         <p className="text-[10px] text-slate-500">Global override for minors</p>
                       </div>
@@ -4355,6 +4391,113 @@ export default function App() {
           )}
         </div>
       </main>
+
+      {pendingWinnerSelection && (() => {
+        const { ringNumber, boutNumber, winner } = pendingWinnerSelection;
+        const ring = rings.find(r => r.ringNumber === ringNumber);
+        const currentBout = ring?.currentBout;
+        
+        let winnerName = '';
+        let winnerColor = '';
+        let winnerClass = '';
+        let iconClass = 'bg-red-50 text-red-600';
+        let btnColorClass = 'bg-red-600 hover:bg-red-700';
+        
+        if (winner === 'Blue') {
+          winnerName = currentBout?.blue_name || 'Blue Competitor';
+          winnerColor = 'Blue Corner';
+          winnerClass = 'text-blue-600 bg-blue-50 border-blue-200';
+          iconClass = 'bg-blue-50 text-blue-600';
+          btnColorClass = 'bg-blue-600 hover:bg-blue-700';
+        } else if (winner === 'Red') {
+          winnerName = currentBout?.red_name || 'Red Competitor';
+          winnerColor = 'Red Corner';
+          winnerClass = 'text-red-500 bg-red-50 border-red-200';
+          iconClass = 'bg-red-50 text-red-600';
+          btnColorClass = 'bg-red-600 hover:bg-red-700';
+        } else {
+          winnerName = 'Completed / Tie';
+          winnerColor = 'Completed';
+          winnerClass = 'text-slate-600 bg-slate-50 border-slate-200';
+          iconClass = 'bg-slate-50 text-slate-600';
+          btnColorClass = 'bg-slate-600 hover:bg-slate-700';
+        }
+
+        const ringLabel = ringNamingMode === 'alphabet' ? String.fromCharCode(64 + ringNumber) : `Ring ${ringNumber}`;
+
+        return (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl border border-slate-200 space-y-5 text-slate-800"
+            >
+              <div className="flex items-start gap-4">
+                <div className={`p-3 rounded-xl ${iconClass}`}>
+                  <AlertCircle size={24} />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <h3 className="text-lg font-bold text-slate-900">Confirm Winner Result</h3>
+                  <p className="text-xs text-slate-500">
+                    Are you sure you want to finalize this match and submit the result?
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 space-y-3 text-sm">
+                <div className="flex justify-between items-center text-xs text-slate-500 border-b border-dashed border-slate-200 pb-2">
+                  <span className="font-semibold uppercase tracking-wider">{ringLabel}</span>
+                  <span className="font-bold">Bout {boutNumber}</span>
+                </div>
+                
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-slate-400">CATEGORY</p>
+                  <p className="font-bold text-slate-800">{currentBout?.category || 'General Class'}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div>
+                    <span className="text-[10px] font-bold text-blue-500">BLUE</span>
+                    <p className="font-bold truncate text-slate-700">{currentBout?.blue_name || '-'}</p>
+                    <span className="text-[10px] text-slate-400">{currentBout?.blue_club || ''}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] font-bold text-red-500">RED</span>
+                    <p className="font-bold truncate text-slate-700">{currentBout?.red_name || '-'}</p>
+                    <span className="text-[10px] text-slate-400">{currentBout?.red_club || ''}</span>
+                  </div>
+                </div>
+
+                <div className={`mt-2 p-3 rounded-lg border flex flex-col items-center justify-center text-center ${winnerClass}`}>
+                  <span className="text-[10px] font-bold tracking-widest uppercase opacity-75">WINNER TO BE SENT</span>
+                  <p className="text-base font-black uppercase mt-1">{winnerName}</p>
+                  <p className="text-xs font-bold opacity-80">({winnerColor})</p>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPendingWinnerSelection(null)}
+                  className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl font-bold text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    executeWinnerSelect(ringNumber, boutNumber, winner);
+                    setPendingWinnerSelection(null);
+                  }}
+                  className={`flex-1 px-4 py-2.5 text-white rounded-xl font-bold text-sm shadow-sm transition-colors ${btnColorClass}`}
+                >
+                  Confirm & Submit
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        );
+      })()}
 
       {showNewBoutModal && (
         <NewBoutModal 
