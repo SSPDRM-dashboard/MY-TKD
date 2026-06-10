@@ -672,6 +672,15 @@ export function TASheet({
   };
 
   const filteredMatches = matches.filter(m => {
+    // Check if the match is completed in matchHistory
+    const isCompleted = matchHistory.some(h => 
+      h.eventId === currentEventId && 
+      normalizeBoutNumber(h.bout) === normalizeBoutNumber(m.matchNo)
+    );
+    if (isCompleted) {
+      return false;
+    }
+
     // ALWAYS include the currently selected match so it doesn't disappear during reprint
     if (m.ringNo === selectedRing && m.matchNo === selectedMatchNo && selectedMatchNo) {
       return true;
