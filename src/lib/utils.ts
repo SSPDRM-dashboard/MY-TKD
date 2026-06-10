@@ -145,7 +145,7 @@ export function isBoutMatch(bout1: string | number, bout2: string | number): boo
   return false;
 }
 
-export function normalizeBoutWithRing(bout: string | number, ringNum: number): string {
+export function normalizeBoutWithRing(bout: string | number, ringNum: number, originalRingNum?: number): string {
   let s = bout.toString().replace(/\s+/g, '').toUpperCase();
   if (!s) return '';
   
@@ -159,6 +159,15 @@ export function normalizeBoutWithRing(bout: string | number, ringNum: number): s
     if (letterPrefixMatch) {
       const currentPrefix = letterPrefixMatch[1];
       if (currentPrefix !== expectedPrefix) {
+        // Calculate the original ring from prefix 'currentPrefix'
+        const origRingFromPrefix = currentPrefix.charCodeAt(0) - 64;
+        const isKnownTransfer = (origRingFromPrefix >= 1 && origRingFromPrefix <= 12) || (originalRingNum && originalRingNum !== ringNum);
+        
+        if (isKnownTransfer) {
+          // This is a transferred bout! DO NOT change its prefix to the current ring's prefix.
+          return normalizeBoutNumber(s);
+        }
+        
         // Correct prefix to align with expected letter prefix (e.g., B03 -> D03 in Ring 4)
         s = expectedPrefix + s.substring(1);
       }

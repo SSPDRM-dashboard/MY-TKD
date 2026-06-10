@@ -528,6 +528,12 @@ export function TASheet({
   }, [currentEventDate]);
 
   useEffect(() => {
+    if (currentEventId) {
+      fetchFallbackData(false);
+    }
+  }, [currentEventId]);
+
+  useEffect(() => {
     const allMatches: SheetMatch[] = [];
 
     if (!currentEventId) {
@@ -688,7 +694,13 @@ export function TASheet({
     );
 
     if (searchQuery) {
-      return m.matchNo.toLowerCase().includes(searchQuery.toLowerCase());
+      const searchLower = searchQuery.toLowerCase();
+      const matchNoMatch = m.matchNo.toLowerCase().includes(searchLower);
+      const blueMatch = m.blueName.toLowerCase().includes(searchLower);
+      const redMatch = m.redName.toLowerCase().includes(searchLower);
+      const catMatch = m.category.toLowerCase().includes(searchLower);
+      const ringMatch = `ring ${m.ringNo}`.toLowerCase().includes(searchLower) || m.ringNo.toLowerCase() === searchLower;
+      return matchNoMatch || blueMatch || redMatch || catMatch || ringMatch;
     }
     
     // For TA account, hide matches based on the current view mode
@@ -728,6 +740,19 @@ export function TASheet({
       setSelectedMatchNo(ringMatches[0].matchNo);
     }
   }, [ringMatches, selectedMatchNo, viewMode]);
+
+  // Auto-select first search result if search query is active and current match is not in filtered list
+  useEffect(() => {
+    if (searchQuery && filteredMatches.length > 0) {
+      const isCurrentInFiltered = filteredMatches.some(
+        m => m.ringNo === selectedRing && m.matchNo === selectedMatchNo
+      );
+      if (!isCurrentInFiltered) {
+        const firstMatch = filteredMatches[0];
+        setRingAndMatch(firstMatch.ringNo, firstMatch.matchNo);
+      }
+    }
+  }, [searchQuery, filteredMatches, selectedRing, selectedMatchNo]);
 
   const currentMatch = ringMatches.find(m => m.matchNo === selectedMatchNo) || ringMatches[0];
 
@@ -932,8 +957,8 @@ export function TASheet({
               type="text" 
               value={searchQuery} 
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold w-40 text-sm"
-              placeholder="Match No..."
+              className="px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold w-48 text-sm"
+              placeholder="Match, player, club..."
             />
           </div>
           
@@ -963,14 +988,21 @@ export function TASheet({
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Select Match</label>
             <select 
-              value={selectedMatchNo} 
-              onChange={(e) => setSelectedMatchNo(e.target.value)}
-              className="px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold min-w-[250px] text-sm"
-              disabled={ringMatches.length === 0}
+              value={`${selectedRing}-${selectedMatchNo}`} 
+              onChange={(e) => {
+                const [r, m] = e.target.value.split('-');
+                if (r && m) {
+                  setRingAndMatch(r, m);
+                }
+              }}
+              className="px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold min-w-[280px] text-sm"
+              disabled={(searchQuery ? filteredMatches : ringMatches).length === 0}
             >
-              {ringMatches.length === 0 && <option value="">No Matches Found</option>}
-              {ringMatches.map((match, idx) => (
-                <option key={idx} value={match.matchNo}>Match {formatBoutNumber(Number(match.ringNo), match.matchNo, boutNumberingMode)} - {match.category}</option>
+              {(searchQuery ? filteredMatches : ringMatches).length === 0 && <option value="">No Matches Found</option>}
+              {(searchQuery ? filteredMatches : ringMatches).map((match, idx) => (
+                <option key={idx} value={`${match.ringNo}-${match.matchNo}`}>
+                  {searchQuery ? `[Ring ${match.ringNo}] ` : ''}Match {formatBoutNumber(Number(match.ringNo), match.matchNo, boutNumberingMode)} - {match.category}
+                </option>
               ))}
             </select>
           </div>

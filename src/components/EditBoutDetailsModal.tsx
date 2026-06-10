@@ -16,7 +16,7 @@ interface EditBoutDetailsModalProps {
 }
 
 export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, boutNumberingMode, events, currentEventId }: EditBoutDetailsModalProps) {
-  const defaultRing = user?.role === 'admin' ? (rings[0]?.ringNumber || 1) : (Number(user?.assignedRing) || 1);
+  const defaultRing = (user?.role === 'admin' || sessionStorage.getItem('user_role') === 'court_clerk' || user?.role === 'user') ? (rings[0]?.ringNumber || 1) : (Number(user?.assignedRing) || 1);
   
   const [formData, setFormData] = useState({
     eventId: currentEventId || '',
@@ -30,7 +30,7 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
     is_poomsae_solo: false
   });
 
-  const availableRings = user?.role === 'admin' 
+  const availableRings = (user?.role === 'admin' || sessionStorage.getItem('user_role') === 'court_clerk' || user?.role === 'user') 
     ? rings 
     : rings.filter(r => Number(r.ringNumber) === Number(user?.assignedRing));
 
@@ -38,11 +38,31 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
     ? availableRings 
     : (user?.assignedRing ? [{ ringNumber: Number(user.assignedRing) } as RingStatus] : rings);
 
+  const lastLookupRef = React.useRef<{ ring: number; bout: string; eventId: string } | null>(null);
+
   // Auto-fill details when bout number changes
   useEffect(() => {
-    if (!formData.bout) return;
+    if (!formData.bout) {
+      lastLookupRef.current = null;
+      return;
+    }
     
     const normalizedBout = normalizeBoutNumber(formData.bout);
+    const lookupKey = {
+      ring: formData.ring,
+      bout: normalizedBout,
+      eventId: formData.eventId
+    };
+
+    // If we've already synced/auto-filled for this combination, don't overwrite user changes
+    if (
+      lastLookupRef.current &&
+      lastLookupRef.current.ring === lookupKey.ring &&
+      lastLookupRef.current.bout === lookupKey.bout &&
+      lastLookupRef.current.eventId === lookupKey.eventId
+    ) {
+      return;
+    }
     
     // Check active bout
     const ring = rings.find(r => r.ringNumber === formData.ring);
@@ -58,6 +78,7 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
 
     if (foundMatch) {
       const isSolo = foundMatch.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || false;
+      lastLookupRef.current = lookupKey;
       setFormData(prev => ({
         ...prev,
         blue_name: foundMatch!.blue_name,
@@ -74,6 +95,7 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
     const queuedBout = queue.find(q => q.data.ring === formData.ring && isBoutMatch(q.data.bout, formData.bout) && (q.data.eventId === formData.eventId || !formData.eventId));
     if (queuedBout) {
       const isSolo = queuedBout.data.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || false;
+      lastLookupRef.current = lookupKey;
       setFormData(prev => ({
         ...prev,
         blue_name: queuedBout.data.blue_name,
@@ -84,7 +106,7 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
         is_poomsae_solo: isSolo
       }));
     }
-  }, [formData.ring, formData.bout, rings, queue]);
+  }, [formData.ring, formData.bout, formData.eventId, rings, queue]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -1081,7 +1081,8 @@ export default function App() {
     const userRole = sessionStorage.getItem('user_role');
     const assignedRing = sessionStorage.getItem('assigned_ring');
     const targetRingLetter = String.fromCharCode(64 + ringNumber);
-    if (userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
+    // Court Clerk has same authority as admin (unrestricted ring access)
+    if (false && userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
         alert("You are not authorized to modify this ring.");
         return;
     }
@@ -1482,7 +1483,8 @@ export default function App() {
     const userRole = sessionStorage.getItem('user_role');
     const assignedRing = sessionStorage.getItem('assigned_ring');
     const targetRingLetter = String.fromCharCode(64 + ringNumber);
-    if (userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
+    // Court Clerk has same authority as admin (unrestricted ring access)
+    if (false && userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
         alert("You are not authorized to modify this ring.");
         return;
     }
@@ -1673,7 +1675,8 @@ export default function App() {
     const userRole = sessionStorage.getItem('user_role');
     const assignedRing = sessionStorage.getItem('assigned_ring');
     const targetRingLetter = String.fromCharCode(64 + parseInt(ringNo));
-    if (userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
+    // Court Clerk has same authority as admin (unrestricted ring access)
+    if (false && userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
         alert("You are not authorized to modify this ring.");
         return;
     }
@@ -1734,7 +1737,8 @@ export default function App() {
     const userRole = sessionStorage.getItem('user_role');
     const assignedRing = sessionStorage.getItem('assigned_ring');
     const targetRingLetter = String.fromCharCode(64 + ringNumber);
-    if (userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
+    // Court Clerk has same authority as admin (unrestricted ring access)
+    if (false && userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
         alert("You are not authorized to modify this ring.");
         return;
     }
@@ -2036,7 +2040,8 @@ export default function App() {
     const userRole = sessionStorage.getItem('user_role');
     const assignedRing = sessionStorage.getItem('assigned_ring');
     const targetRingLetter = String.fromCharCode(64 + ringNumber);
-    if (userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
+    // Court Clerk has same authority as admin (unrestricted ring access)
+    if (false && userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
         alert("You are not authorized to modify this ring.");
         return;
     }
@@ -2500,7 +2505,8 @@ export default function App() {
     const userRole = sessionStorage.getItem('user_role');
     const assignedRing = sessionStorage.getItem('assigned_ring');
     const targetRingLetter = String.fromCharCode(64 + ringNumber);
-    if (userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
+    // Court Clerk has same authority as admin (unrestricted ring access)
+    if (false && userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
         alert("You are not authorized to modify this ring.");
         return;
     }
@@ -2526,7 +2532,8 @@ export default function App() {
     const userRole = sessionStorage.getItem('user_role');
     const assignedRing = sessionStorage.getItem('assigned_ring');
     const targetRingLetter = String.fromCharCode(64 + ringNumber);
-    if (userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
+    // Court Clerk has same authority as admin (unrestricted ring access)
+    if (false && userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
         alert("You are not authorized to modify this ring.");
         return;
     }
@@ -2540,7 +2547,7 @@ export default function App() {
       red_name: newData.red_name?.toUpperCase() || '',
       red_club: newData.red_club?.toUpperCase() || '',
       category: newData.category?.toUpperCase() || '',
-      bout: normalizeBoutWithRing(newData.bout, ringNumber),
+      bout: normalizeBoutWithRing(newData.bout, ringNumber, newData.originalRing),
     };
 
     // Update categories and clubs lists
@@ -5252,7 +5259,7 @@ interface EditResultModalProps {
 }
 
 function EditResultModal({ onClose, onSubmit, rings, queue, user, boutNumberingMode = 'alphanumeric', events, currentEventId }: EditResultModalProps) {
-  const defaultRing = user?.role === 'admin' ? (rings[0]?.ringNumber || 1) : (Number(user?.assignedRing) || 1);
+  const defaultRing = (user?.role === 'admin' || sessionStorage.getItem('user_role') === 'court_clerk' || user?.role === 'user') ? (rings[0]?.ringNumber || 1) : (Number(user?.assignedRing) || 1);
   
   const [formData, setFormData] = useState({
     eventId: currentEventId || '',
@@ -5306,7 +5313,7 @@ function EditResultModal({ onClose, onSubmit, rings, queue, user, boutNumberingM
     onClose();
   };
 
-  const availableRings = user?.role === 'admin' 
+  const availableRings = (user?.role === 'admin' || sessionStorage.getItem('user_role') === 'court_clerk' || user?.role === 'user') 
     ? rings 
     : rings.filter(r => r.ringNumber === Number(user?.assignedRing));
 
@@ -5489,7 +5496,7 @@ interface NewBoutModalProps {
 }
 
 function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user, initialRing, currentEventId, events, isSyncing, boutNumberingMode = 'alphanumeric', matchHistory = [] }: NewBoutModalProps) {
-  const defaultRing = initialRing || (user?.role === 'admin' ? (rings[0]?.ringNumber || 1) : (Number(user?.assignedRing) || 1));
+  const defaultRing = initialRing || ((user?.role === 'admin' || sessionStorage.getItem('user_role') === 'court_clerk' || user?.role === 'user') ? (rings[0]?.ringNumber || 1) : (Number(user?.assignedRing) || 1));
   
   const getNextBoutNumber = (ringNum: number) => {
     let maxBout = ringNum * 1000;
@@ -5605,7 +5612,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
     onClose();
   };
 
-  const availableRings = user?.role === 'admin' 
+  const availableRings = (user?.role === 'admin' || sessionStorage.getItem('user_role') === 'court_clerk' || user?.role === 'user') 
     ? rings 
     : rings.filter(r => r.ringNumber === Number(user?.assignedRing));
 
@@ -6100,11 +6107,26 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
           <div>
             <div className="flex items-center gap-2 mt-1">
               <span className="font-bold text-sm uppercase tracking-wider block leading-none">Ring {ringName}</span>
-              {current && (
-                <span className="text-[26px] font-black text-slate-300 uppercase tracking-widest border border-slate-700 bg-slate-800 rounded-lg px-3 py-1 leading-none">
-                  {formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode)} {ring.totalBouts ? `/ ${formatBoutNumber(ring.ringNumber, ring.totalBouts, boutNumberingMode)}` : ''}
-                </span>
-              )}
+              {current && (() => {
+                const isTransferred = (() => {
+                  if (!current?.bout) return false;
+                  const s = current.bout.toString().toUpperCase().trim();
+                  const match = s.match(/^([A-Z])/);
+                  if (match) {
+                    const boutPrefix = match[1];
+                    const expectedPrefix = String.fromCharCode(64 + ring.ringNumber);
+                    return boutPrefix !== expectedPrefix;
+                  }
+                  return false;
+                })();
+                const formBout = formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode);
+                return (
+                  <span className="text-[26px] font-black text-slate-300 uppercase tracking-widest border border-slate-700 bg-slate-800 rounded-lg px-3 py-1 leading-none">
+                    {formBout}
+                    {!isTransferred && ring.totalBouts ? ` / ${formatBoutNumber(ring.ringNumber, ring.totalBouts, boutNumberingMode)}` : ''}
+                  </span>
+                );
+              })()}
             </div>
             <div className="flex items-center gap-2 mt-1.5">
               {ring.totalBouts && (
@@ -8131,13 +8153,34 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
         {current && (
           <div className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center pointer-events-none">
             <p className="text-xl sm:text-3xl md:text-[40px] font-black text-white leading-none drop-shadow-md pointer-events-auto">
-              {hasPlayers(current) ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
-              {showTotalBouts && (
-                <>
-                  <span className="mx-1 sm:mx-2 text-white/40">/</span>
-                  <span className="text-xs sm:text-2xl md:text-[30px]">{ring.totalBouts ? formatBoutNumber(ring.ringNumber, ring.totalBouts, boutNumberingMode) : (queueCount || 0)}</span>
-                </>
-              )}
+              {(() => {
+                const isTransferred = (() => {
+                  if (!current?.bout) return false;
+                  const s = current.bout.toString().toUpperCase().trim();
+                  const match = s.match(/^([A-Z])/);
+                  if (match) {
+                    const boutPrefix = match[1];
+                    const expectedPrefix = String.fromCharCode(64 + ring.ringNumber);
+                    return boutPrefix !== expectedPrefix;
+                  }
+                  return false;
+                })();
+                const formBout = hasPlayers(current) ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---";
+                if (isTransferred) {
+                  return formBout;
+                }
+                return (
+                  <>
+                    {formBout}
+                    {showTotalBouts && (
+                      <>
+                        <span className="mx-1 sm:mx-2 text-white/40">/</span>
+                        <span className="text-xs sm:text-2xl md:text-[30px]">{ring.totalBouts ? formatBoutNumber(ring.ringNumber, ring.totalBouts, boutNumberingMode) : (queueCount || 0)}</span>
+                      </>
+                    )}
+                  </>
+                );
+              })()}
             </p>
           </div>
         )}
