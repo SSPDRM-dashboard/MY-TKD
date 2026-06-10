@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, AlertCircle, RefreshCw, Eraser, Check, History, X, Search, Printer, Trophy, Edit2 } from 'lucide-react';
+import { Download, AlertCircle, RefreshCw, Eraser, Check, History, X, Search, Printer, Trophy, Edit2, Plus } from 'lucide-react';
 import { motion } from 'motion/react';
 import { MatchData, RingStatus, EventData, MatchHistoryItem } from '../types';
 import Papa from 'papaparse';
@@ -284,6 +284,7 @@ interface TASheetProps {
   key?: string;
   isAutoUpdateNames?: boolean;
   onToggleAutoUpdateNames?: (val: boolean) => void;
+  onCreateNewBout?: () => void;
 }
 
 export function TASheet({ 
@@ -301,7 +302,8 @@ export function TASheet({
   onSharedSelectionChange,
   boutNumberingMode = 'alphanumeric',
   isAutoUpdateNames,
-  onToggleAutoUpdateNames
+  onToggleAutoUpdateNames,
+  onCreateNewBout
 }: TASheetProps) {
   const [matches, setMatches] = useState<SheetMatch[]>([]);
   const [fallbackMatches, setFallbackMatches] = useState<SheetMatch[]>([]);
@@ -898,6 +900,17 @@ export function TASheet({
               >
                 <History size={16} />
                 Reprint Signed
+              </button>
+            )}
+
+            {onCreateNewBout && (
+              <button 
+                onClick={onCreateNewBout}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all flex items-center gap-2 text-sm h-10 shadow-sm"
+                title="Create a new tournament match"
+              >
+                <Plus size={16} />
+                Create New Bout
               </button>
             )}
             

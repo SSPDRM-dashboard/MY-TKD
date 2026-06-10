@@ -3879,6 +3879,7 @@ export default function App() {
                 boutNumberingMode={boutNumberingMode}
                 isAutoUpdateNames={isAutoUpdateNames}
                 onToggleAutoUpdateNames={setIsAutoUpdateNames}
+                onCreateNewBout={() => setShowNewBoutModal(true)}
               />
             </div>
           )}
@@ -3899,6 +3900,7 @@ export default function App() {
                 boutNumberingMode={boutNumberingMode}
                 isAutoUpdateNames={isAutoUpdateNames}
                 onToggleAutoUpdateNames={setIsAutoUpdateNames}
+                onCreateNewBout={() => setShowNewBoutModal(true)}
               />
             </div>
           )}
