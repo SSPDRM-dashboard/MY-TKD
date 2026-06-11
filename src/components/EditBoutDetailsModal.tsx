@@ -81,11 +81,11 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
       lastLookupRef.current = lookupKey;
       setFormData(prev => ({
         ...prev,
-        blue_name: foundMatch!.blue_name,
-        blue_club: foundMatch!.blue_club,
-        red_name: foundMatch!.red_name,
-        red_club: foundMatch!.red_club,
-        category: foundMatch!.category,
+        blue_name: foundMatch!.blue_name || '',
+        blue_club: foundMatch!.blue_club || '',
+        red_name: foundMatch!.red_name || '',
+        red_club: foundMatch!.red_club || '',
+        category: foundMatch!.category || '',
         is_poomsae_solo: isSolo
       }));
       return;
@@ -98,11 +98,11 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
       lastLookupRef.current = lookupKey;
       setFormData(prev => ({
         ...prev,
-        blue_name: queuedBout.data.blue_name,
-        blue_club: queuedBout.data.blue_club,
-        red_name: queuedBout.data.red_name,
-        red_club: queuedBout.data.red_club,
-        category: queuedBout.data.category,
+        blue_name: queuedBout.data.blue_name || '',
+        blue_club: queuedBout.data.blue_club || '',
+        red_name: queuedBout.data.red_name || '',
+        red_club: queuedBout.data.red_club || '',
+        category: queuedBout.data.category || '',
         is_poomsae_solo: isSolo
       }));
     }
@@ -185,7 +185,7 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Bout Number</label>
               <input 
                 type="text" 
-                value={formData.bout}
+                value={formData.bout || ''}
                 onChange={(e) => setFormData({...formData, bout: e.target.value.toUpperCase()})}
                 onBlur={() => {
                   if (formData.bout) {
@@ -206,7 +206,7 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Category</label>
             <input 
               type="text" 
-              value={formData.category}
+              value={formData.category || ''}
               onChange={(e) => setFormData({...formData, category: e.target.value})}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
               placeholder="e.g. U30 Female Individual"
@@ -240,7 +240,7 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
                 <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest ml-1">Name</label>
                 <input 
                   type="text" 
-                  value={formData.blue_name}
+                  value={formData.blue_name || ''}
                   onChange={(e) => setFormData({...formData, blue_name: e.target.value})}
                   className="w-full px-4 py-2 bg-white border border-blue-200 rounded-lg text-sm font-bold"
                   required
@@ -250,7 +250,7 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
                 <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest ml-1">Club</label>
                 <input 
                   type="text" 
-                  value={formData.blue_club}
+                  value={formData.blue_club || ''}
                   onChange={(e) => setFormData({...formData, blue_club: e.target.value})}
                   className="w-full px-4 py-2 bg-white border border-blue-200 rounded-lg text-sm font-bold"
                   required
@@ -265,7 +265,7 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
                   <label className="text-[10px] font-black text-red-600 uppercase tracking-widest ml-1">Name</label>
                   <input 
                     type="text" 
-                    value={formData.red_name}
+                    value={formData.red_name || ''}
                     onChange={(e) => setFormData({...formData, red_name: e.target.value})}
                     className="w-full px-4 py-2 bg-white border border-red-200 rounded-lg text-sm font-bold"
                     required
@@ -275,7 +275,7 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
                   <label className="text-[10px] font-black text-red-600 uppercase tracking-widest ml-1">Club</label>
                   <input 
                     type="text" 
-                    value={formData.red_club}
+                    value={formData.red_club || ''}
                     onChange={(e) => setFormData({...formData, red_club: e.target.value})}
                     className="w-full px-4 py-2 bg-white border border-red-200 rounded-lg text-sm font-bold"
                     required

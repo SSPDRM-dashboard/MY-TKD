@@ -1542,6 +1542,49 @@ export default function App() {
     });
   };
 
+  const removeBoutFromRingSlot = (ringNumber: number, slot: 'onDeck' | 'inTheHole') => {
+    setRings(prev => {
+      const updated = prev.map(r => r.ringNumber === ringNumber ? {
+        ...r,
+        [slot]: null
+      } : r);
+      localStorage.setItem('tkd_rings', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const transferBoutFromRingSlot = (ringNumber: number, slot: 'onDeck' | 'inTheHole', targetRing: number) => {
+    const ring = rings.find(r => r.ringNumber === ringNumber);
+    const match = ring ? ring[slot] : null;
+    if (!match) return;
+
+    setRings(prev => {
+      const updated = prev.map(r => r.ringNumber === ringNumber ? {
+        ...r,
+        [slot]: null
+      } : r);
+      localStorage.setItem('tkd_rings', JSON.stringify(updated));
+      return updated;
+    });
+
+    const updatedMatch = {
+      ...match,
+      ring: targetRing,
+      originalRing: match.originalRing || ringNumber
+    };
+
+    setBoutQueue(prev => {
+      const updated = [...prev, {
+        id: Math.random().toString(36).substr(2, 9),
+        data: updatedMatch
+      }];
+      localStorage.setItem('tkd_bout_queue', JSON.stringify(updated));
+      return updated;
+    });
+
+    addToSyncLog("Transfer Bout Ring", "success", `Transferred Bout ${match.bout} from Ring ${getRingName(ringNumber)} to Ring ${getRingName(targetRing)}`);
+  };
+
   const handleMissingBoutReason = async (ringNumber: number, boutNumber: number, reason: string) => {
     const userRole = sessionStorage.getItem('user_role');
     const assignedRing = sessionStorage.getItem('assigned_ring');
@@ -3665,76 +3708,149 @@ export default function App() {
                   </div>
 
                   {/* Sidebar (Queue Only) */}
-                  <div className="space-y-6">
-                    {/* Bout Queue */}
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
-                          <Calendar size={20} className="text-red-600" />
-                          Upcoming Bouts (Ring {getRingName(activeDashboardSelectedRing)})
-                        </h3>
-                        <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full">
-                          {getFilteredQueue(activeDashboardSelectedRing).length}
-                        </span>
-                      </div>
-                      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col max-h-[400px]">
-                        <div className="p-4 overflow-y-auto space-y-3">
-                            {getFilteredQueue(activeDashboardSelectedRing).length === 0 ? (
-                            <p className="text-sm text-slate-500 text-center py-8">No upcoming bouts for Ring {getRingName(activeDashboardSelectedRing)}.</p>
-                          ) : (
-                            getFilteredQueue(activeDashboardSelectedRing).map((item, idx) => (
-                              <div key={`${item.id}-${idx}`} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm gap-3">
-                                <button 
-                                  onClick={() => deleteBoutFromQueue(item.id)}
-                                  className="p-1.5 text-slate-300 hover:text-red-500 transition-all shrink-0"
-                                  title="Remove from Queue"
-                                >
-                                  <X size={14} />
-                                </button>
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                    <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-md">Ring {getRingName(item.data.ring)}</span>
-                                    <span className="text-[11px] font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">Bout {formatBoutNumber(item.data.ring, item.data.bout, boutNumberingMode)}</span>
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-[10px] font-bold text-slate-400">Move:</span>
-                                      <select
-                                        value={item.data.ring || ''}
-                                        onChange={(e) => {
-                                          const targetRing = parseInt(e.target.value);
-                                          if (targetRing) {
-                                            setBoutQueue(prev => prev.map(q => q.id === item.id ? { ...q, data: { ...q.data, ring: targetRing, originalRing: q.data.originalRing || q.data.ring } } : q));
-                                            addToSyncLog("Transfer Bout Ring", "success", `Transferred Bout ${item.data.bout} from Ring ${item.data.ring} to Ring ${targetRing}`);
+                  {(() => {
+                    const upcomingBouts: { id: string; type: 'onDeck' | 'inTheHole' | 'normal'; data: MatchData }[] = [];
+                    
+                    if (selectedRingObj) {
+                      if (selectedRingObj.onDeck && (!selectedRingObj.onDeck.eventId || selectedRingObj.onDeck.eventId === currentEventId)) {
+                        upcomingBouts.push({
+                          id: `ondeck-${selectedRingObj.onDeck.bout}`,
+                          type: 'onDeck',
+                          data: selectedRingObj.onDeck
+                        });
+                      }
+                      if (selectedRingObj.inTheHole && (!selectedRingObj.inTheHole.eventId || selectedRingObj.inTheHole.eventId === currentEventId)) {
+                        upcomingBouts.push({
+                          id: `inhole-${selectedRingObj.inTheHole.bout}`,
+                          type: 'inTheHole',
+                          data: selectedRingObj.inTheHole
+                        });
+                      }
+                    }
+                    
+                    const normalQueue = getFilteredQueue(activeDashboardSelectedRing);
+                    normalQueue.forEach(item => {
+                      upcomingBouts.push({
+                        id: item.id,
+                        type: 'normal',
+                        data: item.data
+                      });
+                    });
+
+                    return (
+                      <div className="space-y-6">
+                        {/* Bout Queue */}
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                              <Calendar size={20} className="text-red-600" />
+                              Upcoming Bouts (Ring {getRingName(activeDashboardSelectedRing)})
+                            </h3>
+                            <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full">
+                              {upcomingBouts.length}
+                            </span>
+                          </div>
+                          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col max-h-[400px]">
+                            <div className="p-4 overflow-y-auto space-y-3 font-sans">
+                              {upcomingBouts.length === 0 ? (
+                                <p className="text-sm text-slate-500 text-center py-8">No upcoming bouts for Ring {getRingName(activeDashboardSelectedRing)}.</p>
+                              ) : (
+                                upcomingBouts.map((item, idx) => {
+                                  return (
+                                    <div key={`${item.id}-${idx}`} className={cn(
+                                      "border rounded-2xl p-4 flex items-center justify-between shadow-sm gap-3",
+                                      item.type === 'onDeck' ? "bg-blue-50/70 border-blue-100" :
+                                      item.type === 'inTheHole' ? "bg-amber-50/70 border-amber-100" :
+                                      "bg-slate-50 border-slate-100"
+                                    )}>
+                                      <button 
+                                        onClick={() => {
+                                          if (item.type === 'onDeck') {
+                                            removeBoutFromRingSlot(selectedRingObj.ringNumber, 'onDeck');
+                                          } else if (item.type === 'inTheHole') {
+                                            removeBoutFromRingSlot(selectedRingObj.ringNumber, 'inTheHole');
+                                          } else {
+                                            deleteBoutFromQueue(item.id);
                                           }
                                         }}
-                                        className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded px-1 py-0.5 outline-none cursor-pointer hover:bg-indigo-100 transition-colors"
+                                        className="p-1.5 text-slate-300 hover:text-red-500 transition-all shrink-0 cursor-pointer"
+                                        title="Remove from Queue"
                                       >
-                                        {currentRings.map(r => (
-                                          <option key={r.ringNumber} value={r.ringNumber}>
-                                            Ring {getRingName(r.ringNumber)}
-                                          </option>
-                                        ))}
-                                      </select>
+                                        <X size={14} />
+                                      </button>
+                                      
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                          <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-md">Ring {getRingName(item.data.ring)}</span>
+                                          <span className="text-[11px] font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">Bout {formatBoutNumber(item.data.ring, item.data.bout, boutNumberingMode)}</span>
+                                          
+                                          {item.type === 'onDeck' && (
+                                            <span className="text-[10px] font-black text-blue-600 bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                              On Deck
+                                            </span>
+                                          )}
+                                          {item.type === 'inTheHole' && (
+                                            <span className="text-[10px] font-black text-amber-600 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                              In Hole
+                                            </span>
+                                          )}
+
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-[10px] font-bold text-slate-400">Move:</span>
+                                            <select
+                                              value={item.data.ring || ''}
+                                              onChange={(e) => {
+                                                const targetRing = parseInt(e.target.value);
+                                                if (targetRing) {
+                                                  if (item.type === 'onDeck') {
+                                                    transferBoutFromRingSlot(selectedRingObj.ringNumber, 'onDeck', targetRing);
+                                                  } else if (item.type === 'inTheHole') {
+                                                    transferBoutFromRingSlot(selectedRingObj.ringNumber, 'inTheHole', targetRing);
+                                                  } else {
+                                                    setBoutQueue(prev => prev.map(q => q.id === item.id ? { ...q, data: { ...q.data, ring: targetRing, originalRing: q.data.originalRing || q.data.ring } } : q));
+                                                    addToSyncLog("Transfer Bout Ring", "success", `Transferred Bout ${item.data.bout} from Ring ${item.data.ring} to Ring ${targetRing}`);
+                                                  }
+                                                }
+                                              }}
+                                              className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded px-1 py-0.5 outline-none cursor-pointer hover:bg-indigo-100 transition-colors"
+                                            >
+                                              {currentRings.map(r => (
+                                                <option key={r.ringNumber} value={r.ringNumber}>
+                                                  Ring {getRingName(r.ringNumber)}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                        </div>
+                                        <p className="text-sm font-bold text-slate-800">{cleanPlaceholder(item.data.blue_name)} vs {cleanPlaceholder(item.data.red_name)}</p>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{cleanPlaceholder(item.data.category)}</p>
+                                      </div>
+                                      
+                                      <div className="flex flex-col items-end gap-2 shrink-0">
+                                        {item.type === 'normal' ? (
+                                          <button 
+                                            onClick={() => pullBout(item.id)}
+                                            className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+                                            title="Pull to Active Ring"
+                                          >
+                                            <ChevronLeft size={18} />
+                                          </button>
+                                        ) : (
+                                          <span className="text-[10px] font-extrabold text-slate-400 bg-slate-100 border border-slate-200 px-2 py-1 rounded-lg">
+                                            Active Ring
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
-                                  <p className="text-sm font-bold text-slate-800">{cleanPlaceholder(item.data.blue_name)} vs {cleanPlaceholder(item.data.red_name)}</p>
-                                  <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{cleanPlaceholder(item.data.category)}</p>
-                                </div>
-                                <div className="flex flex-col items-end gap-2 shrink-0">
-                                  <button 
-                                    onClick={() => pullBout(item.id)}
-                                    className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors"
-                                    title="Pull to Active Ring"
-                                  >
-                                    <ChevronLeft size={18} />
-                                  </button>
-                                </div>
-                              </div>
-                            ))
-                          )}
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
               </div>
             </>
           );
@@ -5933,7 +6049,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Bout Number</label>
                   <input 
                     type="text" 
-                    value={formData.bout}
+                    value={formData.bout || ''}
                     onChange={(e) => setFormData({...formData, bout: e.target.value})}
                     onBlur={(e) => {
                       const formatted = formatBoutNumber(formData.ring, e.target.value, boutNumberingMode);
@@ -6012,7 +6128,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
               <input 
                 type="text" 
                 list="new-bout-cats"
-                value={formData.category}
+                value={formData.category || ''}
                 onChange={(e) => setFormData({...formData, category: e.target.value})}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold"
                 placeholder="Select or type category (e.g. -45kg)"
@@ -6039,7 +6155,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
               </div>
               <input 
                 type="text" 
-                value={formData.blue_name}
+                value={formData.blue_name || ''}
                 onChange={(e) => setFormData({...formData, blue_name: e.target.value})}
                 className="w-full px-3 py-2 bg-white border border-blue-200 rounded-xl text-sm font-bold"
                 placeholder={isPoomsaeMode ? "Performer Name" : "Player Name"}
@@ -6049,7 +6165,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
               <input 
                 type="text" 
                 list="new-bout-clubs"
-                value={formData.blue_club}
+                value={formData.blue_club || ''}
                 onChange={(e) => setFormData({...formData, blue_club: e.target.value})}
                 className="w-full px-3 py-2 bg-white border border-blue-200 rounded-xl text-sm font-bold"
                 placeholder="Club Name"
@@ -6067,7 +6183,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                 </div>
                 <input 
                   type="text" 
-                  value={formData.red_name}
+                  value={formData.red_name || ''}
                   onChange={(e) => setFormData({...formData, red_name: e.target.value})}
                   className="w-full px-3 py-2 bg-white border border-red-200 rounded-xl text-sm font-bold"
                   placeholder="Player Name"
@@ -6077,7 +6193,7 @@ function NewBoutModal({ onClose, onSubmit, categories, clubs, rings, queue, user
                 <input 
                   type="text" 
                   list="new-bout-clubs"
-                  value={formData.red_club}
+                  value={formData.red_club || ''}
                   onChange={(e) => setFormData({...formData, red_club: e.target.value})}
                   className="w-full px-3 py-2 bg-white border border-red-200 rounded-xl text-sm font-bold"
                   placeholder="Club Name"
@@ -9219,12 +9335,21 @@ function doPost(e) {
   const dataRange = sheet.getDataRange();
   const values = dataRange.getValues();
   
+  // Helper to check if event name matches
+  function isEventMatch(rowEventVal, targetEventVal) {
+    if (!targetEventVal) return true; // fallback if no target event name was sent from old components
+    var rE = String(rowEventVal || '').trim().toUpperCase();
+    var tE = String(targetEventVal || '').trim().toUpperCase();
+    return rE === tE;
+  }
+  
   if (data.action === 'updateBoutDetails') {
     for (let i = 1; i < values.length; i++) {
       var rowRing = parseInt(values[i][2], 10);
       var targetRing = parseInt(data.ring, 10);
       var ringMatches = (!isNaN(rowRing) && !isNaN(targetRing)) ? (rowRing === targetRing) : (values[i][2] == data.ring);
-      if (ringMatches && isGasBoutMatch(values[i][3], data.bout)) {
+      var eventMatches = isEventMatch(values[i][1], data.event_name);
+      if (eventMatches && ringMatches && isGasBoutMatch(values[i][3], data.bout)) {
         sheet.getRange(i + 1, 6).setValue(data.blue_name);
         sheet.getRange(i + 1, 7).setValue(data.blue_club);
         sheet.getRange(i + 1, 8).setValue(data.red_name);
@@ -9240,7 +9365,8 @@ function doPost(e) {
       var rowRing = parseInt(values[i][2], 10);
       var targetRing = parseInt(data.ring, 10);
       var ringMatches = (!isNaN(rowRing) && !isNaN(targetRing)) ? (rowRing === targetRing) : (values[i][2] == data.ring);
-      if (ringMatches && isGasBoutMatch(values[i][3], data.bout)) {
+      var eventMatches = isEventMatch(values[i][1], data.event_name);
+      if (eventMatches && ringMatches && isGasBoutMatch(values[i][3], data.bout)) {
         if (data.r1Blue !== undefined) sheet.getRange(i + 1, 10).setValue(data.r1Blue);
         if (data.r1Red !== undefined) sheet.getRange(i + 1, 11).setValue(data.r1Red);
         if (data.r2Blue !== undefined) sheet.getRange(i + 1, 12).setValue(data.r2Blue);
@@ -9258,7 +9384,8 @@ function doPost(e) {
       var rowRing = parseInt(values[i][2], 10);
       var targetRing = parseInt(data.ring, 10);
       var ringMatches = (!isNaN(rowRing) && !isNaN(targetRing)) ? (rowRing === targetRing) : (values[i][2] == data.ring);
-      if (ringMatches && isGasBoutMatch(values[i][3], data.bout)) {
+      var eventMatches = isEventMatch(values[i][1], data.event_name);
+      if (eventMatches && ringMatches && isGasBoutMatch(values[i][3], data.bout)) {
         sheet.getRange(i + 1, 16).setValue(data.winner);
         sheet.getRange(i + 1, 17).setValue(data.winner_club);
         // Also update points if they are supplied in winner update
@@ -9279,7 +9406,8 @@ function doPost(e) {
       var rowRing = parseInt(values[i][2], 10);
       var targetRing = parseInt(data.ring, 10);
       var ringMatches = (!isNaN(rowRing) && !isNaN(targetRing)) ? (rowRing === targetRing) : (values[i][2] == data.ring);
-      if (ringMatches && isGasBoutMatch(values[i][3], data.bout)) {
+      var eventMatches = isEventMatch(values[i][1], data.event_name);
+      if (eventMatches && ringMatches && isGasBoutMatch(values[i][3], data.bout)) {
         sheet.getRange(i + 1, 16).setValue("TRANSFERRED: " + data.reason);
         break;
       }

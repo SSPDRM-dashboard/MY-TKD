@@ -20,8 +20,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { MatchData, BoutMapping, EventData, RingStatus } from '../types';
-import { cn, normalizeBoutNumber, formatBoutNumber, isBoutMatch, normalizeBoutWithRing } from '../lib/utils';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { cn, normalizeBoutNumber, formatBoutNumber, isBoutMatch, normalizeBoutWithRing, getBoutNumber } from '../lib/utils';
+import { collection, addDoc, serverTimestamp, setDoc, doc } from 'firebase/firestore';
 import { handleGlobalQuotaTrigger, isFirestoreQuotaExceeded } from '../App';
 import { db } from '../firebase';
 import { syncToGoogleSheets } from '../services/googleSheets';
@@ -747,28 +747,6 @@ export function AIBracketSetup({
 
     setIsProcessing(true);
     try {
-      // 1. Save Mappings to Firestore (event_logic)
-      const mappingPromises = previewData.mappings.map(m => {
-        const matchingMatch = previewData.matches.find((match: MatchData) => 
-          isBoutMatch(match.bout, m.sourceBout) || isBoutMatch(match.bout, m.nextBout)
-        );
-        const resolvedCategory = m.categoryName || (matchingMatch ? matchingMatch.category : "Auto-Extracted from File");
-
-        if (isFirestoreQuotaExceeded) return Promise.resolve();
-        return addDoc(collection(db, 'event_logic'), {
-          ...m,
-          sourceBout: normalizeBoutNumber(m.sourceBout || ''),
-          nextBout: normalizeBoutNumber(m.nextBout || ''),
-          eventId: currentEventId,
-          eventName: currentEvent.name,
-          categoryName: resolvedCategory,
-          createdAt: serverTimestamp()
-        });
-      });
-      
-      // 2. Update Ring Total Bouts (based on matches and mappings to keep ring sizes accurate) AND update active match contents if they exist in the uploaded records
-      const ringTotals = new Map<number, number>();
-      
       // Helper to get ring from bout prefix or number
       const getRingFromBout = (bout: string | number) => {
         const boutStr = (bout || '').toString();
@@ -789,32 +767,84 @@ export function AIBracketSetup({
         return 1;
       };
 
-      previewData.matches.forEach(m => {
-        const boutStr = (m.bout || '').toString();
-        const boutNum = parseInt(boutStr.replace(/[^0-9]/g, ''));
-        const ringNum = Number(m.ring || getRingFromBout(boutStr));
+      // 0. Pre-process matches to ensure perfect data normalization (Uppercase, EventId, Ring Number, Normalized Bouts)
+      const processedMatches = previewData.matches.map((m: MatchData) => {
+        const rNum = Number(m.ring || getRingFromBout(m.bout));
+        return {
+          ...m,
+          ring: rNum,
+          eventId: currentEventId,
+          blue_name: m.blue_name?.toUpperCase().trim() || '',
+          blue_club: m.blue_club?.toUpperCase().trim() || '',
+          red_name: m.red_name?.toUpperCase().trim() || '',
+          red_club: m.red_club?.toUpperCase().trim() || '',
+          category: m.category?.toUpperCase().trim() || '',
+          bout: normalizeBoutWithRing(m.bout, rNum, m.originalRing),
+          privacy_mode: m.privacy_mode || false
+        };
+      });
+
+      // 1. Save Mappings to Firestore (event_logic) with uppercase category matching
+      const mappingPromises = previewData.mappings.map(m => {
+        const matchingMatch = processedMatches.find((match: MatchData) => 
+          isBoutMatch(match.bout, m.sourceBout) || isBoutMatch(match.bout, m.nextBout)
+        );
+        const resolvedCategory = (m.categoryName || (matchingMatch ? matchingMatch.category : "Auto-Extracted from File")).toUpperCase().trim();
+
+        if (isFirestoreQuotaExceeded) return Promise.resolve();
+        return addDoc(collection(db, 'event_logic'), {
+          ...m,
+          sourceBout: normalizeBoutNumber(m.sourceBout || ''),
+          nextBout: normalizeBoutNumber(m.nextBout || ''),
+          eventId: currentEventId,
+          eventName: currentEvent.name,
+          categoryName: resolvedCategory,
+          createdAt: serverTimestamp()
+        });
+      });
+
+      // Also persist bracket matches + mappings to the "tournaments" doc to fully support the "Auto-fill from bracket data" button
+      if (!isFirestoreQuotaExceeded) {
+        await setDoc(doc(db, 'tournaments', currentEventId, 'bracket', 'data'), {
+          matches: processedMatches,
+          mappings: previewData.mappings,
+          updatedAt: serverTimestamp()
+        }).catch(err => console.error("Error saving tournaments bracket data:", err));
+      }
+      
+      // Calculate ring totals
+      const ringTotals = new Map<number, number>();
+      processedMatches.forEach(m => {
+        const boutNum = parseInt(m.bout.toString().replace(/[^0-9]/g, ''));
         if (!isNaN(boutNum)) {
-          const currentMax = ringTotals.get(ringNum) || 0;
-          if (boutNum > currentMax) ringTotals.set(ringNum, boutNum);
+          const currentMax = ringTotals.get(m.ring) || 0;
+          if (boutNum > currentMax) ringTotals.set(m.ring, boutNum);
         }
       });
 
-      // Also check mappings for higher bout numbers
+      // Check mappings for higher bout numbers too
       previewData.mappings.forEach(m => {
         const sourceStr = (m.sourceBout || '').toString();
         const nextStr = (m.nextBout || '').toString();
         const sourceNum = parseInt(sourceStr.replace(/[^0-9]/g, '') || '0');
         const nextNum = parseInt(nextStr.replace(/[^0-9]/g, '') || '0');
         
-        const sRing = getRingFromBout(sourceStr);
-        const nRing = getRingFromBout(nextStr);
+        const matchingSource = processedMatches.find((match: MatchData) => isBoutMatch(match.bout, m.sourceBout));
+        const matchingNext = processedMatches.find((match: MatchData) => isBoutMatch(match.bout, m.nextBout));
+        
+        const sRing = matchingSource ? matchingSource.ring : getRingFromBout(sourceStr);
+        const nRing = matchingNext ? matchingNext.ring : getRingFromBout(nextStr);
 
         if (sourceNum > (ringTotals.get(sRing) || 0)) ringTotals.set(sRing, sourceNum);
         if (nextNum > (ringTotals.get(nRing) || 0)) ringTotals.set(nRing, nextNum);
       });
 
-      // Update rings (and merge matching newly uploaded details into existing active/on-deck/in-the-hole matches)
+      // 2. Update Rings: Load first 3 matches directly to active rings slots (currentBout, onDeck, inTheHole) 
+      const assignedMatchIds = new Set<string>();
+
       const updatedRings = rings.map(r => {
+        const ringMatches = processedMatches.filter(m => m.ring === r.ringNumber);
+        
         let ringChanged = false;
         let currentBout = r.currentBout;
         let onDeck = r.onDeck;
@@ -822,77 +852,102 @@ export function AIBracketSetup({
         
         const total = ringTotals.get(r.ringNumber);
         const nextMaxTotal = total !== undefined ? total : r.totalBouts;
-        
-        // Match and update currentBout
-        if (currentBout && (!currentBout.eventId || currentBout.eventId === currentEventId)) {
-          const match = previewData.matches.find((m: MatchData) => 
-            Number(m.ring || getRingFromBout(m.bout)) === r.ringNumber && 
-            isBoutMatch(m.bout, currentBout.bout)
-          );
+
+        const isCurrentBoutEmpty = !currentBout || !currentBout.blue_name || currentBout.eventId !== currentEventId;
+        const isOnDeckEmpty = !onDeck || !onDeck.blue_name || onDeck.eventId !== currentEventId;
+        const isInTheHoleEmpty = !inTheHole || !inTheHole.blue_name || inTheHole.eventId !== currentEventId;
+
+        let availableMatchIndex = 0;
+
+        // Load or update currentBout
+        if (isCurrentBoutEmpty) {
+          if (availableMatchIndex < ringMatches.length) {
+            currentBout = ringMatches[availableMatchIndex];
+            assignedMatchIds.add(currentBout.bout.toString());
+            availableMatchIndex++;
+            ringChanged = true;
+          } else {
+            currentBout = null;
+            ringChanged = true;
+          }
+        } else {
+          const match = ringMatches.find(m => isBoutMatch(m.bout, currentBout!.bout));
           if (match) {
-            currentBout = {
-              ...currentBout,
-              ...match,
-              eventId: currentEventId
-            };
+            currentBout = { ...currentBout, ...match };
+            assignedMatchIds.add(match.bout.toString());
             ringChanged = true;
           }
         }
-        
-        // Match and update onDeck
-        if (onDeck && (!onDeck.eventId || onDeck.eventId === currentEventId)) {
-          const match = previewData.matches.find((m: MatchData) => 
-            Number(m.ring || getRingFromBout(m.bout)) === r.ringNumber && 
-            isBoutMatch(m.bout, onDeck.bout)
-          );
+
+        // Load or update onDeck
+        if (isOnDeckEmpty) {
+          if (availableMatchIndex < ringMatches.length) {
+            onDeck = ringMatches[availableMatchIndex];
+            assignedMatchIds.add(onDeck.bout.toString());
+            availableMatchIndex++;
+            ringChanged = true;
+          } else {
+            onDeck = null;
+            ringChanged = true;
+          }
+        } else {
+          const match = ringMatches.find(m => isBoutMatch(m.bout, onDeck!.bout));
           if (match) {
-            onDeck = {
-              ...onDeck,
-              ...match,
-              eventId: currentEventId
-            };
+            onDeck = { ...onDeck, ...match };
+            assignedMatchIds.add(match.bout.toString());
             ringChanged = true;
           }
         }
-        
-        // Match and update inTheHole
-        if (inTheHole && (!inTheHole.eventId || inTheHole.eventId === currentEventId)) {
-          const match = previewData.matches.find((m: MatchData) => 
-            Number(m.ring || getRingFromBout(m.bout)) === r.ringNumber && 
-            isBoutMatch(m.bout, inTheHole.bout)
-          );
+
+        // Load or update inTheHole
+        if (isInTheHoleEmpty) {
+          if (availableMatchIndex < ringMatches.length) {
+            inTheHole = ringMatches[availableMatchIndex];
+            assignedMatchIds.add(inTheHole.bout.toString());
+            availableMatchIndex++;
+            ringChanged = true;
+          } else {
+            inTheHole = null;
+            ringChanged = true;
+          }
+        } else {
+          const match = ringMatches.find(m => isBoutMatch(m.bout, inTheHole!.bout));
           if (match) {
-            inTheHole = {
-              ...inTheHole,
-              ...match,
-              eventId: currentEventId
-            };
+            inTheHole = { ...inTheHole, ...match };
+            assignedMatchIds.add(match.bout.toString());
             ringChanged = true;
           }
         }
-        
-        if (ringChanged || total !== undefined) {
-          return {
-            ...r,
-            totalBouts: nextMaxTotal,
-            currentBout,
-            onDeck,
-            inTheHole
-          };
+
+        // Keep nextBoutNumber pointed correctly
+        let nextBoutNo = r.nextBoutNumber || 1;
+        if (currentBout) {
+          nextBoutNo = getBoutNumber(currentBout.bout) + 1;
         }
-        return r;
+
+        return {
+          ...r,
+          totalBouts: nextMaxTotal,
+          currentBout,
+          onDeck,
+          inTheHole,
+          nextBoutNumber: nextBoutNo,
+          isFinalBouts: r.isFinalBouts || false,
+          version: (r.version || 0) + 1,
+          updatedAt: Date.now()
+        };
       });
+
       localStorage.setItem('tkd_rings', JSON.stringify(updatedRings));
       setRings(updatedRings);
       
-      // 3. Update Bout Queue (merge newly uploaded matches with existing ones to avoid discarding or duplicate records)
+      // 3. Update Bout Queue (add only unassigned standby matches to the standby queue to prevent active court duplication)
       setBoutQueue(prev => {
-        const newBouts = previewData.matches.map(m => ({
+        const unassignedMatches = processedMatches.filter(m => !assignedMatchIds.has(m.bout.toString()));
+
+        const newBouts = unassignedMatches.map(m => ({
           id: Math.random().toString(36).substr(2, 9),
-          data: {
-            ...m,
-            eventId: currentEventId
-          }
+          data: m
         }));
         
         const updatedQueue = [...prev];
@@ -932,13 +987,15 @@ export function AIBracketSetup({
       const mappingsByRing: Record<string, BoutMapping[]> = {};
       previewData.mappings.forEach(m => {
         const sourceStr = (m.sourceBout || '').toString();
-        const sRing = getRingFromBout(sourceStr).toString();
-        if (!mappingsByRing[sRing]) mappingsByRing[sRing] = [];
         
-        const matchingMatch = previewData.matches.find((match: MatchData) => 
+        const matchingMatch = processedMatches.find((match: MatchData) => 
           isBoutMatch(match.bout, m.sourceBout) || isBoutMatch(match.bout, m.nextBout)
         );
-        const resolvedCategory = m.categoryName || (matchingMatch ? matchingMatch.category : "Auto-Extracted from File");
+        const ringNum = matchingMatch ? matchingMatch.ring : getRingFromBout(sourceStr);
+        const sRing = ringNum.toString();
+        
+        if (!mappingsByRing[sRing]) mappingsByRing[sRing] = [];
+        const resolvedCategory = (m.categoryName || (matchingMatch ? matchingMatch.category : "Auto-Extracted from File")).toUpperCase().trim();
         
         mappingsByRing[sRing].push({
            ...m,
@@ -951,9 +1008,8 @@ export function AIBracketSetup({
       });
 
       const matchesByRing: Record<string, MatchData[]> = {};
-      previewData.matches.forEach(m => {
-        const boutStr = (m.bout || '').toString();
-        const sRing = (m.ring || getRingFromBout(boutStr)).toString();
+      processedMatches.forEach(m => {
+        const sRing = m.ring.toString();
         if (!matchesByRing[sRing]) matchesByRing[sRing] = [];
         matchesByRing[sRing].push(m);
       });
@@ -970,10 +1026,6 @@ export function AIBracketSetup({
         });
         return next;
       });
-
-      const totalBoutsMsg = Array.from(ringTotals.entries())
-        .map(([ring, total]) => `Ring ${ring}: ${total} bouts`)
-        .join('\n');
 
       alert(`Bracket mappings and ${previewData.matches.length} matches successfully applied!\n\nCheck the Active Advancement Logic panel and the Match Queue.`);
       if (onSuccess) onSuccess();
@@ -1376,7 +1428,7 @@ export function AIBracketSetup({
                             <td className="px-6 py-4">
                               <input 
                                 type="text" 
-                                value={m.category} 
+                                value={m.category || ''} 
                                 onChange={(e) => handleMatchEdit(i, 'category', e.target.value)}
                                 className="w-full text-xs font-bold text-slate-500 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 outline-none transition-colors"
                               />
@@ -1384,7 +1436,7 @@ export function AIBracketSetup({
                             <td className="px-6 py-4">
                               <input 
                                 type="text" 
-                                value={m.blue_name} 
+                                value={m.blue_name || ''} 
                                 onChange={(e) => handleMatchEdit(i, 'blue_name', e.target.value)}
                                 placeholder={isPoomsaeMode ? "Performer Name" : "Blue Name"}
                                 className={cn(
@@ -1394,7 +1446,7 @@ export function AIBracketSetup({
                               />
                               <input 
                                 type="text" 
-                                value={m.blue_club} 
+                                value={m.blue_club || ''} 
                                 onChange={(e) => handleMatchEdit(i, 'blue_club', e.target.value)}
                                 placeholder={isPoomsaeMode ? "Performer Club" : "Blue Club"}
                                 className={cn(
@@ -1407,14 +1459,14 @@ export function AIBracketSetup({
                               <td className="px-6 py-4">
                                 <input 
                                   type="text" 
-                                  value={m.red_name} 
+                                  value={m.red_name || ''} 
                                   onChange={(e) => handleMatchEdit(i, 'red_name', e.target.value)}
                                   placeholder="Red Name"
                                   className="w-full text-sm font-black text-red-600 bg-transparent border-b border-transparent hover:border-red-300 focus:border-red-500 outline-none transition-colors mb-1"
                                 />
                                 <input 
                                   type="text" 
-                                  value={m.red_club} 
+                                  value={m.red_club || ''} 
                                   onChange={(e) => handleMatchEdit(i, 'red_club', e.target.value)}
                                   placeholder="Red Club"
                                   className="w-full text-[10px] font-bold text-slate-400 uppercase bg-transparent border-b border-transparent hover:border-slate-300 focus:border-red-500 outline-none transition-colors"
@@ -1511,8 +1563,12 @@ export function AIBracketSetup({
                       const nextStr = (m.nextBout || '').toString();
                       const sourceNum = parseInt(sourceStr.replace(/[^0-9]/g, '') || '0');
                       const nextNum = parseInt(nextStr.replace(/[^0-9]/g, '') || '0');
-                      const sRing = getRingFromBout(sourceStr);
-                      const nRing = getRingFromBout(nextStr);
+                      
+                      const matchingSource = previewData.matches.find((match: MatchData) => isBoutMatch(match.bout, m.sourceBout));
+                      const matchingNext = previewData.matches.find((match: MatchData) => isBoutMatch(match.bout, m.nextBout));
+
+                      const sRing = matchingSource ? Number(matchingSource.ring || getRingFromBout(sourceStr)) : getRingFromBout(sourceStr);
+                      const nRing = matchingNext ? Number(matchingNext.ring || getRingFromBout(nextStr)) : getRingFromBout(nextStr);
 
                       if (sourceNum > (ringTotals.get(sRing) || 0)) ringTotals.set(sRing, sourceNum);
                       if (nextNum > (ringTotals.get(nRing) || 0)) ringTotals.set(nRing, nextNum);
