@@ -40,6 +40,59 @@ export async function syncToGoogleSheets(url: string, data: MatchData, eventName
     console.warn('Warning: The Google Sheet URL does not look like a Web App URL (/exec). Sync might fail.');
   }
 
+  // Determine winner name and club if points exist
+  let calculatedWinner = '';
+  let calculatedWinnerClub = '';
+
+  if (data.points) {
+    let blueRounds = 0;
+    let redRounds = 0;
+
+    // R1 Winner
+    const r1W = data.points.r1Winner;
+    if (r1W === 'Blue') blueRounds++;
+    else if (r1W === 'Red') redRounds++;
+    else {
+      const b1 = parseInt(data.points.r1Blue || '0');
+      const r1 = parseInt(data.points.r1Red || '0');
+      if (b1 > r1 && !isNaN(b1) && !isNaN(r1)) blueRounds++;
+      else if (r1 > b1 && !isNaN(b1) && !isNaN(r1)) redRounds++;
+    }
+
+    // R2 Winner
+    const r2W = data.points.r2Winner;
+    if (r2W === 'Blue') blueRounds++;
+    else if (r2W === 'Red') redRounds++;
+    else {
+      const b2 = parseInt(data.points.r2Blue || '0');
+      const r2 = parseInt(data.points.r2Red || '0');
+      if (b2 > r2 && !isNaN(b2) && !isNaN(r2)) blueRounds++;
+      else if (r2 > b2 && !isNaN(b2) && !isNaN(r2)) redRounds++;
+    }
+
+    // R3 Winner
+    const r3W = data.points.r3Winner;
+    if (r3W === 'Blue') blueRounds++;
+    else if (r3W === 'Red') redRounds++;
+    else {
+      const b3 = parseInt(data.points.r3Blue || '0');
+      const r3 = parseInt(data.points.r3Red || '0');
+      if (b3 > r3 && !isNaN(b3) && !isNaN(r3)) blueRounds++;
+      else if (r3 > b3 && !isNaN(b3) && !isNaN(r3)) redRounds++;
+    }
+
+    if (blueRounds > redRounds) {
+      calculatedWinner = data.blue_name;
+      calculatedWinnerClub = data.blue_club;
+    } else if (redRounds > blueRounds) {
+      calculatedWinner = data.red_name;
+      calculatedWinnerClub = data.red_club;
+    }
+  }
+
+  const finalWinner = (data as any).winner || calculatedWinner || '';
+  const finalWinnerClub = (data as any).winner_club || (data as any).winnerClub || calculatedWinnerClub || '';
+
   try {
     const payload = {
       action: 'newBout',
@@ -54,6 +107,9 @@ export async function syncToGoogleSheets(url: string, data: MatchData, eventName
       red_club: (data.red_club || '-').toUpperCase(),
       privacy_mode: data.privacy_mode ? 'ON' : 'OFF',
       reason: (reason || '').toUpperCase(),
+      // Send winner and winner_club to populate cols 16 & 17
+      winner: finalWinner.toUpperCase(),
+      winner_club: finalWinnerClub.toUpperCase(),
       // Include points if present
       r1Blue: data.points?.r1Blue || '',
       r1Red: data.points?.r1Red || '',

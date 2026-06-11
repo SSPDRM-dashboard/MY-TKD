@@ -53,8 +53,14 @@ import { TournamentAssistant } from './components/TournamentAssistant';
 import { SearchWinner } from './components/SearchWinner';
 import { EventReport } from './components/EventReport';
 import { BoutChart } from './components/BoutChart';
-import { syncToGoogleSheets, updateWinnerInGoogleSheets, updateBoutDetailsInGoogleSheets, updatePointsInGoogleSheets, testSync } from './services/googleSheets';
-import { cn, normalizeBoutNumber, normalizeBoutWithRing, getBoutNumber, formatBoutNumber, isBoutMatch, parseRingNumber, extractWinnerOfBout } from './lib/utils';
+import { 
+  syncToGoogleSheets as rawSyncToGoogleSheets, 
+  updateWinnerInGoogleSheets as rawUpdateWinnerInGoogleSheets, 
+  updateBoutDetailsInGoogleSheets as rawUpdateBoutDetailsInGoogleSheets, 
+  updatePointsInGoogleSheets as rawUpdatePointsInGoogleSheets, 
+  testSync 
+} from './services/googleSheets';
+import { cn, normalizeBoutNumber, normalizeBoutWithRing, getBoutNumber, formatBoutNumber, isBoutMatch, parseRingNumber, extractWinnerOfBout, getEventSpreadsheetUrl, getEventWebAppUrl } from './lib/utils';
 import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, deleteDoc, getDoc, getDocFromServer, where } from 'firebase/firestore';
 import { db, disableFirestoreNetwork } from './firebase';
 import Papa from 'papaparse';
@@ -950,7 +956,32 @@ export default function App() {
   const [categories, setCategories] = useSyncedState<string[]>('tkd_categories', ["Junior Male -45kg", "Junior Female -42kg", "Senior Male -54kg", "INDIVIDUAL POOMSAE"]);
   const [clubs, setClubs] = useSyncedState<string[]>('tkd_clubs', ["KST", "TKT", "PST", "MTA"]);
   const [googleSheetUrl, setGoogleSheetUrl] = useSyncedState<string>('tkd_sheet_url', 'https://script.google.com/macros/s/AKfycbykWTnkJwZ649ntvetGSL793ZNFPJE9yhjnNpTWpoS8NmVPjMDGp2PAb12dWK8KWLfm/exec');
+  const [localSheetUrl, setLocalSheetUrl] = useState(googleSheetUrl);
+  useEffect(() => {
+    setLocalSheetUrl(googleSheetUrl);
+  }, [googleSheetUrl]);
   const [isSheetSaved, setIsSheetSaved] = useState(false);
+
+  const getActiveSyncUrl = (passedUrl?: string) => {
+    const event = currentEventId ? events.find(e => e.id === currentEventId) : null;
+    return getEventWebAppUrl(event || undefined, passedUrl || googleSheetUrl);
+  };
+
+  const syncToGoogleSheets = (url: string, data: MatchData, eventName: string = '', reason: string = '') => {
+    return rawSyncToGoogleSheets(getActiveSyncUrl(url), data, eventName, reason);
+  };
+
+  const updateWinnerInGoogleSheets = (url: string, ring: number, bout: string | number, winner: string, eventName: string = '', winnerSide?: string, blueName?: string, redName?: string, points?: any, winnerClub?: string) => {
+    return rawUpdateWinnerInGoogleSheets(getActiveSyncUrl(url), ring, bout, winner, eventName, winnerSide, blueName, redName, points, winnerClub);
+  };
+
+  const updateBoutDetailsInGoogleSheets = (url: string, ring: number, bout: string | number, blueName: string, blueClub: string, redName: string, redClub: string, eventName: string = '') => {
+    return rawUpdateBoutDetailsInGoogleSheets(getActiveSyncUrl(url), ring, bout, blueName, blueClub, redName, redClub, eventName);
+  };
+
+  const updatePointsInGoogleSheets = (url: string, ring: number, bout: string | number, points: any, eventName: string = '') => {
+    return rawUpdatePointsInGoogleSheets(getActiveSyncUrl(url), ring, bout, points, eventName);
+  };
   const [showTotalBoutsPublic, setShowTotalBoutsPublic] = useSyncedState<boolean>('tkd_show_total_bouts_public', true);
   const [showOnlyActiveRings, setShowOnlyActiveRings] = useSyncedState<boolean>('tkd_show_only_active_rings', false);
   const [showEmptyBoutAsInactive, setShowEmptyBoutAsInactive] = useSyncedState<boolean>('tkd_show_empty_bout_inactive', false);
@@ -992,6 +1023,25 @@ export default function App() {
   const handleCancelReboot = () => {
     setShowRebootModal(false);
   };
+
+  // Auto-select first event when currentEventId is null or not valid
+  useEffect(() => {
+    if (events.length > 0) {
+      if (!currentEventId || !events.some(e => e.id === currentEventId)) {
+        const defaultEventId = events[0].id;
+        setCurrentEventId(defaultEventId);
+        localStorage.setItem('tkd_current_event_v3', defaultEventId);
+        
+        const event = events.find(e => e.id === defaultEventId);
+        if (event) {
+          const webAppUrl = getEventWebAppUrl(event, googleSheetUrl);
+          setGoogleSheetUrl(webAppUrl);
+          localStorage.setItem('tkd_sheet_url', webAppUrl);
+        }
+        console.log("Automatically synchronized and activated default event:", defaultEventId);
+      }
+    }
+  }, [events, currentEventId, setCurrentEventId, setGoogleSheetUrl]);
 
   // Persistence & Cross-tab Sync handled by useSyncedState
 
@@ -1068,16 +1118,24 @@ export default function App() {
     setSyncLog(prev => [{ timestamp: new Date(), action, status, message }, ...prev].slice(0, 50));
   };
 
-  // Sync googleSheetUrl with current event
+  const lastLoadedEventIdRef = useRef<string | null>(null);
+
+  // Sync googleSheetUrl with current event when switching events
   useEffect(() => {
     if (currentEventId && events.length > 0) {
-      const event = events.find(e => e.id === currentEventId);
-      if (event && event.sheetUrl && event.sheetUrl !== googleSheetUrl) {
-        console.log("Auto-syncing Google Sheet URL from event:", event.name);
-        setGoogleSheetUrl(event.sheetUrl);
+      if (lastLoadedEventIdRef.current !== currentEventId) {
+        const event = events.find(e => e.id === currentEventId);
+        if (event) {
+          console.log("Loading Google Sheet URL for newly selected event:", event.name);
+          const webAppUrl = getEventWebAppUrl(event, googleSheetUrl);
+          setGoogleSheetUrl(webAppUrl);
+          lastLoadedEventIdRef.current = currentEventId;
+        }
       }
+    } else {
+      lastLoadedEventIdRef.current = null;
     }
-  }, [currentEventId, events, googleSheetUrl, setGoogleSheetUrl]);
+  }, [currentEventId, events, setGoogleSheetUrl, googleSheetUrl]);
 
   const handleNewBoutSubmit = async (ringNumber: number, newData: MatchData) => {
     const userRole = sessionStorage.getItem('user_role');
@@ -1134,8 +1192,9 @@ export default function App() {
       let activeUrl = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv";
       if (currentEventId && events.length > 0) {
         const event = events.find(e => e.id === currentEventId);
-        if (event && event.sheetUrl && event.sheetUrl.includes('docs.google.com/spreadsheets')) {
-          activeUrl = event.sheetUrl;
+        const resolvedSpreadsheet = getEventSpreadsheetUrl(event);
+        if (resolvedSpreadsheet) {
+          activeUrl = resolvedSpreadsheet;
           if (!activeUrl.includes('/export?')) {
             activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
           }
@@ -1227,8 +1286,9 @@ export default function App() {
       let activeUrl = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv";
       if (currentEventId && events.length > 0) {
         const event = events.find(e => e.id === currentEventId);
-        if (event && event.sheetUrl && event.sheetUrl.includes('docs.google.com/spreadsheets')) {
-          activeUrl = event.sheetUrl;
+        const resolvedSpreadsheet = getEventSpreadsheetUrl(event);
+        if (resolvedSpreadsheet) {
+          activeUrl = resolvedSpreadsheet;
           if (!activeUrl.includes('/export?')) {
             activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
           }
@@ -1343,8 +1403,9 @@ export default function App() {
     let activeUrl = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv";
     if (events.length > 0) {
       const event = events.find(e => e.id === currentEventId);
-      if (event && event.sheetUrl && event.sheetUrl.includes('docs.google.com/spreadsheets')) {
-        activeUrl = event.sheetUrl;
+      const resolvedSpreadsheet = getEventSpreadsheetUrl(event);
+      if (resolvedSpreadsheet) {
+        activeUrl = resolvedSpreadsheet;
         if (!activeUrl.includes('/export?')) {
           activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
         }
@@ -2067,10 +2128,15 @@ export default function App() {
 
     const ring = rings.find(r => r.ringNumber === ringNumber);
     const currentBout = ring?.currentBout;
-    const winnerName = winner === 'Blue' ? currentBout?.blue_name : currentBout?.red_name;
+    const isCompleted = winner === 'Completed';
+    const winnerName = isCompleted 
+      ? (currentBout?.blue_name || currentBout?.red_name || 'Completed') 
+      : (winner === 'Blue' ? currentBout?.blue_name : currentBout?.red_name);
 
     const targetSyncRing = currentBout?.originalRing || ringNumber;
-    const winnerClub = winner === 'Blue' ? currentBout?.blue_club : (winner === 'Red' ? currentBout?.red_club : '-');
+    const winnerClub = isCompleted 
+      ? (currentBout?.blue_club || currentBout?.red_club || '-') 
+      : (winner === 'Blue' ? currentBout?.blue_club : (winner === 'Red' ? currentBout?.red_club : '-'));
 
     if (activeUrl) {
       setIsSyncing(true);
@@ -2888,6 +2954,18 @@ export default function App() {
     localStorage.setItem('tkd_rings', JSON.stringify(newRings));
   };
 
+  const handleUpdateEvent = (updatedEvent: EventData) => {
+    const updated = events.map(e => e.id === updatedEvent.id ? updatedEvent : e);
+    setEvents(updated);
+    localStorage.setItem('tkd_events_v3', JSON.stringify(updated));
+    
+    // If the updated event is currently selected, also update googleSheetUrl in real-time
+    if (updatedEvent.id === currentEventId) {
+      setGoogleSheetUrl(updatedEvent.sheetUrl);
+      localStorage.setItem('tkd_sheet_url', updatedEvent.sheetUrl);
+    }
+  };
+
   const handleDeleteEvent = (id: string) => {
     const updated = events.filter(e => e.id !== id);
     setEvents(updated);
@@ -2966,7 +3044,7 @@ export default function App() {
 
   const currentBoutQueue = React.useMemo(() => {
     if (!currentEventId) return [];
-    return boutQueue.filter(b => b.data.eventId === currentEventId);
+    return boutQueue.filter(b => !b.data.eventId || b.data.eventId === currentEventId);
   }, [boutQueue, currentEventId]);
 
   const currentRings = React.useMemo(() => {
@@ -2976,9 +3054,9 @@ export default function App() {
     }
     return nonDeleted.map(r => ({
       ...r,
-      currentBout: r.currentBout && r.currentBout.eventId === currentEventId ? r.currentBout : null,
-      onDeck: r.onDeck && r.onDeck.eventId === currentEventId ? r.onDeck : null,
-      inTheHole: r.inTheHole && r.inTheHole.eventId === currentEventId ? r.inTheHole : null,
+      currentBout: r.currentBout && (!r.currentBout.eventId || r.currentBout.eventId === currentEventId) ? r.currentBout : null,
+      onDeck: r.onDeck && (!r.onDeck.eventId || r.onDeck.eventId === currentEventId) ? r.onDeck : null,
+      inTheHole: r.inTheHole && (!r.inTheHole.eventId || r.inTheHole.eventId === currentEventId) ? r.inTheHole : null,
     }));
   }, [rings, currentEventId, visibleRingsCount]);
 
@@ -2991,7 +3069,7 @@ export default function App() {
 
   const publicBoutQueue = React.useMemo(() => {
     if (!effectivePublicEventId) return [];
-    return boutQueue.filter(b => b.data.eventId === effectivePublicEventId);
+    return boutQueue.filter(b => !b.data.eventId || b.data.eventId === effectivePublicEventId);
   }, [boutQueue, effectivePublicEventId]);
 
   const publicRings = React.useMemo(() => {
@@ -3001,9 +3079,9 @@ export default function App() {
     }
     return nonDeleted.map(r => ({
       ...r,
-      currentBout: r.currentBout && r.currentBout.eventId === effectivePublicEventId ? r.currentBout : null,
-      onDeck: r.onDeck && r.onDeck.eventId === effectivePublicEventId ? r.onDeck : null,
-      inTheHole: r.inTheHole && r.inTheHole.eventId === effectivePublicEventId ? r.inTheHole : null,
+      currentBout: r.currentBout && (!r.currentBout.eventId || r.currentBout.eventId === effectivePublicEventId) ? r.currentBout : null,
+      onDeck: r.onDeck && (!r.onDeck.eventId || r.onDeck.eventId === effectivePublicEventId) ? r.onDeck : null,
+      inTheHole: r.inTheHole && (!r.inTheHole.eventId || r.inTheHole.eventId === effectivePublicEventId) ? r.inTheHole : null,
     }));
   }, [rings, effectivePublicEventId, visibleRingsCount]);
 
@@ -4022,14 +4100,21 @@ export default function App() {
                     <div className="flex gap-2">
                       <input 
                         type="text" 
-                        value={googleSheetUrl}
-                        onChange={(e) => setGoogleSheetUrl(e.target.value)}
+                        value={localSheetUrl}
+                        onChange={(e) => setLocalSheetUrl(e.target.value)}
                         placeholder="https://script.google.com/macros/s/.../exec"
                         className="flex-1 px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-red-500 outline-none transition-all"
                       />
                       <button 
                         onClick={() => {
-                          localStorage.setItem('tkd_sheet_url', googleSheetUrl);
+                          setGoogleSheetUrl(localSheetUrl);
+                          localStorage.setItem('tkd_sheet_url', localSheetUrl);
+                          // Also persist URL prefix to current event
+                          if (currentEventId && events.length > 0) {
+                            const updated = events.map(e => e.id === currentEventId ? { ...e, sheetUrl: localSheetUrl } : e);
+                            setEvents(updated);
+                            localStorage.setItem('tkd_events_v3', JSON.stringify(updated));
+                          }
                           setIsSheetSaved(true);
                           setTimeout(() => setIsSheetSaved(false), 2000);
                         }}
@@ -4366,6 +4451,7 @@ export default function App() {
                 events={events}
                 onAdd={handleAddEvent}
                 onDelete={handleDeleteEvent}
+                onUpdate={handleUpdateEvent}
               />
 
               <UserManagement 
@@ -8340,7 +8426,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
         ) : (
           <div className="space-y-2.5 sm:space-y-4">
             <div className="flex items-center justify-center">
-              <span className="text-[11px] sm:text-base md:text-[20px] font-black text-white uppercase tracking-widest text-center leading-tight">
+              <span className="text-[11px] sm:text-base md:text-[20px] font-black text-yellow-400 uppercase tracking-widest text-center leading-tight">
                 {current ? cleanPlaceholder(formatCategoryName(current.category)) : "---"}
               </span>
             </div>
@@ -8400,7 +8486,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
 
                   return (
                     <div className="mx-auto w-full max-w-sm grid grid-cols-3 divide-x divide-slate-800 border border-slate-700 bg-slate-800/80 rounded-lg overflow-hidden">
-                      <div className="col-span-3 grid grid-cols-3 divide-x divide-slate-700 bg-white text-black font-black text-center py-1 sm:py-2 text-[11px] sm:text-sm uppercase">
+                      <div className="col-span-3 grid grid-cols-3 divide-x divide-slate-700 bg-green-600 text-white font-black text-center py-1 sm:py-2 text-[11px] sm:text-sm uppercase">
                         <div>R1</div>
                         <div>R2</div>
                         <div>R3</div>
@@ -8464,25 +8550,25 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                 {!current?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') && 
                   !current?.category?.toUpperCase().includes('FREESTYLE') && 
                   !(current?.category?.toUpperCase().includes('POOMSAE') && !current?.red_name) ? (
-                  <div className="grid grid-cols-[1fr,auto,1fr] gap-1.5 sm:gap-4 items-start pb-1">
+                  <div className="grid grid-cols-[1fr,auto,1fr] gap-1.5 sm:gap-4 items-center pb-1">
                     <div className="flex flex-col min-w-0">
                       <div className="h-0.5 w-full bg-[#00a2e8] rounded-full mb-1 sm:mb-2 shadow-[0_0_8px_rgba(0,162,232,0.8)]" />
-                      <span className="font-bold text-[#00a2e8] text-[18px] sm:text-[24px] leading-tight whitespace-normal break-words text-left">
+                      <span className="font-bold text-[#00a2e8] text-[18px] sm:text-[24px] leading-tight whitespace-normal break-words text-center">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_name)) : ""}
                       </span>
-                      <span className="font-bold text-white text-[9px] sm:text-sm leading-tight whitespace-normal break-words text-left mt-0.5">
+                      <span className="font-bold text-white text-[9px] sm:text-sm leading-tight whitespace-normal break-words text-center mt-0.5">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.blue_club)) : ""}
                       </span>
                     </div>
 
-                    <div className="text-[10px] sm:text-xl font-black text-white italic pt-1">VS</div>
+                    <div className="text-[10px] sm:text-xl font-black text-white italic pt-1 text-center">VS</div>
 
                     <div className="flex flex-col min-w-0">
                       <div className="h-0.5 w-full bg-[#ed1c24] rounded-full mb-1 sm:mb-2 shadow-[0_0_8px_rgba(237,28,36,0.8)]" />
-                      <span className="font-bold text-[#ed1c24] text-[18px] sm:text-[24px] leading-tight whitespace-normal break-words text-left">
+                      <span className="font-bold text-[#ed1c24] text-[18px] sm:text-[24px] leading-tight whitespace-normal break-words text-center">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.red_name)) : ""}
                       </span>
-                      <span className="font-bold text-white text-[9px] sm:text-sm leading-tight whitespace-normal break-words text-left mt-0.5">
+                      <span className="font-bold text-white text-[9px] sm:text-sm leading-tight whitespace-normal break-words text-center mt-0.5">
                         {current ? (current.privacy_mode ? "---" : cleanPlaceholder(current.red_club)) : ""}
                       </span>
                     </div>
@@ -8623,8 +8709,16 @@ function PublicFighterSide({ color, name, club, privacy }: { color: 'blue' | 're
 function LoginScreen({ onLogin, events, onBack }: { onLogin: (u: string, p: string, eventId?: string) => boolean, events: EventData[], onBack?: () => void }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [eventId, setEventId] = useState('');
+  const [eventId, setEventId] = useState(() => {
+    return events.length > 0 ? events[0].id : '';
+  });
   const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (events.length > 0 && !eventId) {
+      setEventId(events[0].id);
+    }
+  }, [events, eventId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -8903,7 +8997,7 @@ function DataUpdater({
   );
 }
 
-function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onAdd: (e: EventData) => void, onDelete: (id: string) => void }) {
+function EventManagement({ events, onAdd, onDelete, onUpdate }: { events: EventData[], onAdd: (e: EventData) => void, onDelete: (id: string) => void, onUpdate: (e: EventData) => void }) {
   const [name, setName] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [ringQuantity, setRingQuantity] = useState(1);
@@ -8912,16 +9006,78 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
   const [showSyncScript, setShowSyncScript] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean, message: string } | null>(null);
   const [isTesting, setIsTesting] = useState(false);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+
+  const startEdit = (ev: EventData) => {
+    setEditingEventId(ev.id);
+    setName(ev.name);
+    setEventDate(ev.eventDate || '');
+    setRingQuantity(ev.ringQuantity || 1);
+    setSheetUrl(ev.sheetUrl || '');
+    setWinnerSheetUrl(ev.winnerSheetUrl || '');
+  };
+
+  const cancelEdit = () => {
+    setEditingEventId(null);
+    setName('');
+    setEventDate('');
+    setRingQuantity(1);
+    setSheetUrl('');
+    setWinnerSheetUrl('');
+  };
 
   const handleTestSync = async () => {
-    if (!sheetUrl) return;
+    const activeTestUrl = sheetUrl.trim() || 'https://script.google.com/macros/s/AKfycbykWTnkJwZ649ntvetGSL793ZNFPJE9yhjnNpTWpoS8NmVPjMDGp2PAb12dWK8KWLfm/exec';
     setIsTesting(true);
     setTestResult(null);
     try {
-      const result = await testSync(sheetUrl);
+      const result = await testSync(activeTestUrl);
       setTestResult(result);
     } catch (e) {
-      setTestResult({ success: false, message: 'Test failed' });
+      setTestResult({ success: false, message: 'Test failed: Connection error' });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  const handleSendTrialBout = async () => {
+    const activeTestUrl = sheetUrl.trim() || 'https://script.google.com/macros/s/AKfycbykWTnkJwZ649ntvetGSL793ZNFPJE9yhjnNpTWpoS8NmVPjMDGp2PAb12dWK8KWLfm/exec';
+    setIsTesting(true);
+    setTestResult(null);
+    try {
+      const trialMatch: MatchData = {
+        ring: 9,
+        bout: 999,
+        category: 'TRIAL TEST RUN',
+        blue_name: 'TEST BLUE PLAYER',
+        blue_club: 'TRIAL CLUB BLUE',
+        red_name: 'TEST RED PLAYER',
+        red_club: 'TRIAL CLUB RED',
+        privacy_mode: false,
+        points: {
+          r1Blue: '12', r1Red: '10', r1Winner: 'Blue',
+          r2Blue: '8', r2Red: '9', r2Winner: 'Red',
+          r3Blue: '15', r3Red: '14', r3Winner: 'Blue'
+        }
+      };
+      
+      const success = await rawSyncToGoogleSheets(activeTestUrl, trialMatch, 'TRIAL SYNC TEST', 'TEST TRIAL RUN PAYLOAD');
+      if (success) {
+        setTestResult({ 
+          success: true, 
+          message: 'Trial match sent successfully! Open your Google Sheet to verify if "Ring 9, Bout 999" has been inserted.' 
+        });
+      } else {
+        setTestResult({ 
+          success: false, 
+          message: 'Failed to send trial match row. Double check your Web App deployment settings.' 
+        });
+      }
+    } catch (e: any) {
+      setTestResult({ 
+        success: false, 
+        message: `Error sending trial batch: ${e?.message || 'Network issue'}` 
+      });
     } finally {
       setIsTesting(false);
     }
@@ -8934,15 +9090,29 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
     const finalSheetUrl = sheetUrl.trim() || 'https://script.google.com/macros/s/AKfycbykWTnkJwZ649ntvetGSL793ZNFPJE9yhjnNpTWpoS8NmVPjMDGp2PAb12dWK8KWLfm/exec';
     const finalWinnerUrl = winnerSheetUrl.trim();
 
-    onAdd({
-      id: Math.random().toString(36).substr(2, 9),
-      name,
-      eventDate,
-      ringQuantity,
-      sheetUrl: finalSheetUrl,
-      winnerSheetUrl: finalWinnerUrl,
-      createdAt: new Date()
-    });
+    if (editingEventId) {
+      const original = events.find(ev => ev.id === editingEventId);
+      onUpdate({
+        id: editingEventId,
+        name,
+        eventDate,
+        ringQuantity,
+        sheetUrl: finalSheetUrl,
+        winnerSheetUrl: finalWinnerUrl,
+        createdAt: original ? original.createdAt : new Date()
+      });
+      setEditingEventId(null);
+    } else {
+      onAdd({
+        id: Math.random().toString(36).substr(2, 9),
+        name,
+        eventDate,
+        ringQuantity,
+        sheetUrl: finalSheetUrl,
+        winnerSheetUrl: finalWinnerUrl,
+        createdAt: new Date()
+      });
+    }
     setName('');
     setEventDate('');
     setRingQuantity(1);
@@ -8988,7 +9158,47 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
             This updated version supports real-time name and club updates from the dashboard.
           </p>
           <pre className="bg-white p-4 text-[10px] font-mono rounded-xl border border-blue-100 overflow-x-auto text-slate-700 shadow-inner">
-{`function doPost(e) {
+{`function isGasBoutMatch(b1, b2) {
+  if (b1 == b2) return true;
+  if (!b1 || !b2) return false;
+  
+  var s1 = String(b1).toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9]/g, '');
+  var s2 = String(b2).toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9]/g, '');
+  
+  if (s1 === s2) return true;
+  
+  // Normalize O to 0 (e.g. CO1 to C01)
+  s1 = s1.replace(/^([A-H])O+(\d+)/, '$10$2');
+  s2 = s2.replace(/^([A-H])O+(\d+)/, '$10$2');
+  if (s1 === s2) return true;
+
+  // Compare numerical values
+  var n1 = parseInt(s1.replace(/[^0-9]/g, ''), 10);
+  var n2 = parseInt(s2.replace(/[^0-9]/g, ''), 10);
+  if (!isNaN(n1) && !isNaN(n2)) {
+    if (n1 >= 1000 && n2 < 1000 && n1 % 1000 === n2) return true;
+    if (n2 >= 1000 && n1 < 1000 && n2 % 1000 === n1) return true;
+    if (n1 >= 1000 && n2 >= 1000) {
+      if (Math.floor(n1 / 1000) !== Math.floor(n2 / 1000)) {
+        return false;
+      }
+      return n1 % 1000 === n2 % 1000;
+    }
+  }
+  
+  // Normalize leading zeros in prefix format (e.g. "B02" and "B2")
+  var getStandard = function(val) {
+    var match = val.match(/^([A-Z])0*(\d+)/);
+    if (match) {
+      return match[1] + match[2];
+    }
+    return val;
+  };
+  
+  return getStandard(s1) === getStandard(s2);
+}
+
+function doPost(e) {
   let data;
   try {
     data = JSON.parse(e.postData.contents);
@@ -9002,56 +9212,101 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
   
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName("Sheet 1") || ss.getSheets()[0];
+  if (!sheet) {
+    return ContentService.createTextOutput("Error: Sheet not found");
+  }
+  
+  const dataRange = sheet.getDataRange();
+  const values = dataRange.getValues();
   
   if (data.action === 'updateBoutDetails') {
-    if (sheet) {
-      const dataRange = sheet.getDataRange();
-      const values = dataRange.getValues();
-      for (let i = 1; i < values.length; i++) {
-        if (values[i][1] == data.ring && values[i][2] == data.bout) {
-          sheet.getRange(i + 1, 5).setValue(data.blue_name);
-          sheet.getRange(i + 1, 6).setValue(data.blue_club);
-          sheet.getRange(i + 1, 7).setValue(data.red_name);
-          sheet.getRange(i + 1, 8).setValue(data.red_club);
-          break;
-        }
+    for (let i = 1; i < values.length; i++) {
+      var rowRing = parseInt(values[i][2], 10);
+      var targetRing = parseInt(data.ring, 10);
+      var ringMatches = (!isNaN(rowRing) && !isNaN(targetRing)) ? (rowRing === targetRing) : (values[i][2] == data.ring);
+      if (ringMatches && isGasBoutMatch(values[i][3], data.bout)) {
+        sheet.getRange(i + 1, 6).setValue(data.blue_name);
+        sheet.getRange(i + 1, 7).setValue(data.blue_club);
+        sheet.getRange(i + 1, 8).setValue(data.red_name);
+        sheet.getRange(i + 1, 9).setValue(data.red_club);
+        break;
       }
     }
     return ContentService.createTextOutput("Bout Details Updated");
   }
 
+  if (data.action === 'updatePoints') {
+    for (let i = 1; i < values.length; i++) {
+      var rowRing = parseInt(values[i][2], 10);
+      var targetRing = parseInt(data.ring, 10);
+      var ringMatches = (!isNaN(rowRing) && !isNaN(targetRing)) ? (rowRing === targetRing) : (values[i][2] == data.ring);
+      if (ringMatches && isGasBoutMatch(values[i][3], data.bout)) {
+        if (data.r1Blue !== undefined) sheet.getRange(i + 1, 10).setValue(data.r1Blue);
+        if (data.r1Red !== undefined) sheet.getRange(i + 1, 11).setValue(data.r1Red);
+        if (data.r2Blue !== undefined) sheet.getRange(i + 1, 12).setValue(data.r2Blue);
+        if (data.r2Red !== undefined) sheet.getRange(i + 1, 13).setValue(data.r2Red);
+        if (data.r3Blue !== undefined) sheet.getRange(i + 1, 14).setValue(data.r3Blue);
+        if (data.r3Red !== undefined) sheet.getRange(i + 1, 15).setValue(data.r3Red);
+        break;
+      }
+    }
+    return ContentService.createTextOutput("Points Updated");
+  }
+
   if (data.action === 'updateWinner') {
-    if (sheet) {
-      const dataRange = sheet.getDataRange();
-      const values = dataRange.getValues();
-      for (let i = 1; i < values.length; i++) {
-        if (values[i][1] == data.ring && values[i][2] == data.bout) {
-          sheet.getRange(i + 1, 9).setValue(data.winner);
-          break;
-        }
+    for (let i = 1; i < values.length; i++) {
+      var rowRing = parseInt(values[i][2], 10);
+      var targetRing = parseInt(data.ring, 10);
+      var ringMatches = (!isNaN(rowRing) && !isNaN(targetRing)) ? (rowRing === targetRing) : (values[i][2] == data.ring);
+      if (ringMatches && isGasBoutMatch(values[i][3], data.bout)) {
+        sheet.getRange(i + 1, 16).setValue(data.winner);
+        sheet.getRange(i + 1, 17).setValue(data.winner_club);
+        // Also update points if they are supplied in winner update
+        if (data.r1Blue !== undefined) sheet.getRange(i + 1, 10).setValue(data.r1Blue);
+        if (data.r1Red !== undefined) sheet.getRange(i + 1, 11).setValue(data.r1Red);
+        if (data.r2Blue !== undefined) sheet.getRange(i + 1, 12).setValue(data.r2Blue);
+        if (data.r2Red !== undefined) sheet.getRange(i + 1, 13).setValue(data.r2Red);
+        if (data.r3Blue !== undefined) sheet.getRange(i + 1, 14).setValue(data.r3Blue);
+        if (data.r3Red !== undefined) sheet.getRange(i + 1, 15).setValue(data.r3Red);
+        break;
       }
     }
     return ContentService.createTextOutput("Winner Updated");
   }
 
   if (data.action === 'updateTransfer') {
-    if (sheet) {
-      const dataRange = sheet.getDataRange();
-      const values = dataRange.getValues();
-      for (let i = 1; i < values.length; i++) {
-        if (values[i][1] == data.ring && values[i][2] == data.bout) {
-          sheet.getRange(i + 1, 9).setValue("TRANSFERRED: " + data.reason);
-          break;
-        }
+    for (let i = 1; i < values.length; i++) {
+      var rowRing = parseInt(values[i][2], 10);
+      var targetRing = parseInt(data.ring, 10);
+      var ringMatches = (!isNaN(rowRing) && !isNaN(targetRing)) ? (rowRing === targetRing) : (values[i][2] == data.ring);
+      if (ringMatches && isGasBoutMatch(values[i][3], data.bout)) {
+        sheet.getRange(i + 1, 16).setValue("TRANSFERRED: " + data.reason);
+        break;
       }
     }
     return ContentService.createTextOutput("Transfer Updated");
   }
   
-  if (data.action === 'newBout' && sheet) {
+  if (data.action === 'newBout') {
     sheet.appendRow([
-      data.event_name, data.ring, data.bout, data.category,
-      data.blue_name, data.blue_club, data.red_name, data.red_club
+      data.timestamp || new Date().toLocaleString(),
+      data.event_name,
+      data.ring,
+      data.bout,
+      data.category,
+      data.blue_name,
+      data.blue_club,
+      data.red_name,
+      data.red_club,
+      data.r1Blue || '',
+      data.r1Red || '',
+      data.r2Blue || '',
+      data.r2Red || '',
+      data.r3Blue || '',
+      data.r3Red || '',
+      data.winner || '',
+      data.winner_club || '',
+      data.ring
     ]);
   }
   return ContentService.createTextOutput("Success");
@@ -9122,29 +9377,114 @@ function EventManagement({ events, onAdd, onDelete }: { events: EventData[], onA
             placeholder="Standard docs.google.com URL..."
           />
         </div>
-        <button 
-          type="submit"
-          className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all h-[38px] md:col-span-2 lg:col-span-1"
-        >
-          Create Event
-        </button>
+        <div className="flex gap-2 w-full md:col-span-2 lg:col-span-1">
+          <button 
+            type="submit"
+            className="flex-1 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all h-[38px]"
+          >
+            {editingEventId ? 'Update Event' : 'Create Event'}
+          </button>
+          {editingEventId && (
+            <button 
+              type="button"
+              onClick={cancelEdit}
+              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all h-[38px]"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
       </form>
+
+      {/* 📡 Live Connection & Trial Testing Card */}
+      <div className="p-5 bg-slate-50 rounded-xl border border-slate-200/60 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-1.5">
+              <span>📡</span> Live Script & Data Sync Test
+            </h4>
+            <p className="text-[10px] text-slate-500 mt-0.5">Test your Live Sync Web App URL with a silent ping or by pushing a real trial match row.</p>
+          </div>
+          <span className="text-[9px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded self-start sm:self-auto truncate max-w-[250px]">
+            Target: {sheetUrl ? sheetUrl : 'Default Master App'}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleTestSync}
+            disabled={isTesting}
+            className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 h-[34px]"
+          >
+            {isTesting ? <RefreshCw size={12} className="animate-spin" /> : null}
+            Send Silent Ping Test
+          </button>
+          
+          <button
+            type="button"
+            onClick={handleSendTrialBout}
+            disabled={isTesting}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 h-[34px]"
+          >
+            {isTesting ? <RefreshCw size={12} className="animate-spin" /> : null}
+            Send Trial Match Row (Bout 999)
+          </button>
+        </div>
+
+        {testResult && (
+          <div className={cn(
+            "p-3 rounded-xl border text-xs font-semibold md:font-bold animate-fadeIn",
+            testResult.success 
+              ? "bg-green-50 border-green-200 text-green-800" 
+              : "bg-red-50 border-red-200 text-red-800"
+          )}>
+            <div className="flex items-start gap-2">
+              <span className="text-sm">{testResult.success ? '✅' : '❌'}</span>
+              <div>
+                <p className="font-black text-xs uppercase tracking-wider">{testResult.success ? 'Success!' : 'Failed'}</p>
+                <p className="text-[11px] mt-0.5 font-bold leading-relaxed">{testResult.message}</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="space-y-2">
         {events.map((ev, i) => (
           <div key={`${ev.id}-${i}`} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-            <div>
-              <p className="text-sm font-bold text-slate-800">{ev.name}</p>
+            <div className="min-w-0 flex-1 mr-4">
+              <p className="text-sm font-bold text-slate-800 truncate">{ev.name}</p>
               <p className="text-[10px] text-slate-500">
                 {ev.ringQuantity} Rings • Date: {ev.eventDate || 'Not set'}
               </p>
+              {ev.sheetUrl && (
+                <p className="text-[9px] text-slate-400 truncate mt-0.5">
+                  Sync: {ev.sheetUrl}
+                </p>
+              )}
+              {ev.winnerSheetUrl && (
+                <p className="text-[9px] text-slate-400 truncate">
+                  Report: {ev.winnerSheetUrl}
+                </p>
+              )}
             </div>
-            <button 
-              onClick={() => onDelete(ev.id)}
-              className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-            >
-              <Trash2 size={16} />
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              <button 
+                onClick={() => startEdit(ev)}
+                className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                title="Edit Event"
+              >
+                <Edit2 size={16} />
+              </button>
+              <button 
+                onClick={() => onDelete(ev.id)}
+                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                title="Delete Event"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
           </div>
         ))}
         {events.length === 0 && (

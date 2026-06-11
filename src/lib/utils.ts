@@ -115,31 +115,21 @@ export function isBoutMatch(bout1: string | number, bout2: string | number): boo
   
   if (!isNaN(num1) && !isNaN(num2)) {
     if (num1 === num2) return true;
+
+    // If both specify a ring (>= 1000), they MUST be in the exact same ring to match.
+    // This prevents "B12" (2012) from matching "A12" (1012).
+    if (num1 >= 1000 && num2 >= 1000) {
+      const ring1 = Math.floor(num1 / 1000);
+      const ring2 = Math.floor(num2 / 1000);
+      if (ring1 !== ring2) {
+        return false;
+      }
+      return num1 % 1000 === num2 % 1000;
+    }
+    
     // If one is < 1000 and the other is exactly (Ring * 1000) + that number
     if (num1 < 1000 && num2 >= 1000 && num2 % 1000 === num1) return true;
     if (num2 < 1000 && num1 >= 1000 && num1 % 1000 === num2) return true;
-    
-    // Support lenient comparison if one starts with B/b (Bout shorthand) and they share the same relative remainder (mod 1000)
-    // For example: D03 (4003) vs B03 or b03 (2003)
-    const originalStr1 = bout1.toString().toUpperCase().trim();
-    const originalStr2 = bout2.toString().toUpperCase().trim();
-    
-    // If they have different explicit genuine ring prefixes, they are NOT a match
-    const letter1Match = originalStr1.match(/^([A-Z])/);
-    const letter2Match = originalStr2.match(/^([A-Z])/);
-    const isGenuineRingBout1 = /^[A-Z]\d+/.test(originalStr1);
-    const isGenuineRingBout2 = /^[A-Z]\d+/.test(originalStr2);
-    if (letter1Match && letter2Match && isGenuineRingBout1 && isGenuineRingBout2) {
-      if (letter1Match[1] !== letter2Match[1]) {
-        return false;
-      }
-    }
-
-    const startsWithB1 = originalStr1.startsWith('B');
-    const startsWithB2 = originalStr2.startsWith('B');
-    if ((startsWithB1 || startsWithB2) && num1 >= 1000 && num2 >= 1000) {
-      if (num1 % 1000 === num2 % 1000) return true;
-    }
   }
   
   return false;
@@ -281,4 +271,38 @@ export function extractWinnerOfBout(nameStr: string | null | undefined): string 
   
   return null;
 }
+
+export function getEventSpreadsheetUrl(event?: { sheetUrl?: string, winnerSheetUrl?: string }): string | null {
+  if (!event) return null;
+  if (event.winnerSheetUrl && event.winnerSheetUrl.includes('docs.google.com/spreadsheets')) {
+    return event.winnerSheetUrl;
+  }
+  if (event.sheetUrl && event.sheetUrl.includes('docs.google.com/spreadsheets')) {
+    return event.sheetUrl;
+  }
+  return null;
+}
+
+export function getEventWebAppUrl(event?: { sheetUrl?: string, winnerSheetUrl?: string }, fallbackUrl: string = ''): string {
+  if (!event) return fallbackUrl;
+  
+  // Prefer any URL that explicitly mentions script.google.com or /exec
+  if (event.sheetUrl && (event.sheetUrl.includes('script.google.com') || event.sheetUrl.includes('/exec'))) {
+    return event.sheetUrl;
+  }
+  if (event.winnerSheetUrl && (event.winnerSheetUrl.includes('script.google.com') || event.winnerSheetUrl.includes('/exec'))) {
+    return event.winnerSheetUrl;
+  }
+  
+  // Fallback signature checks
+  if (event.sheetUrl && !event.sheetUrl.includes('docs.google.com/spreadsheets')) {
+    return event.sheetUrl;
+  }
+  if (event.winnerSheetUrl && !event.winnerSheetUrl.includes('docs.google.com/spreadsheets')) {
+    return event.winnerSheetUrl;
+  }
+  
+  return fallbackUrl;
+}
+
 

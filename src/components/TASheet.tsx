@@ -3,7 +3,7 @@ import { Download, AlertCircle, RefreshCw, Eraser, Check, History, X, Search, Pr
 import { motion } from 'motion/react';
 import { MatchData, RingStatus, EventData, MatchHistoryItem } from '../types';
 import Papa from 'papaparse';
-import { cn, formatBoutNumber, normalizeBoutNumber, normalizeBoutWithRing, parseRingNumber } from '../lib/utils';
+import { cn, formatBoutNumber, normalizeBoutNumber, normalizeBoutWithRing, parseRingNumber, getEventSpreadsheetUrl } from '../lib/utils';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { handleGlobalQuotaTrigger, isFirestoreQuotaExceeded } from '../App';
 import { db } from '../firebase';
@@ -375,8 +375,9 @@ export function TASheet({
       let activeUrl = SHEET_CSV_URL;
       if (currentEventId && events.length > 0) {
         const event = events.find(e => e.id === currentEventId);
-        if (event && event.sheetUrl && event.sheetUrl.includes('docs.google.com/spreadsheets')) {
-          activeUrl = event.sheetUrl;
+        const resolvedSpreadsheet = getEventSpreadsheetUrl(event);
+        if (resolvedSpreadsheet) {
+          activeUrl = resolvedSpreadsheet;
           if (!activeUrl.includes('/export?')) {
             activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
           }

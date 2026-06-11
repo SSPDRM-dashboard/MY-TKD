@@ -3,7 +3,7 @@ import { db } from '../firebase';
 import { collection, addDoc, deleteDoc, doc, onSnapshot, query, where, setDoc, serverTimestamp } from 'firebase/firestore';
 import { BoutMapping, EventData, MatchHistoryItem } from '../types';
 import { Trash2, Plus, Save, Hash, ArrowRight, User, Shield, RefreshCw, Trophy } from 'lucide-react';
-import { cn, normalizeBoutNumber, formatBoutNumber } from '../lib/utils';
+import { cn, normalizeBoutNumber, formatBoutNumber, getEventSpreadsheetUrl } from '../lib/utils';
 import { handleGlobalQuotaTrigger, isFirestoreQuotaExceeded } from '../App';
 import Papa from 'papaparse';
 
@@ -54,9 +54,10 @@ export function AdminMapping({
     try {
       let activeUrl = CATEGORIES_SHEET_URL;
       const event = events.find(e => e.id === selectedEventId);
-      if (event && event.sheetUrl) {
-        activeUrl = event.sheetUrl;
-        if (activeUrl.includes('docs.google.com/spreadsheets') && !activeUrl.includes('/export?')) {
+      const resolvedSpreadsheet = getEventSpreadsheetUrl(event);
+      if (resolvedSpreadsheet) {
+        activeUrl = resolvedSpreadsheet;
+        if (!activeUrl.includes('/export?')) {
           activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
         }
       }
@@ -98,9 +99,10 @@ export function AdminMapping({
     try {
       let activeUrl = RESULTS_SHEET_URL;
       const event = events.find(e => e.id === selectedEventId);
-      if (event && event.sheetUrl) {
-        activeUrl = event.sheetUrl;
-        if (activeUrl.includes('docs.google.com/spreadsheets') && !activeUrl.includes('/export?')) {
+      const resolvedSpreadsheet = getEventSpreadsheetUrl(event);
+      if (resolvedSpreadsheet) {
+        activeUrl = resolvedSpreadsheet;
+        if (!activeUrl.includes('/export?')) {
           activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
         }
       }
