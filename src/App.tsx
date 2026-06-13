@@ -7586,10 +7586,10 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
             });
 
           const standbyRaw: typeof ringQueueAll = [];
-          if (ring.onDeck && hasPlayers(ring.onDeck)) {
+          if (ring.onDeck) {
             standbyRaw.push({ id: `ondeck-${ring.ringNumber}`, data: ring.onDeck });
           }
-          if (ring.inTheHole && hasPlayers(ring.inTheHole)) {
+          if (ring.inTheHole) {
             standbyRaw.push({ id: `inthehole-${ring.ringNumber}`, data: ring.inTheHole });
           }
           ringQueueAll.forEach(q => {
@@ -7670,7 +7670,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                   return (
                     <div key={idx} className="flex-1 grid grid-cols-12 bg-[#0d1526] border border-white/10 rounded overflow-hidden">
                       <div className="col-span-3 flex items-center justify-center text-xl font-black text-white bg-[#161f33] border-r border-white/10">
-                        {hasPlayers(b?.data) ? formatBoutNumber(ring.ringNumber, b!.data.bout, boutNumberingMode) : "---"}
+                        {b?.data?.bout ? formatBoutNumber(ring.ringNumber, b.data.bout, boutNumberingMode) : "---"}
                       </div>
                       <div className={cn(
                         "flex flex-col justify-center px-3 relative",
@@ -7685,7 +7685,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                         {b?.data.blue_inspected ? (
                           <div className="absolute bottom-1 right-2 z-10">
                             <span 
-                              onClick={isAdmin && onUpdateInspection ? () => onUpdateInspection(ring.ringNumber.toString(), b!.data.bout, 'blue', false) : undefined}
+                              onClick={isAdmin && onUpdateInspection ? () => onUpdateInspection(ring.ringNumber.toString(), b!.data.bout.toString(), 'blue', false) : undefined}
                               className={cn(
                                 "text-[10px] font-black uppercase tracking-tighter",
                                 isRingInactive ? "text-slate-600" : "text-green-400",
@@ -7696,7 +7696,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                           isAdmin && hasPlayers(b?.data) && onUpdateInspection && (
                             <div className="absolute bottom-1 right-2 z-10">
                               <button 
-                                onClick={() => onUpdateInspection(ring.ringNumber.toString(), b!.data.bout, 'blue', true)}
+                                onClick={() => onUpdateInspection(ring.ringNumber.toString(), b!.data.bout.toString(), 'blue', true)}
                                 className={cn(
                                   "text-[10px] font-black uppercase tracking-tighter underline hover:text-white transition-colors",
                                   isRingInactive ? "text-slate-600" : "text-white/60"
@@ -7720,7 +7720,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                           {b?.data.red_inspected ? (
                             <div className="absolute bottom-1 right-2 z-10">
                               <span 
-                                onClick={isAdmin && onUpdateInspection ? () => onUpdateInspection(ring.ringNumber.toString(), b!.data.bout, 'red', false) : undefined}
+                                onClick={isAdmin && onUpdateInspection ? () => onUpdateInspection(ring.ringNumber.toString(), b!.data.bout.toString(), 'red', false) : undefined}
                                 className={cn(
                                   "text-[10px] font-black uppercase tracking-tighter",
                                   isRingInactive ? "text-slate-600" : "text-green-400",
@@ -7731,7 +7731,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                             isAdmin && hasPlayers(b?.data) && onUpdateInspection && (
                               <div className="absolute bottom-1 right-2 z-10">
                                 <button 
-                                  onClick={() => onUpdateInspection(ring.ringNumber.toString(), b!.data.bout, 'red', true)}
+                                  onClick={() => onUpdateInspection(ring.ringNumber.toString(), b!.data.bout.toString(), 'red', true)}
                                   className={cn(
                                     "text-[10px] font-black uppercase tracking-tighter underline hover:text-white transition-colors",
                                     isRingInactive ? "text-slate-600" : "text-white/60"
@@ -8065,7 +8065,7 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                   return (
                     <div key={idx} className="flex-1 grid grid-cols-12 bg-[#0d1526] border border-white/10 rounded overflow-hidden">
                       <div className="col-span-3 flex items-center justify-center text-xl font-black text-white bg-[#161f33] border-r border-white/10">
-                        {hasPlayers(b?.data) ? formatBoutNumber(ring.ringNumber, b!.data.bout, boutNumberingMode) : "---"}
+                        {b?.data?.bout ? formatBoutNumber(ring.ringNumber, b.data.bout, boutNumberingMode) : "---"}
                       </div>
                       <div className={cn(
                         "flex flex-col justify-center px-3 relative",
@@ -8295,10 +8295,10 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
             });
 
           const standbyRaw: typeof ringQueueAll = [];
-          if (ring.onDeck && hasPlayers(ring.onDeck)) {
+          if (ring.onDeck) {
             standbyRaw.push({ id: `ondeck-${ring.ringNumber}`, data: ring.onDeck });
           }
-          if (ring.inTheHole && hasPlayers(ring.inTheHole)) {
+          if (ring.inTheHole) {
             standbyRaw.push({ id: `inthehole-${ring.ringNumber}`, data: ring.inTheHole });
           }
           ringQueueAll.forEach(q => {
@@ -8440,7 +8440,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                            isPoomsaeItem ? "ml-auto mr-1" : "-mx-4"
                         )}>
                           <span className="text-[10px] font-black text-slate-900">
-                            {hasPlayers(bout?.data) ? formatBoutNumber(ring.ringNumber, bout!.data.bout, boutNumberingMode) : "---"}
+                            {bout?.data?.bout ? formatBoutNumber(ring.ringNumber, bout.data.bout, boutNumberingMode) : "---"}
                           </span>
                         </div>
 
@@ -8608,10 +8608,10 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
                   });
 
                 const standbyRaw: typeof ringQueueAllSorted = [];
-                if (ring.onDeck && hasPlayers(ring.onDeck)) {
+                if (ring.onDeck) {
                   standbyRaw.push({ id: `ondeck-${ring.ringNumber}`, data: ring.onDeck });
                 }
-                if (ring.inTheHole && hasPlayers(ring.inTheHole)) {
+                if (ring.inTheHole) {
                   standbyRaw.push({ id: `inthehole-${ring.ringNumber}`, data: ring.inTheHole });
                 }
                 ringQueueAllSorted.forEach(q => {
@@ -8963,7 +8963,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                           {/* Bout Num */}
                           <div className="w-10 sm:w-12 h-full bg-slate-800 flex items-center justify-center border-r border-slate-700 flex-shrink-0">
                             <span className="text-[10px] sm:text-[12px] font-black text-white">
-                              {hasPlayers(bout?.data) ? formatBoutNumber(ring.ringNumber, bout!.data.bout, boutNumberingMode) : "---"}
+                              {bout?.data?.bout ? formatBoutNumber(ring.ringNumber, bout.data.bout, boutNumberingMode) : "---"}
                             </span>
                           </div>
 
