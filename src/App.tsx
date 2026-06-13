@@ -8410,10 +8410,10 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                         )}>
                           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/20 to-transparent pointer-events-none" />
                           <div className="absolute -right-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">{(!current || !hasPlayers(current)) ? 'BLURRED' : 'BLUE'}</div>
-                          <p className="text-[15px] font-black text-white uppercase tracking-[0.2em] mb-1 relative z-10 truncate w-full">
+                          <p className="text-[16px] font-black text-white uppercase tracking-[0.2em] mb-1 relative z-10 truncate w-full">
                             {current ? cleanPlaceholder(current.blue_club || "") : "---"}
                           </p>
-                          <h4 className="font-black text-white uppercase relative z-10 leading-tight text-[23px] truncate w-full">
+                          <h4 className="font-black text-white uppercase relative z-10 leading-tight text-[25px] truncate w-full">
                             {current?.privacy_mode || !current?.blue_name ? "---" : cleanPlaceholder(current.blue_name)}
                           </h4>
                         </div>
@@ -8433,10 +8433,10 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                           <div className="flex-1 h-full bg-red-600 flex flex-col justify-center px-10 text-right relative overflow-hidden group">
                             <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/20 to-transparent pointer-events-none" />
                             <div className="absolute -left-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">{(!current || !hasPlayers(current)) ? 'BLURRED' : 'RED'}</div>
-                            <p className="text-[15px] font-black text-white uppercase tracking-[0.2em] mb-1 relative z-10 truncate w-full text-right">
+                            <p className="text-[16px] font-black text-white uppercase tracking-[0.2em] mb-1 relative z-10 truncate w-full text-right">
                               {current ? cleanPlaceholder(current.red_club || "") : "---"}
                             </p>
-                            <h4 className="font-black text-white uppercase relative z-10 leading-tight text-[23px] truncate w-full text-right">
+                            <h4 className="font-black text-white uppercase relative z-10 leading-tight text-[25px] truncate w-full text-right">
                               {current?.privacy_mode || !current?.red_name ? "---" : cleanPlaceholder(current.red_name)}
                             </h4>
                           </div>
