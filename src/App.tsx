@@ -617,6 +617,43 @@ export default function App() {
     };
   }, [currentEventId]);
 
+  // Automated queue pruning to prevent completed bouts from lingering in the queue
+  useEffect(() => {
+    if (!currentEventId || boutQueue.length === 0 || matchHistory.length === 0) return;
+    
+    // Only run if the user has write clearance (is authorized) to write state changes to cloud
+    const savedUser = localStorage.getItem('tkd_user');
+    let canWrite = false;
+    if (savedUser) {
+      try {
+        const parsed = JSON.parse(savedUser);
+        canWrite = ['admin', 'user', 'ta'].includes(parsed?.role);
+      } catch (_) {}
+    }
+    if (!canWrite) return;
+
+    const completedBoutIds = new Set(
+      matchHistory
+        .filter(h => h.eventId === currentEventId && h.winner && h.winner !== '-' && h.winner.trim() !== '')
+        .map(h => normalizeBoutNumber(h.bout))
+    );
+
+    if (completedBoutIds.size === 0) return;
+
+    const remainingBouts = boutQueue.filter(item => {
+      // Do NOT filter out custom "restored_" entries if they are meant to be replayed
+      if (item.id.startsWith('restored_')) return true;
+      
+      const boutNumNorm = normalizeBoutNumber(item.data.bout);
+      return !completedBoutIds.has(boutNumNorm);
+    });
+
+    if (remainingBouts.length !== boutQueue.length) {
+      console.log(`Auto-cleaned ${boutQueue.length - remainingBouts.length} completed bouts from boutQueue.`);
+      setBoutQueue(remainingBouts);
+      localStorage.setItem('tkd_bout_queue', JSON.stringify(remainingBouts));
+    }
+  }, [matchHistory, currentEventId, boutQueue, setBoutQueue]);
 
 
   useEffect(() => {
@@ -1075,13 +1112,20 @@ export default function App() {
   };
 
   const getFilteredQueue = (ringNum?: number) => {
+    const completedBoutIds = new Set(
+      matchHistory
+        .filter(h => h.eventId === currentEventId && h.winner && h.winner !== '-' && h.winner.trim() !== '')
+        .map(h => normalizeBoutNumber(h.bout))
+    );
+
     return boutQueue
       .filter(item => {
         const matchesEvent = !item.data.eventId || item.data.eventId === currentEventId;
         const itemRing = Number(item.data.ring);
         const matchesRing = ringNum === undefined || itemRing === Number(ringNum);
         const matchesUserRing = user?.role === 'admin' || itemRing === Number(user?.assignedRing);
-        return matchesEvent && matchesRing && matchesUserRing;
+        const isCompleted = completedBoutIds.has(normalizeBoutNumber(item.data.bout));
+        return matchesEvent && matchesRing && matchesUserRing && !isCompleted;
       })
       .sort((a, b) => {
         const parseBout = (bout: string | number) => {
@@ -2355,8 +2399,22 @@ export default function App() {
       checkAndGenerateNextBout(boutNumber, winnerName || winner, winner === 'Blue' ? currentBout.blue_club : currentBout.red_club, currentBout.category);
     }
     
-    const ringQueue = boutQueue.filter(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
-    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
+    const completedBoutIds = new Set(
+      matchHistory
+        .filter(h => h.eventId === currentEventId && h.winner && h.winner !== '-' && h.winner.trim() !== '')
+        .map(h => normalizeBoutNumber(h.bout))
+    );
+
+    const ringQueue = boutQueue.filter(q => 
+      q.data.ring === ringNumber && 
+      (!q.data.eventId || q.data.eventId === currentEventId) &&
+      !completedBoutIds.has(normalizeBoutNumber(q.data.bout))
+    );
+    const nextBoutIndex = boutQueue.findIndex(q => 
+      q.data.ring === ringNumber && 
+      (!q.data.eventId || q.data.eventId === currentEventId) &&
+      !completedBoutIds.has(normalizeBoutNumber(q.data.bout))
+    );
     
     // Check if we need to prompt for final bouts
     // If we have a next bout, and after pulling it, the queue for this ring will be < 3
@@ -7346,7 +7404,7 @@ function FighterSide({ color, name, club, privacy, inspected }: { color: 'blue' 
         color === 'blue' ? "bg-[#00a2e8]" : "bg-[#ed1c24]"
       )} />
       <p className={cn(
-        "font-black text-slate-800 leading-tight line-clamp-3",
+        "font-black text-slate-800 leading-tight line-clamp-3 whitespace-normal break-words",
         getDynamicFontSize(privacy ? "---" : cleanPlaceholder(name))
       )}>
         {privacy ? "---" : cleanPlaceholder(name)}
@@ -8166,10 +8224,10 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
 
   const getStandbyDynamicFontSize = (name: string) => {
     const len = name.length;
-    if (len <= 15) return 'text-[17px]';
-    if (len <= 25) return 'text-[15px]';
-    if (len <= 35) return 'text-[13px]';
-    return 'text-[11px]';
+    if (len <= 15) return 'text-[15px]';
+    if (len <= 25) return 'text-[13px]';
+    if (len <= 35) return 'text-[11px]';
+    return 'text-[9px]';
   };
 
   return (
@@ -8352,11 +8410,10 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                         )}>
                           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/20 to-transparent pointer-events-none" />
                           <div className="absolute -right-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">{(!current || !hasPlayers(current)) ? 'BLURRED' : 'BLUE'}</div>
-                          <p className="text-[15px] font-black text-white uppercase tracking-[0.2em] mb-1 relative z-10">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
-                          <h4 className={cn(
-                            "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
-                            getDynamicFontSize(current?.blue_name || "")
-                          )}>
+                          <p className="text-[15px] font-black text-white uppercase tracking-[0.2em] mb-1 relative z-10 truncate w-full">
+                            {current ? cleanPlaceholder(current.blue_club || "") : "---"}
+                          </p>
+                          <h4 className="font-black text-white uppercase relative z-10 leading-tight text-[23px] truncate w-full">
                             {current?.privacy_mode || !current?.blue_name ? "---" : cleanPlaceholder(current.blue_name)}
                           </h4>
                         </div>
@@ -8376,11 +8433,10 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                           <div className="flex-1 h-full bg-red-600 flex flex-col justify-center px-10 text-right relative overflow-hidden group">
                             <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/20 to-transparent pointer-events-none" />
                             <div className="absolute -left-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">{(!current || !hasPlayers(current)) ? 'BLURRED' : 'RED'}</div>
-                            <p className="text-[15px] font-black text-white uppercase tracking-[0.2em] mb-1 relative z-10">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
-                            <h4 className={cn(
-                              "font-black text-white uppercase relative z-10 leading-tight line-clamp-3",
-                              getDynamicFontSize(current?.red_name || "")
-                            )}>
+                            <p className="text-[15px] font-black text-white uppercase tracking-[0.2em] mb-1 relative z-10 truncate w-full text-right">
+                              {current ? cleanPlaceholder(current.red_club || "") : "---"}
+                            </p>
+                            <h4 className="font-black text-white uppercase relative z-10 leading-tight text-[23px] truncate w-full text-right">
                               {current?.privacy_mode || !current?.red_name ? "---" : cleanPlaceholder(current.red_name)}
                             </h4>
                           </div>
@@ -8422,11 +8478,11 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                           isRingInactive ? "bg-slate-800" : "bg-blue-600/90"
                         )}>
                           {!isRingInactive && <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />}
-                          <p className="text-[11px] font-bold text-white uppercase leading-none mb-0.5 relative z-10">
+                          <p className="text-[9px] font-bold text-white uppercase leading-none mb-0.5 relative z-10">
                             {bout ? cleanPlaceholder(bout.data.blue_club) : ""}
                           </p>
                           <p className={cn(
-                            "font-black uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2",
+                            "font-black uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2 whitespace-normal break-words",
                             getStandbyDynamicFontSize(bout?.data.blue_name || ""),
                             isRingInactive ? "text-slate-400" : "text-white"
                           )}>
@@ -8451,11 +8507,11 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                             isRingInactive ? "bg-slate-800" : "bg-red-600/90"
                           )}>
                             {!isRingInactive && <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/10 to-transparent pointer-events-none" />}
-                            <p className="text-[11px] font-bold text-white uppercase leading-none mb-0.5 relative z-10">
+                            <p className="text-[9px] font-bold text-white uppercase leading-none mb-0.5 relative z-10">
                               {bout ? cleanPlaceholder(bout.data.red_club) : ""}
                             </p>
                             <p className={cn(
-                              "font-black uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2",
+                              "font-black uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2 whitespace-normal break-words",
                               getStandbyDynamicFontSize(bout?.data.red_name || ""),
                               isRingInactive ? "text-slate-400" : "text-white"
                             )}>
