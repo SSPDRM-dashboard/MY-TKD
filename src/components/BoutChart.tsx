@@ -74,73 +74,127 @@ export function BoutChart({ mappings, boutQueue, matchHistory, boutNumberingMode
       }
     });
 
-    // Calculate depths (leaves = 0)
-    let changed = true;
-    while (changed) {
-      changed = false;
-      nodeMap.forEach(node => {
-         if (node.sources.length > 0) {
-            const maxChildDepth = Math.max(...node.sources.map(s => nodeMap.get(s.sourceId)?.depth || 0));
-            if (node.depth !== maxChildDepth + 1) {
-               node.depth = maxChildDepth + 1;
-               changed = true;
+    // Calculate depths from root backwards (right-to-left) to line up columns perfectly regardless of byes.
+    const nodesArray = Array.from(nodeMap.values());
+    const nodeIds = nodesArray.map(n => n.id);
+    
+    // Initialize levelFromRoot of all nodes to -1
+    const levelMap = new Map<string, number>();
+    nodeIds.forEach(id => levelMap.set(id, -1));
+
+    // Identify the root nodes (target is null or not in nodeMap)
+    const roots = nodesArray.filter(n => n.target === null || !nodeMap.has(n.target));
+    roots.forEach(r => levelMap.set(r.id, 0));
+
+    // Iteratively propagate levels from target to sources backwards
+    let levelChanged = true;
+    while (levelChanged) {
+      levelChanged = false;
+      nodesArray.forEach(node => {
+        const currentLevel = levelMap.get(node.id) || 0;
+        if (currentLevel !== -1) {
+          node.sources.forEach(source => {
+            const sourceNode = nodeMap.get(source.sourceId);
+            if (sourceNode) {
+              const oldLevel = levelMap.get(sourceNode.id) || -1;
+              const newLevel = currentLevel + 1;
+              if (newLevel > oldLevel) {
+                levelMap.set(sourceNode.id, newLevel);
+                levelChanged = true;
+              }
             }
-         }
+          });
+        }
       });
     }
 
-    const maxDepth = Math.max(0, ...Array.from(nodeMap.values()).map(n => n.depth));
-    const nodesArray = Array.from(nodeMap.values());
-    
-    // Partition nodes by depth
+    // Find the maximum level to determine total columns needed
+    const maxLevel = Math.max(0, ...Array.from(levelMap.values()));
+
+    // Assign depths based on columns from left (depth 0) to right (depth = maxLevel)
+    nodesArray.forEach(node => {
+      const level = levelMap.get(node.id);
+      if (level !== undefined && level !== -1) {
+        node.depth = maxLevel - level;
+      } else {
+        node.depth = 0; // Fallback for orphans
+      }
+    });
+
+    // Partition nodes by depth for layout tracking
     const nodesByDepth: BracketNode[][] = [];
-    for (let d = 0; d <= maxDepth; d++) {
+    for (let d = 0; d <= maxLevel; d++) {
       nodesByDepth.push(nodesArray.filter(n => n.depth === d));
     }
-
-    // Sort nodes within depth 0 (leaves) arbitrarily but consistently.
-    // Try to sort by bout number or slot if possible, or just purely alphanumerically for now.
-    nodesByDepth[0].sort((a, b) => {
-        // Find if they share a common ancestor quickly if we implement a complex sort.
-        // For now, Alphanumerically
-        return a.id.localeCompare(b.id);
-    });
 
     const NODE_WIDTH = 220;
     const NODE_HEIGHT = 80;
     const X_GAP = 60;
     const Y_GAP = 20;
 
-    // Assign Y to leaves
-    let currentY = 20;
-    nodesByDepth[0].forEach(node => {
-      node.y = currentY;
-      currentY += NODE_HEIGHT + Y_GAP;
+    // Determine Y order of leaves using a recursive DFS from roots.
+    // Visiting Chung first then Hong ensures Chung is always above Hong visually without overlapping lines!
+    const leafOrder: string[] = [];
+    const visited = new Set<string>();
+
+    function traverse(nodeId: string) {
+      if (visited.has(nodeId)) return;
+      visited.add(nodeId);
+      
+      const node = nodeMap.get(nodeId);
+      if (!node) return;
+
+      if (node.sources.length === 0) {
+        leafOrder.push(nodeId);
+      } else {
+        // Sort sources so Chung is first, Hong is second
+        const sortedSources = [...node.sources].sort((a, b) => a.slot === 'Chung' ? -1 : 1);
+        sortedSources.forEach(s => {
+          traverse(s.sourceId);
+        });
+      }
+    }
+
+    // Sort roots consistently before starting traversal
+    const sortedRoots = [...roots].sort((a, b) => a.id.localeCompare(b.id));
+    sortedRoots.forEach(r => traverse(r.id));
+
+    // Ensure all layout leaves (sources.length === 0) are in leafOrder
+    nodesArray.forEach(n => {
+      if (n.sources.length === 0 && !visited.has(n.id)) {
+        leafOrder.push(n.id);
+      }
     });
 
-    // Assign Y to parents (average of children)
-    for (let d = 1; d <= maxDepth; d++) {
+    // Assign Y to layout leaves from top-to-bottom
+    let currentY = 20;
+    leafOrder.forEach(nodeId => {
+      const node = nodeMap.get(nodeId);
+      if (node) {
+        node.y = currentY;
+        currentY += NODE_HEIGHT + Y_GAP;
+      }
+    });
+
+    // Assign Y to parents (average of children) going from depth 1 up to maxLevel
+    for (let d = 1; d <= maxLevel; d++) {
       nodesByDepth[d].forEach(node => {
         if (node.sources.length > 0) {
-           const childYs = node.sources.map(s => nodeMap.get(s.sourceId)!.y);
-           node.y = childYs.reduce((a, b) => a + b, 0) / childYs.length;
-           
-           // Sort sources array so Chung is top, Hong is bottom visually
-           node.sources.sort((a, b) => a.slot === 'Chung' ? -1 : 1);
-        } else {
-           // Should not happen for d > 0, but fallback
-           node.y = currentY;
-           currentY += NODE_HEIGHT + Y_GAP;
+          const childYs = node.sources.map(s => nodeMap.get(s.sourceId)?.y ?? 0);
+          node.y = childYs.reduce((a, b) => a + b, 0) / childYs.length;
+          
+          // Sort sources array so Chung is top, Hong is bottom visually
+          node.sources.sort((a, b) => a.slot === 'Chung' ? -1 : 1);
         }
       });
     }
 
-    // Assign X
+    // Assign X based on depth
     nodesArray.forEach(node => {
       node.x = node.depth * (NODE_WIDTH + X_GAP) + 20;
     });
 
-    const totalWidth = (maxDepth + 1) * (NODE_WIDTH + X_GAP) + 40;
+    const totalWidth = (maxLevel + 1) * (NODE_WIDTH + X_GAP) + 40;
     const totalHeight = Math.max(currentY, Math.max(...nodesArray.map(n => n.y)) + NODE_HEIGHT + 40);
 
     // Build edges for SVG drawing
@@ -163,7 +217,7 @@ export function BoutChart({ mappings, boutQueue, matchHistory, boutNumberingMode
                startX: sourceNode.x + NODE_WIDTH,      // Right side of source
                startY: sourceNode.y + NODE_HEIGHT / 2, // Middle of source
                endX: node.x,                           // Left side of target
-               endY: node.y + (source.slot === 'Chung' ? 20 : NODE_HEIGHT - 20), // Target Chung is top, Hong is bottom relative to node Y? We can just map to middle.
+               endY: node.y + (source.slot === 'Chung' ? 20 : NODE_HEIGHT - 20), // Target Chung is top, Hong is bottom relative to node Y
                slot: source.slot
             });
          }
@@ -277,7 +331,7 @@ export function BoutChart({ mappings, boutQueue, matchHistory, boutNumberingMode
                                 {winner && <span className="text-green-600">Completed</span>}
                              </div>
                              <div className="flex-1 flex flex-col justify-center">
-                                <div className={`flex justify-between items-center px-2 py-1 ${winner === 'Blue' ? 'font-bold bg-blue-50 text-blue-700' : 'text-slate-700'}`}>
+                                <div className={`flex justify-between items-center px-2 py-1 pl-2 border-l-4 border-blue-500 ${winner === 'Blue' ? 'font-bold bg-blue-50 text-blue-700' : 'text-slate-700'}`}>
                                    {editingNameNodeId === node.id && editingNameColor === 'blue' ? (
                                       <input
                                          autoFocus
@@ -321,7 +375,7 @@ export function BoutChart({ mappings, boutQueue, matchHistory, boutNumberingMode
                                    )}
                                 </div>
                                 <div className="border-t border-slate-100"></div>
-                                <div className={`flex justify-between items-center px-2 py-1 ${winner === 'Red' ? 'font-bold bg-red-50 text-red-700' : 'text-slate-700'}`}>
+                                <div className={`flex justify-between items-center px-2 py-1 pl-2 border-l-4 border-red-500 ${winner === 'Red' ? 'font-bold bg-red-50 text-red-700' : 'text-slate-700'}`}>
                                    {editingNameNodeId === node.id && editingNameColor === 'red' ? (
                                       <input
                                          autoFocus

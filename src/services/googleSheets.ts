@@ -21,6 +21,21 @@ const getBoutMode = (): 'numeric' | 'alphanumeric' => {
   return 'alphanumeric';
 };
 
+const getRingNamingMode = (): 'number' | 'alphabet' => {
+  if (typeof window !== 'undefined') {
+    const mode = localStorage.getItem('tkd_ring_naming_mode');
+    if (mode === 'alphabet') return 'alphabet';
+  }
+  return 'number';
+};
+
+const formatRing = (ring: number): string | number => {
+  if (getRingNamingMode() === 'alphabet') {
+    return String.fromCharCode(64 + ring); // 1 -> A, 2 -> B, etc.
+  }
+  return ring;
+};
+
 const formatBout = (ring: number, bout: string | number) => {
   if (bout === undefined || bout === null) return '0';
   const s = bout.toString().trim().toUpperCase();
@@ -98,7 +113,7 @@ export async function syncToGoogleSheets(url: string, data: MatchData, eventName
       action: 'newBout',
       timestamp: getMalaysiaTimestamp(),
       event_name: (eventName || '-').toUpperCase(),
-      ring: data.ring,
+      ring: formatRing(data.ring),
       bout: formatBout(data.ring, data.bout).toUpperCase(),
       category: (data.category || '-').toUpperCase(),
       blue_name: (data.blue_name || '-').toUpperCase(),
@@ -155,7 +170,7 @@ export async function updateTransferInGoogleSheets(url: string, ring: number, bo
   try {
     const payload = {
       action: 'updateTransfer',
-      ring: ring,
+      ring: formatRing(ring),
       bout: formatBout(ring, bout),
       reason: reason,
       timestamp: getMalaysiaTimestamp(),
@@ -191,7 +206,7 @@ export async function updateBoutDetailsInGoogleSheets(url: string, ring: number,
   try {
     const payload = {
       action: 'updateBoutDetails',
-      ring: ring,
+      ring: formatRing(ring),
       bout: formatBout(ring, bout).toUpperCase(),
       blue_name: (blueName || '-').toUpperCase(),
       blue_club: (blueClub || '-').toUpperCase(),
@@ -223,14 +238,14 @@ export async function updateBoutDetailsInGoogleSheets(url: string, ring: number,
   }
 }
 
-export async function updateWinnerInGoogleSheets(url: string, ring: number, bout: string | number, winner: string, eventName: string = '', winnerSide?: string, blueName?: string, redName?: string, points?: any, winnerClub?: string) {
+export async function updateWinnerInGoogleSheets(url: string, ring: number, bout: string | number, winner: string, eventName: string = '', winnerSide?: string, blueName?: string, redName?: string, points?: any, winnerClub?: string, blueClub?: string, redClub?: string) {
   const targetUrl = url?.trim();
   if (!targetUrl) return false;
 
   try {
     const payload = {
       action: 'updateWinner',
-      ring: ring,
+      ring: formatRing(ring),
       bout: formatBout(ring, bout).toUpperCase(),
       winner: (winner || '-').toUpperCase(),
       winner_name: (winner || '-').toUpperCase(),
@@ -238,7 +253,9 @@ export async function updateWinnerInGoogleSheets(url: string, ring: number, bout
       winner_club: (winnerClub || '-').toUpperCase(),
       club_name: (winnerClub || '-').toUpperCase(),
       blue_name: (blueName || '-').toUpperCase(),
+      blue_club: (blueClub || '-').toUpperCase(),
       red_name: (redName || '-').toUpperCase(),
+      red_club: (redClub || '-').toUpperCase(),
       timestamp: getMalaysiaTimestamp(),
       event_name: (eventName || '-').toUpperCase(),
       // Include points in winner update too
@@ -283,7 +300,7 @@ export async function updatePointsInGoogleSheets(url: string, ring: number, bout
   try {
     const payload = {
       action: 'updatePoints',
-      ring: ring,
+      ring: formatRing(ring),
       bout: formatBout(ring, bout).toUpperCase(),
       timestamp: getMalaysiaTimestamp(),
       event_name: (eventName || '-').toUpperCase(),

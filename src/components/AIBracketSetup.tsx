@@ -462,20 +462,77 @@ export function AIBracketSetup({
       try {
         const text = await file.text();
         Papa.parse(text, {
-          header: true,
+          header: false,
           skipEmptyLines: true,
           complete: (results) => {
-            const matches: MatchData[] = results.data.map((row: any) => ({
-              bout: (row.bout || row['Bout #'] || row['Bout'] || '').toString().toUpperCase(),
-              ring: parseInt(row.ring || row['Ring'] || '1'),
-              category: (row.category || row['Category'] || '').toUpperCase(),
-              blue_name: (row.blue_name || row['Blue Player'] || row['Blue Name'] || '').toUpperCase(),
-              blue_club: (row.blue_club || row['Blue Club'] || '').toUpperCase(),
-              red_name: (row.red_name || row['Red Player'] || row['Red Name'] || '').toUpperCase(),
-              red_club: (row.red_club || row['Red Club'] || '').toUpperCase(),
-              privacy_mode: false,
-              eventId: currentEventId
-            }));
+            const rows = results.data as string[][];
+            if (rows.length < 2) {
+              setError("CSV is empty or too short.");
+              setIsProcessing(false);
+              return;
+            }
+
+            const rawHeaders = rows[0];
+            const cleanHeaders = rawHeaders.map(h => (h || '').toLowerCase().trim().replace(/[^a-z0-9]/g, ''));
+
+            // Index detection
+            let boutIdx = cleanHeaders.findIndex(h => h.includes('bout') || h.includes('match') || h.includes('no'));
+            if (boutIdx === -1) {
+              boutIdx = cleanHeaders.findIndex(h => h.includes('bt') || h.includes('#'));
+              if (boutIdx === -1) boutIdx = 0;
+            }
+
+            let ringIdx = cleanHeaders.findIndex(h => h.includes('ring') || h.includes('court'));
+            
+            let catIdx = cleanHeaders.findIndex(h => h.includes('category') || h.includes('class') || h.includes('division') || h.includes('event'));
+            if (catIdx === -1) catIdx = 1;
+
+            let blueNameIdx = cleanHeaders.findIndex(h => h.includes('blue') || h.includes('chung') || h.includes('performer'));
+            if (blueNameIdx === -1) {
+              blueNameIdx = cleanHeaders.findIndex(h => h.includes('player') || h.includes('name') || h === 'competitor');
+              if (blueNameIdx === -1) blueNameIdx = 2; // fallback
+            }
+
+            let redNameIdx = cleanHeaders.findIndex((h, idx) => (h.includes('red') || h.includes('hong')) && idx !== blueNameIdx);
+            if (redNameIdx === -1) {
+              redNameIdx = cleanHeaders.findIndex((h, idx) => (h.includes('player') || h.includes('name') || h === 'competitor') && idx !== blueNameIdx);
+              if (redNameIdx === -1) redNameIdx = 4; // fallback
+            }
+
+            // Clubs are usually the column immediately following the name
+            let blueClubIdx = cleanHeaders.findIndex((h, idx) => h.includes('club') && idx < (redNameIdx !== -1 ? redNameIdx : 99));
+            if (blueClubIdx === -1 || blueClubIdx === blueNameIdx) {
+              blueClubIdx = blueNameIdx + 1;
+            }
+
+            let redClubIdx = cleanHeaders.findIndex((h, idx) => h.includes('club') && idx > blueClubIdx);
+            if (redClubIdx === -1 || redClubIdx === redNameIdx) {
+              redClubIdx = redNameIdx + 1;
+            }
+
+            const dataRows = rows.slice(1);
+            const matches: MatchData[] = dataRows.map((row: string[]) => {
+              const b = (row[boutIdx] || '').toString().toUpperCase();
+              const r = ringIdx !== -1 && row[ringIdx] ? parseInt(row[ringIdx]) : 1;
+              const cat = (row[catIdx] || '').toString().toUpperCase();
+              const blue = (row[blueNameIdx] || '').toString().toUpperCase();
+              const bClub = (row[blueClubIdx] || '').toString().toUpperCase();
+              const red = (row[redNameIdx] || '').toString().toUpperCase();
+              const rClub = (row[redClubIdx] || '').toString().toUpperCase();
+
+              return {
+                bout: b,
+                ring: isNaN(r) ? 1 : r,
+                category: cat,
+                blue_name: blue,
+                blue_club: bClub,
+                red_name: isPoomsaeMode ? '' : red,
+                red_club: isPoomsaeMode ? '' : rClub,
+                privacy_mode: false,
+                eventId: currentEventId,
+                is_poomsae_solo: isPoomsaeMode
+              } as MatchData;
+            }).filter(m => m.bout && m.category);
 
             if (matches.length === 0) {
               setError("No valid match data found in CSV. Ensure headers match: Bout, Category, Blue Player, Red Player.");
@@ -485,7 +542,11 @@ export function AIBracketSetup({
 
             setPreviewData({ matches, mappings: [] });
             setIsProcessing(false);
-            setProcessedFiles(prev => new Set(prev).add(`${file.name}-${file.size}`));
+            setProcessedFiles(prev => {
+              const newSet = new Set(prev);
+              newSet.add(`${file.name}-${file.size}`);
+              return newSet;
+            });
           },
           error: (err) => {
             setError(`Failed to parse CSV: ${err.message}`);
@@ -859,17 +920,10 @@ export function AIBracketSetup({
 
         let availableMatchIndex = 0;
 
-        // Load or update currentBout
+        // Load or update currentBout: We keep the current active bout as null (idle) initially if empty, so the 1st bout goes to the upcoming (onDeck) slot instead.
         if (isCurrentBoutEmpty) {
-          if (availableMatchIndex < ringMatches.length) {
-            currentBout = ringMatches[availableMatchIndex];
-            assignedMatchIds.add(currentBout.bout.toString());
-            availableMatchIndex++;
-            ringChanged = true;
-          } else {
-            currentBout = null;
-            ringChanged = true;
-          }
+          currentBout = null;
+          ringChanged = true;
         } else {
           const match = ringMatches.find(m => isBoutMatch(m.bout, currentBout!.bout));
           if (match) {

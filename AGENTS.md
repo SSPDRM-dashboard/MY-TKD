@@ -36,4 +36,8 @@ Match numbers are NOT unique on their own. They reset and duplicate across diffe
 1. ALWAYS cross-reference the Match Number with the specific Event Name (e.g., "Day 1 Poomsae" vs "Day 2 Kyorugi") or Date.
 2. Never assume Match 1 from yesterday is the same as Match 1 today.
 
+## 3. Event Management and Administrative Rules
+- **Explicit Permission Prior to Changes**: The system and agent MUST explicitly ask the user for permission and confirm details before executing any code changes, state updates, or database adjustments concerning active tournament events, current configurations, or active logic.
+
+
 

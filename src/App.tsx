@@ -469,9 +469,9 @@ export default function App() {
     if (saved && loginTime) {
       const now = new Date().getTime();
       const loginTs = parseInt(loginTime);
-      const eighteenHours = 18 * 60 * 60 * 1000;
+      const oneWeek = 7 * 24 * 60 * 60 * 1000;
       
-      if (now - loginTs > eighteenHours) {
+      if (now - loginTs > oneWeek) {
         localStorage.removeItem('tkd_user');
         localStorage.removeItem('tkd_login_time');
         return null;
@@ -820,9 +820,9 @@ export default function App() {
       if (loginTime) {
         const now = new Date().getTime();
         const loginTs = parseInt(loginTime);
-        const eighteenHours = 18 * 60 * 60 * 1000;
+        const oneWeek = 7 * 24 * 60 * 60 * 1000;
         
-        if (now - loginTs > eighteenHours) {
+        if (now - loginTs > oneWeek) {
           handleLogout();
         }
       }
@@ -955,11 +955,17 @@ export default function App() {
   const [boutNumberingMode, setBoutNumberingMode] = useSyncedState<'numeric' | 'alphanumeric'>('tkd_bout_numbering_mode', 'alphanumeric');
   const [categories, setCategories] = useSyncedState<string[]>('tkd_categories', ["Junior Male -45kg", "Junior Female -42kg", "Senior Male -54kg", "INDIVIDUAL POOMSAE"]);
   const [clubs, setClubs] = useSyncedState<string[]>('tkd_clubs', ["KST", "TKT", "PST", "MTA"]);
-  const [googleSheetUrl, setGoogleSheetUrl] = useSyncedState<string>('tkd_sheet_url', 'https://script.google.com/macros/s/AKfycbykWTnkJwZ649ntvetGSL793ZNFPJE9yhjnNpTWpoS8NmVPjMDGp2PAb12dWK8KWLfm/exec');
+  const [googleSheetUrl, setGoogleSheetUrl] = useSyncedState<string>('tkd_sheet_url', 'https://script.google.com/macros/s/AKfycbxG7SG0HB8WPom3-Pknpjy0Da2bupLF4s7cmqhRci-gosmcATjZubldik7kacnlLoIq/exec');
   const [localSheetUrl, setLocalSheetUrl] = useState(googleSheetUrl);
   useEffect(() => {
     setLocalSheetUrl(googleSheetUrl);
   }, [googleSheetUrl]);
+  useEffect(() => {
+    // Automatically migrate existing clients with the old default URL in their local storage to the new default URL
+    if (googleSheetUrl === 'https://script.google.com/macros/s/AKfycbykWTnkJwZ649ntvetGSL793ZNFPJE9yhjnNpTWpoS8NmVPjMDGp2PAb12dWK8KWLfm/exec') {
+      setGoogleSheetUrl('https://script.google.com/macros/s/AKfycbxG7SG0HB8WPom3-Pknpjy0Da2bupLF4s7cmqhRci-gosmcATjZubldik7kacnlLoIq/exec');
+    }
+  }, [googleSheetUrl, setGoogleSheetUrl]);
   const [isSheetSaved, setIsSheetSaved] = useState(false);
 
   const getActiveSyncUrl = (passedUrl?: string) => {
@@ -971,8 +977,8 @@ export default function App() {
     return rawSyncToGoogleSheets(getActiveSyncUrl(url), data, eventName, reason);
   };
 
-  const updateWinnerInGoogleSheets = (url: string, ring: number, bout: string | number, winner: string, eventName: string = '', winnerSide?: string, blueName?: string, redName?: string, points?: any, winnerClub?: string) => {
-    return rawUpdateWinnerInGoogleSheets(getActiveSyncUrl(url), ring, bout, winner, eventName, winnerSide, blueName, redName, points, winnerClub);
+  const updateWinnerInGoogleSheets = (url: string, ring: number, bout: string | number, winner: string, eventName: string = '', winnerSide?: string, blueName?: string, redName?: string, points?: any, winnerClub?: string, blueClub?: string, redClub?: string) => {
+    return rawUpdateWinnerInGoogleSheets(getActiveSyncUrl(url), ring, bout, winner, eventName, winnerSide, blueName, redName, points, winnerClub, blueClub, redClub);
   };
 
   const updateBoutDetailsInGoogleSheets = (url: string, ring: number, bout: string | number, blueName: string, blueClub: string, redName: string, redClub: string, eventName: string = '') => {
@@ -1070,7 +1076,7 @@ export default function App() {
   const getFilteredQueue = (ringNum?: number) => {
     return boutQueue
       .filter(item => {
-        const matchesEvent = item.data.eventId === currentEventId;
+        const matchesEvent = !item.data.eventId || item.data.eventId === currentEventId;
         const itemRing = Number(item.data.ring);
         const matchesRing = ringNum === undefined || itemRing === Number(ringNum);
         const matchesUserRing = user?.role === 'admin' || itemRing === Number(user?.assignedRing);
@@ -1179,6 +1185,59 @@ export default function App() {
     // Note: We removed the direct sync to Google Sheets from here to prevent duplicate entries.
     // The bout will be synced to Google Sheets when it is pulled to a ring via handleBoutUpdate.
     console.log("Bout added to queue. It will sync to Google Sheets when pulled to a ring.");
+  };
+
+  const handleCreateManualInspectionBout = async (
+    ringNo: string,
+    matchNo: string,
+    category: string,
+    blueName: string,
+    blueClub: string,
+    redName: string,
+    redClub: string,
+    colorToInspect: 'blue' | 'red'
+  ) => {
+    if (!matchNo.trim()) {
+      alert("Match No is required.");
+      return;
+    }
+
+    const ringNumber = parseRingNumber(ringNo) || 1;
+
+    const data: MatchData = {
+      bout: matchNo.toUpperCase().trim(),
+      ring: ringNumber,
+      category: category ? category.toUpperCase().trim() : 'MANUAL CATEGORY',
+      blue_name: blueName ? blueName.toUpperCase().trim() : 'BLUE PLAYER',
+      blue_club: blueClub ? blueClub.toUpperCase().trim() : '',
+      red_name: redName ? redName.toUpperCase().trim() : 'RED PLAYER',
+      red_club: redClub ? redClub.toUpperCase().trim() : '',
+      blue_inspected: colorToInspect === 'blue',
+      red_inspected: colorToInspect === 'red',
+      blue_signature: colorToInspect === 'blue' ? 'MANUAL_INSPEC_BYPASS' : '',
+      red_signature: colorToInspect === 'red' ? 'MANUAL_INSPEC_BYPASS' : '',
+      blue_checklist: [],
+      red_checklist: [],
+      eventId: currentEventId || null,
+      allowCompleted: true,
+      privacy_mode: false,
+      inspectedAt: Date.now()
+    };
+
+    if (data.category && !categories.includes(data.category)) {
+      setCategories(prev => [...prev, data.category]);
+    }
+    if (data.blue_club && !clubs.includes(data.blue_club)) {
+      setClubs(prev => [...prev, data.blue_club]);
+    }
+    if (data.red_club && !clubs.includes(data.red_club)) {
+      setClubs(prev => [...prev, data.red_club]);
+    }
+
+    const queueItem = { id: Math.random().toString(36).substr(2, 9), data };
+    setBoutQueue(prev => [...prev, queueItem]);
+
+    alert(`Bypass Success: Match ${matchNo.toUpperCase().trim()} created in Ring ${ringNumber} and ${colorToInspect === 'blue' ? 'Chung (Blue)' : 'Hong (Red)'} is marked as inspected!`);
   };
 
   const handleImportInitialBouts = async () => {
@@ -1439,7 +1498,8 @@ export default function App() {
                   const rawMatchNo = row[3]?.trim(); // Column D
                   const matchNo = normalizeBoutWithRing(rawMatchNo, ringNo);
                   const category = row[4]?.trim(); // Column E
-                  const winner = row[9]?.trim(); // Column J
+                  const winner = (row.length >= 17 && row[15]) ? row[15]?.trim() : row[9]?.trim(); // Column P for 18-col sheets, else Column J
+                  const winnerClub = (row.length >= 17 && row[16]) ? row[16]?.trim() : ''; // Column Q for 18-col sheets
 
                   if (matchNo && category && winner && winner !== '-' && winner !== '') {
                     const historyId = `${currentEventId}_${matchNo}`;
@@ -1447,6 +1507,7 @@ export default function App() {
                       bout: matchNo,
                       category: category,
                       winner: winner,
+                      winnerClub: winnerClub,
                       eventId: currentEventId,
                       ring: ringNo,
                       syncedAt: new Date().toISOString()
@@ -1630,7 +1691,7 @@ export default function App() {
     });
 
     if (ring && ring.totalBouts && nextExpectedBout <= ring.totalBouts) {
-      const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber);
+      const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
       if (nextBoutIndex !== -1) {
         pullBout(boutQueue[nextBoutIndex].id);
       }
@@ -1738,11 +1799,11 @@ export default function App() {
   const handleUpdateBoutNameFromBracket = async (boutId: string, color: 'blue' | 'red', newName: string) => {
     let oldBoutRing = 1;
     let modifiedItem: MatchData | null = null;
+    const targetBoutNorm = normalizeBoutNumber(boutId);
     
+    // 1. Update in boutQueue
     const updatedQueue = boutQueue.map(item => {
       const itemBout = normalizeBoutNumber(item.data.bout.toString());
-      const targetBoutNorm = normalizeBoutNumber(boutId);
-      
       let newItem = { ...item };
       
       if (itemBout === targetBoutNorm) {
@@ -1759,6 +1820,42 @@ export default function App() {
 
     setBoutQueue(updatedQueue);
     localStorage.setItem('tkd_bout_queue', JSON.stringify(updatedQueue));
+
+    // 2. Update active rings
+    setRings(prev => prev.map(r => {
+      const newRing = { ...r };
+      let changed = false;
+      
+      if (r.currentBout && normalizeBoutNumber(r.currentBout.bout) === targetBoutNorm) {
+        if (color === 'blue') {
+          newRing.currentBout = { ...r.currentBout, blue_name: newName };
+        } else {
+          newRing.currentBout = { ...r.currentBout, red_name: newName };
+        }
+        modifiedItem = newRing.currentBout;
+        changed = true;
+      }
+      if (r.onDeck && normalizeBoutNumber(r.onDeck.bout) === targetBoutNorm) {
+        if (color === 'blue') {
+          newRing.onDeck = { ...r.onDeck, blue_name: newName };
+        } else {
+          newRing.onDeck = { ...r.onDeck, red_name: newName };
+        }
+        modifiedItem = newRing.onDeck;
+        changed = true;
+      }
+      if (r.inTheHole && normalizeBoutNumber(r.inTheHole.bout) === targetBoutNorm) {
+        if (color === 'blue') {
+          newRing.inTheHole = { ...r.inTheHole, blue_name: newName };
+        } else {
+          newRing.inTheHole = { ...r.inTheHole, red_name: newName };
+        }
+        modifiedItem = newRing.inTheHole;
+        changed = true;
+      }
+
+      return changed ? newRing : r;
+    }));
     
     setTimeout(() => {
        if (googleSheetUrl && modifiedItem) {
@@ -1777,10 +1874,12 @@ export default function App() {
     }, 500);
   };
 
-  const handleUpdateMatchInspection = async (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean, signature?: string, checklist?: string[]) => {
+  const handleUpdateMatchInspection = async (ringNoStr: string, matchNo: string, color: 'blue' | 'red', inspected: boolean, signature?: string, checklist?: string[]) => {
+    const ringNoNum = parseRingNumber(ringNoStr);
+    const ringNo = ringNoNum.toString();
     const userRole = sessionStorage.getItem('user_role');
     const assignedRing = sessionStorage.getItem('assigned_ring');
-    const targetRingLetter = String.fromCharCode(64 + parseInt(ringNo));
+    const targetRingLetter = String.fromCharCode(64 + ringNoNum);
     // Court Clerk has same authority as admin (unrestricted ring access)
     if (false && userRole === 'court_clerk' && assignedRing !== targetRingLetter) {
         alert("You are not authorized to modify this ring.");
@@ -2011,8 +2110,16 @@ export default function App() {
         const normNext = next.trim().toUpperCase();
         if (normCurrent === normNext) return false;
 
-        const currentIsRealName = normCurrent !== '' && normCurrent !== '-' && !normCurrent.startsWith('WINNER OF ');
-        const nextIsRealName = normNext !== '' && normNext !== '-' && !normNext.startsWith('WINNER OF ');
+        const currentIsRealName = normCurrent !== '' && 
+          normCurrent !== '-' && 
+          normCurrent !== '---' && 
+          !normCurrent.startsWith('WINNER OF ') && 
+          cleanPlaceholder(current) !== '---';
+        const nextIsRealName = normNext !== '' && 
+          normNext !== '-' && 
+          normNext !== '---' && 
+          !normNext.startsWith('WINNER OF ') && 
+          cleanPlaceholder(next) !== '---';
 
         // If current is already a real name, DO NOT overwrite it.
         // This preserves manual edits directly made in the UI or Google Sheets
@@ -2194,7 +2301,9 @@ export default function App() {
         currentBout?.blue_name,
         currentBout?.red_name,
         currentBout?.points,
-        winnerClub
+        winnerClub,
+        currentBout?.blue_club,
+        currentBout?.red_club
       ).then(() => {
         addToSyncLog('Winner', 'success', `Winner for Bout ${boutNumber} sent`);
       }).catch(e => {
@@ -2245,8 +2354,8 @@ export default function App() {
       checkAndGenerateNextBout(boutNumber, winnerName || winner, winner === 'Blue' ? currentBout.blue_club : currentBout.red_club, currentBout.category);
     }
     
-    const ringQueue = boutQueue.filter(q => q.data.ring === ringNumber && q.data.eventId === currentEventId);
-    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber && q.data.eventId === currentEventId);
+    const ringQueue = boutQueue.filter(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
+    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
     
     // Check if we need to prompt for final bouts
     // If we have a next bout, and after pulling it, the queue for this ring will be < 3
@@ -2833,7 +2942,7 @@ export default function App() {
 
   const startRing = (ringNumber: number) => {
     const ring = rings.find(r => r.ringNumber === ringNumber);
-    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber);
+    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
     
     // Reset final bouts flag when starting a new session
     setRings(prev => {
@@ -3086,13 +3195,13 @@ export default function App() {
   };
 
   const currentBoutQueue = React.useMemo(() => {
-    if (!currentEventId) return [];
+    if (!currentEventId || events.length === 0) return [];
     return boutQueue.filter(b => !b.data.eventId || b.data.eventId === currentEventId);
-  }, [boutQueue, currentEventId]);
+  }, [boutQueue, currentEventId, events.length]);
 
   const currentRings = React.useMemo(() => {
     const nonDeleted = rings.filter(r => !r.isDeleted && r.ringNumber <= visibleRingsCount);
-    if (!currentEventId) {
+    if (!currentEventId || events.length === 0) {
       return nonDeleted.map(r => ({ ...r, currentBout: null, onDeck: null, inTheHole: null }));
     }
     return nonDeleted.map(r => ({
@@ -3101,23 +3210,24 @@ export default function App() {
       onDeck: r.onDeck && (!r.onDeck.eventId || r.onDeck.eventId === currentEventId) ? r.onDeck : null,
       inTheHole: r.inTheHole && (!r.inTheHole.eventId || r.inTheHole.eventId === currentEventId) ? r.inTheHole : null,
     }));
-  }, [rings, currentEventId, visibleRingsCount]);
+  }, [rings, currentEventId, visibleRingsCount, events.length]);
 
   const effectivePublicEventId = React.useMemo(() => {
+    if (events.length === 0) return null;
     if (publicEventId === 'active') {
       return currentEventId;
     }
     return publicEventId || currentEventId;
-  }, [publicEventId, currentEventId]);
+  }, [publicEventId, currentEventId, events.length]);
 
   const publicBoutQueue = React.useMemo(() => {
-    if (!effectivePublicEventId) return [];
+    if (!effectivePublicEventId || events.length === 0) return [];
     return boutQueue.filter(b => !b.data.eventId || b.data.eventId === effectivePublicEventId);
-  }, [boutQueue, effectivePublicEventId]);
+  }, [boutQueue, effectivePublicEventId, events.length]);
 
   const publicRings = React.useMemo(() => {
     const nonDeleted = rings.filter(r => !r.isDeleted && r.ringNumber <= visibleRingsCount);
-    if (!effectivePublicEventId) {
+    if (!effectivePublicEventId || events.length === 0) {
       return nonDeleted.map(r => ({ ...r, currentBout: null, onDeck: null, inTheHole: null }));
     }
     return nonDeleted.map(r => ({
@@ -3126,7 +3236,7 @@ export default function App() {
       onDeck: r.onDeck && (!r.onDeck.eventId || r.onDeck.eventId === effectivePublicEventId) ? r.onDeck : null,
       inTheHole: r.inTheHole && (!r.inTheHole.eventId || r.inTheHole.eventId === effectivePublicEventId) ? r.inTheHole : null,
     }));
-  }, [rings, effectivePublicEventId, visibleRingsCount]);
+  }, [rings, effectivePublicEventId, visibleRingsCount, events.length]);
 
   const publicEventName = React.useMemo(() => {
     if (!effectivePublicEventId) return '';
@@ -3307,6 +3417,12 @@ export default function App() {
           )}
           {user?.role === 'ta' && (
             <>
+              <NavItem 
+                icon={<LayoutDashboard size={20} />} 
+                label="Standby View" 
+                active={activeTab === 'standby'} 
+                onClick={() => setActiveTab('standby')} 
+              />
               <NavItem 
                 icon={<LayoutDashboard size={20} />} 
                 label="TA Sheet" 
@@ -3867,7 +3983,8 @@ export default function App() {
               boutNumberingMode={boutNumberingMode}
               showOnlyActiveRings={showOnlyActiveRings}
               showEmptyBoutAsInactive={showEmptyBoutAsInactive}
-              isAdmin={user?.role === 'admin'}
+              isAdmin={user?.role === 'admin' || user?.role === 'ta'}
+              onUpdateInspection={handleUpdateMatchInspection}
             />
           )}
 
@@ -4084,6 +4201,9 @@ export default function App() {
                 isAutoUpdateNames={isAutoUpdateNames}
                 onToggleAutoUpdateNames={setIsAutoUpdateNames}
                 onCreateNewBout={() => setShowNewBoutModal(true)}
+                categories={categories}
+                clubs={clubs}
+                onCreateManualInspectionBout={handleCreateManualInspectionBout}
               />
             </div>
           )}
@@ -4105,6 +4225,9 @@ export default function App() {
                 isAutoUpdateNames={isAutoUpdateNames}
                 onToggleAutoUpdateNames={setIsAutoUpdateNames}
                 onCreateNewBout={() => setShowNewBoutModal(true)}
+                categories={categories}
+                clubs={clubs}
+                onCreateManualInspectionBout={handleCreateManualInspectionBout}
               />
             </div>
           )}
@@ -4789,7 +4912,9 @@ export default function App() {
                 found?.blue_name,
                 found?.red_name,
                 found?.points,
-                winnerClub
+                winnerClub,
+                found?.blue_club,
+                found?.red_club
               ).finally(() => setIsSyncing(false));
             }
 
@@ -7299,7 +7424,7 @@ interface PublicRingCardProps {
   publicViewLayout?: 'standard' | 'point';
 }
 
-function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, isAdmin = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, isAdmin?: boolean }) {
+function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, isAdmin = false, onUpdateInspection }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, isAdmin?: boolean, onUpdateInspection?: (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean) => void }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
@@ -7422,7 +7547,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
 
       <div className="flex-1 p-4 space-y-4">
         {displayedRings.map((ring, i) => {
-          const ringQueue = boutQueue
+          const ringQueueAll = boutQueue
             .filter(q => 
               q.data.ring === ring.ringNumber && 
               q.data.eventId === currentEventId
@@ -7437,10 +7562,24 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
               const valB = parseBout(b.data.bout);
               if (typeof valA === 'number' && typeof valB === 'number') return valA - valB;
               return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
-            })
-            .slice(0, 3);
+            });
+
+          const standbyRaw: typeof ringQueueAll = [];
+          if (ring.onDeck && hasPlayers(ring.onDeck)) {
+            standbyRaw.push({ id: `ondeck-${ring.ringNumber}`, data: ring.onDeck });
+          }
+          if (ring.inTheHole && hasPlayers(ring.inTheHole)) {
+            standbyRaw.push({ id: `inthehole-${ring.ringNumber}`, data: ring.inTheHole });
+          }
+          ringQueueAll.forEach(q => {
+            const isAlreadyOnDeck = ring.onDeck && isBoutMatch(q.data.bout, ring.onDeck.bout);
+            const isAlreadyInTheHole = ring.inTheHole && isBoutMatch(q.data.bout, ring.inTheHole.bout);
+            if (!isAlreadyOnDeck && !isAlreadyInTheHole) {
+              standbyRaw.push(q);
+            }
+          });
+          const standby = standbyRaw.slice(0, 3);
           const current = ring.currentBout;
-          const standby = ringQueue;
           const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
           const isPoomsaeModeCurrent = current?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
                                current?.category?.toUpperCase().includes('FREESTYLE') ||
@@ -7522,13 +7661,29 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                           "text-[16px] font-black uppercase leading-tight break-words whitespace-normal w-full mt-0.5",
                           isRingInactive ? "text-slate-400" : "text-white"
                         )}>{cleanPlaceholder(b?.data.blue_name || "")}</span>
-                        {b?.data.blue_inspected && (
-                          <div className="absolute bottom-1 right-2">
-                            <span className={cn(
-                              "text-[10px] font-black uppercase tracking-tighter",
-                              isRingInactive ? "text-slate-600" : "text-green-400"
-                            )}>INSPECTED</span>
+                        {b?.data.blue_inspected ? (
+                          <div className="absolute bottom-1 right-2 z-10">
+                            <span 
+                              onClick={isAdmin && onUpdateInspection ? () => onUpdateInspection(ring.ringNumber.toString(), b!.data.bout, 'blue', false) : undefined}
+                              className={cn(
+                                "text-[10px] font-black uppercase tracking-tighter",
+                                isRingInactive ? "text-slate-600" : "text-green-400",
+                                isAdmin && onUpdateInspection ? "cursor-pointer hover:opacity-80 transition-opacity" : ""
+                              )}>INSPECTED</span>
                           </div>
+                        ) : (
+                          isAdmin && hasPlayers(b?.data) && onUpdateInspection && (
+                            <div className="absolute bottom-1 right-2 z-10">
+                              <button 
+                                onClick={() => onUpdateInspection(ring.ringNumber.toString(), b!.data.bout, 'blue', true)}
+                                className={cn(
+                                  "text-[10px] font-black uppercase tracking-tighter underline hover:text-white transition-colors",
+                                  isRingInactive ? "text-slate-600" : "text-white/60"
+                                )}>
+                                UNINSPECTED
+                              </button>
+                            </div>
+                          )
                         )}
                       </div>
                       {!isPoomsaeItem && (
@@ -7541,13 +7696,29 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
                             "text-[16px] font-black uppercase leading-tight break-words whitespace-normal w-full mt-0.5",
                             isRingInactive ? "text-slate-400" : "text-white"
                           )}>{cleanPlaceholder(b?.data.red_name || "")}</span>
-                          {b?.data.red_inspected && (
-                            <div className="absolute bottom-1 right-2">
-                              <span className={cn(
-                                "text-[10px] font-black uppercase tracking-tighter",
-                                isRingInactive ? "text-slate-600" : "text-green-400"
-                              )}>INSPECTED</span>
+                          {b?.data.red_inspected ? (
+                            <div className="absolute bottom-1 right-2 z-10">
+                              <span 
+                                onClick={isAdmin && onUpdateInspection ? () => onUpdateInspection(ring.ringNumber.toString(), b!.data.bout, 'red', false) : undefined}
+                                className={cn(
+                                  "text-[10px] font-black uppercase tracking-tighter",
+                                  isRingInactive ? "text-slate-600" : "text-green-400",
+                                  isAdmin && onUpdateInspection ? "cursor-pointer hover:opacity-80 transition-opacity" : ""
+                                )}>INSPECTED</span>
                             </div>
+                          ) : (
+                            isAdmin && hasPlayers(b?.data) && onUpdateInspection && (
+                              <div className="absolute bottom-1 right-2 z-10">
+                                <button 
+                                  onClick={() => onUpdateInspection(ring.ringNumber.toString(), b!.data.bout, 'red', true)}
+                                  className={cn(
+                                    "text-[10px] font-black uppercase tracking-tighter underline hover:text-white transition-colors",
+                                    isRingInactive ? "text-slate-600" : "text-white/60"
+                                  )}>
+                                  UNINSPECTED
+                                </button>
+                              </div>
+                            )
                           )}
                         </div>
                       )}
@@ -8077,7 +8248,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
         isFullscreen ? "flex flex-col justify-around pt-24 pb-4 gap-y-8" : "space-y-24 py-12"
       )}>
         {displayedRings.map((ring, i) => {
-          const ringQueue = boutQueue
+          const ringQueueAll = boutQueue
             .filter(q => 
               q.data.ring === ring.ringNumber && 
               q.data.eventId === currentEventId
@@ -8092,8 +8263,23 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
               const valB = parseBout(b.data.bout);
               if (typeof valA === 'number' && typeof valB === 'number') return valA - valB;
               return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
-            })
-            .slice(0, 3);
+            });
+
+          const standbyRaw: typeof ringQueueAll = [];
+          if (ring.onDeck && hasPlayers(ring.onDeck)) {
+            standbyRaw.push({ id: `ondeck-${ring.ringNumber}`, data: ring.onDeck });
+          }
+          if (ring.inTheHole && hasPlayers(ring.inTheHole)) {
+            standbyRaw.push({ id: `inthehole-${ring.ringNumber}`, data: ring.inTheHole });
+          }
+          ringQueueAll.forEach(q => {
+            const isAlreadyOnDeck = ring.onDeck && isBoutMatch(q.data.bout, ring.onDeck.bout);
+            const isAlreadyInTheHole = ring.inTheHole && isBoutMatch(q.data.bout, ring.inTheHole.bout);
+            if (!isAlreadyOnDeck && !isAlreadyInTheHole) {
+              standbyRaw.push(q);
+            }
+          });
+          const ringQueue = standbyRaw.slice(0, 3);
           const current = ring.currentBout;
           const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
           const isPoomsaeModeCurrent = current?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
@@ -8376,36 +8562,51 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               {displayedRings.map((ring, i) => {
-                const ringQueueAll = boutQueue
+                const ringQueueAllSorted = boutQueue
                   .filter(q => q.data.ring === ring.ringNumber)
                   .sort((a, b) => {
-              const parseBout = (bout: string | number) => {
-                const s = bout.toString().replace(/\s+/g, '').toUpperCase().replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
-                if (/^[A-Z]/.test(s)) return s;
-                return parseInt(s.replace(/[^0-9]/g, '')) || 0;
-              };
-              const valA = parseBout(a.data.bout);
-              const valB = parseBout(b.data.bout);
-              if (typeof valA === 'number' && typeof valB === 'number') return valA - valB;
-              return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
-            });
+                    const parseBout = (bout: string | number) => {
+                      const s = bout.toString().replace(/\s+/g, '').toUpperCase().replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
+                      if (/^[A-Z]/.test(s)) return s;
+                      return parseInt(s.replace(/[^0-9]/g, '')) || 0;
+                    };
+                    const valA = parseBout(a.data.bout);
+                    const valB = parseBout(b.data.bout);
+                    if (typeof valA === 'number' && typeof valB === 'number') return valA - valB;
+                    return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+                  });
+
+                const standbyRaw: typeof ringQueueAllSorted = [];
+                if (ring.onDeck && hasPlayers(ring.onDeck)) {
+                  standbyRaw.push({ id: `ondeck-${ring.ringNumber}`, data: ring.onDeck });
+                }
+                if (ring.inTheHole && hasPlayers(ring.inTheHole)) {
+                  standbyRaw.push({ id: `inthehole-${ring.ringNumber}`, data: ring.inTheHole });
+                }
+                ringQueueAllSorted.forEach(q => {
+                  const isAlreadyOnDeck = ring.onDeck && isBoutMatch(q.data.bout, ring.onDeck.bout);
+                  const isAlreadyInTheHole = ring.inTheHole && isBoutMatch(q.data.bout, ring.inTheHole.bout);
+                  if (!isAlreadyOnDeck && !isAlreadyInTheHole) {
+                    standbyRaw.push(q);
+                  }
+                });
 
                 const isPoomsaeRing = ring.currentBout?.category?.toUpperCase().includes('POOMSAE') || 
                                       ring.currentBout?.category?.toUpperCase().includes('FREESTYLE') ||
-                                      (ringQueueAll.length > 0 && (
-                                        ringQueueAll[0].data.category?.toUpperCase().includes('POOMSAE') ||
-                                        ringQueueAll[0].data.category?.toUpperCase().includes('FREESTYLE')
+                                      (standbyRaw.length > 0 && (
+                                        standbyRaw[0].data.category?.toUpperCase().includes('POOMSAE') ||
+                                        standbyRaw[0].data.category?.toUpperCase().includes('FREESTYLE')
                                       ));
 
                 const queueLimit = isPoomsaeRing ? 8 : 3;
-                const rQueue = ringQueueAll.slice(0, queueLimit);
+                const rQueue = standbyRaw.slice(0, queueLimit);
                 
                 return (
                   <PublicRingCard 
                     key={ring.ringNumber} 
                     ring={ring} 
                     namingMode={namingMode} 
-                    queueCount={boutQueue.filter(q => q.data.ring === ring.ringNumber).length}
+                    queueCount={ringQueueAllSorted.length}
                     showTotalBouts={showTotalBouts}
                     ringQueue={rQueue}
                     showPublicStandbyQueue={showPublicStandbyQueue}
@@ -9143,7 +9344,7 @@ function EventManagement({ events, onAdd, onDelete, onUpdate }: { events: EventD
   };
 
   const handleTestSync = async () => {
-    const activeTestUrl = sheetUrl.trim() || 'https://script.google.com/macros/s/AKfycbykWTnkJwZ649ntvetGSL793ZNFPJE9yhjnNpTWpoS8NmVPjMDGp2PAb12dWK8KWLfm/exec';
+    const activeTestUrl = sheetUrl.trim() || 'https://script.google.com/macros/s/AKfycbxG7SG0HB8WPom3-Pknpjy0Da2bupLF4s7cmqhRci-gosmcATjZubldik7kacnlLoIq/exec';
     setIsTesting(true);
     setTestResult(null);
     try {
@@ -9157,7 +9358,7 @@ function EventManagement({ events, onAdd, onDelete, onUpdate }: { events: EventD
   };
 
   const handleSendTrialBout = async () => {
-    const activeTestUrl = sheetUrl.trim() || 'https://script.google.com/macros/s/AKfycbykWTnkJwZ649ntvetGSL793ZNFPJE9yhjnNpTWpoS8NmVPjMDGp2PAb12dWK8KWLfm/exec';
+    const activeTestUrl = sheetUrl.trim() || 'https://script.google.com/macros/s/AKfycbxG7SG0HB8WPom3-Pknpjy0Da2bupLF4s7cmqhRci-gosmcATjZubldik7kacnlLoIq/exec';
     setIsTesting(true);
     setTestResult(null);
     try {
@@ -9203,7 +9404,7 @@ function EventManagement({ events, onAdd, onDelete, onUpdate }: { events: EventD
     e.preventDefault();
     
     // Auto-detect and handle plain docs URLs for the Web App field if needed (though it should be /exec)
-    const finalSheetUrl = sheetUrl.trim() || 'https://script.google.com/macros/s/AKfycbykWTnkJwZ649ntvetGSL793ZNFPJE9yhjnNpTWpoS8NmVPjMDGp2PAb12dWK8KWLfm/exec';
+    const finalSheetUrl = sheetUrl.trim() || 'https://script.google.com/macros/s/AKfycbxG7SG0HB8WPom3-Pknpjy0Da2bupLF4s7cmqhRci-gosmcATjZubldik7kacnlLoIq/exec';
     const finalWinnerUrl = winnerSheetUrl.trim();
 
     if (editingEventId) {
@@ -9335,21 +9536,122 @@ function doPost(e) {
   const dataRange = sheet.getDataRange();
   const values = dataRange.getValues();
   
+  // Helper to normalize ring numbers or alphabetic ring letters cleanly
+  function normalizeRing(val) {
+    if (val === undefined || val === null) return 0;
+    var s = String(val).trim().toUpperCase();
+    if (!s) return 0;
+    
+    // Extract only letters and digits
+    var letters = s.replace(/[^A-Z]/g, '');
+    var digits = s.replace(/[^0-9]/g, '');
+    
+    // If there is a single letter total, e.g. "A" or "RING A"
+    if (letters.length === 1) {
+      return letters.charCodeAt(0) - 64;
+    }
+    // Else check if there are digits
+    if (digits.length > 0) {
+      return parseInt(digits, 10);
+    }
+    
+    // Fallback single letter search
+    var singleLetterMatch = s.match(/(?:^|[^A-Z])([A-Z])(?:$|[^A-Z])/);
+    if (singleLetterMatch) {
+      return singleLetterMatch[1].charCodeAt(0) - 64;
+    }
+    return 0;
+  }
+
   // Helper to check if event name matches
   function isEventMatch(rowEventVal, targetEventVal) {
-    if (!targetEventVal) return true; // fallback if no target event name was sent from old components
     var rE = String(rowEventVal || '').trim().toUpperCase();
     var tE = String(targetEventVal || '').trim().toUpperCase();
-    return rE === tE;
+    if (!targetEventVal || tE === '' || tE === '-' || tE === 'N/A' || tE === 'UNDEFINED') return true;
+    if (rE === '' || rE === '-' || rE === 'N/A' || rE === 'UNDEFINED') return true;
+    if (rE === tE) return true;
+    var normRE = rE.replace(/[^A-Z0-9]/g, '');
+    var normTE = tE.replace(/[^A-Z0-9]/g, '');
+    return normRE === normTE;
+  }
+  
+  function isGasBoutMatch(b1, b2) {
+    if (b1 == b2) return true;
+    if (!b1 || !b2) return false;
+    
+    var s1 = String(b1).toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9]/g, '');
+    var s2 = String(b2).toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9]/g, '');
+    
+    if (s1 === s2) return true;
+
+    // Suffix alignment
+    var getSuffix = function(str) {
+      var match = str.match(/([0-9]+)([A-Z]+)$/);
+      return match ? match[2] : '';
+    };
+    if (getSuffix(s1) !== getSuffix(s2)) return false;
+
+    // Normalize O to 0
+    s1 = s1.replace(/^([A-H])O+(\d+)/, '$10$2');
+    s2 = s2.replace(/^([A-H])O+(\d+)/, '$10$2');
+    if (s1 === s2) return true;
+
+    var n1 = parseInt(s1.replace(/[^0-9]/g, ''), 10);
+    var n2 = parseInt(s2.replace(/[^0-9]/g, ''), 10);
+    if (!isNaN(n1) && !isNaN(n2)) {
+      if (n1 === n2) return true;
+      if (n1 >= 1000 && n2 < 1000 && n1 % 1000 === n2) return true;
+      if (n2 >= 1000 && n1 < 1000 && n2 % 1000 === n1) return true;
+      if (n1 >= 1000 && n2 >= 1000) {
+        return (Math.floor(n1 / 1000) === Math.floor(n2 / 1000)) && (n1 % 1000 === n2 % 1000);
+      }
+    }
+
+    var getStandard = function(val) {
+      var match = val.match(/^([A-Z])0*(\d+)/);
+      if (match) {
+        return match[1] + match[2];
+      }
+      return val;
+    };
+
+    return getStandard(s1) === getStandard(s2);
+  }
+
+  function isTargetBout(row, targetBout) {
+    if (!targetBout) return false;
+    if (row[17] !== undefined && row[17] !== '' && isGasBoutMatch(row[17], targetBout)) return true;
+    if (row[3] !== undefined && row[3] !== '' && isGasBoutMatch(row[3], targetBout)) return true;
+    return false;
+  }
+
+  function isPlaceholder(val) {
+    if (!val) return true;
+    var s = String(val).trim().toUpperCase();
+    var placeholders = ["-", "--", "---", "N/A", "NEW COMPETITOR", "CLUB A", "CLUB B", "OPEN CATEGORY", "UNDEFINED", "NULL", ""];
+    return placeholders.indexOf(s) !== -1;
+  }
+
+  function isRowMatch(row, data) {
+    if (!data) return false;
+    
+    // 1. Event Criteria
+    var eventMatches = isEventMatch(row[1], data.event_name);
+    if (!eventMatches) return false;
+    
+    // 2. Ring Criteria
+    var rowRing = normalizeRing(row[2]);
+    var targetRing = normalizeRing(data.ring);
+    var ringMatches = (rowRing === 0 || targetRing === 0) ? true : (rowRing === targetRing);
+    if (!ringMatches) return false;
+    
+    // 3. Bout Criteria
+    return isTargetBout(row, data.bout);
   }
   
   if (data.action === 'updateBoutDetails') {
     for (let i = 1; i < values.length; i++) {
-      var rowRing = parseInt(values[i][2], 10);
-      var targetRing = parseInt(data.ring, 10);
-      var ringMatches = (!isNaN(rowRing) && !isNaN(targetRing)) ? (rowRing === targetRing) : (values[i][2] == data.ring);
-      var eventMatches = isEventMatch(values[i][1], data.event_name);
-      if (eventMatches && ringMatches && isGasBoutMatch(values[i][3], data.bout)) {
+      if (isRowMatch(values[i], data)) {
         sheet.getRange(i + 1, 6).setValue(data.blue_name);
         sheet.getRange(i + 1, 7).setValue(data.blue_club);
         sheet.getRange(i + 1, 8).setValue(data.red_name);
@@ -9362,11 +9664,7 @@ function doPost(e) {
 
   if (data.action === 'updatePoints') {
     for (let i = 1; i < values.length; i++) {
-      var rowRing = parseInt(values[i][2], 10);
-      var targetRing = parseInt(data.ring, 10);
-      var ringMatches = (!isNaN(rowRing) && !isNaN(targetRing)) ? (rowRing === targetRing) : (values[i][2] == data.ring);
-      var eventMatches = isEventMatch(values[i][1], data.event_name);
-      if (eventMatches && ringMatches && isGasBoutMatch(values[i][3], data.bout)) {
+      if (isRowMatch(values[i], data)) {
         if (data.r1Blue !== undefined) sheet.getRange(i + 1, 10).setValue(data.r1Blue);
         if (data.r1Red !== undefined) sheet.getRange(i + 1, 11).setValue(data.r1Red);
         if (data.r2Blue !== undefined) sheet.getRange(i + 1, 12).setValue(data.r2Blue);
@@ -9381,13 +9679,22 @@ function doPost(e) {
 
   if (data.action === 'updateWinner') {
     for (let i = 1; i < values.length; i++) {
-      var rowRing = parseInt(values[i][2], 10);
-      var targetRing = parseInt(data.ring, 10);
-      var ringMatches = (!isNaN(rowRing) && !isNaN(targetRing)) ? (rowRing === targetRing) : (values[i][2] == data.ring);
-      var eventMatches = isEventMatch(values[i][1], data.event_name);
-      if (eventMatches && ringMatches && isGasBoutMatch(values[i][3], data.bout)) {
+      if (isRowMatch(values[i], data)) {
         sheet.getRange(i + 1, 16).setValue(data.winner);
         sheet.getRange(i + 1, 17).setValue(data.winner_club);
+        // Sync player details during winner update if provided (only if not a placeholder/meaningless symbol)
+        if (!isPlaceholder(data.blue_name)) {
+          sheet.getRange(i + 1, 6).setValue(data.blue_name);
+        }
+        if (!isPlaceholder(data.blue_club)) {
+          sheet.getRange(i + 1, 7).setValue(data.blue_club);
+        }
+        if (!isPlaceholder(data.red_name)) {
+          sheet.getRange(i + 1, 8).setValue(data.red_name);
+        }
+        if (!isPlaceholder(data.red_club)) {
+          sheet.getRange(i + 1, 9).setValue(data.red_club);
+        }
         // Also update points if they are supplied in winner update
         if (data.r1Blue !== undefined) sheet.getRange(i + 1, 10).setValue(data.r1Blue);
         if (data.r1Red !== undefined) sheet.getRange(i + 1, 11).setValue(data.r1Red);
@@ -9403,11 +9710,7 @@ function doPost(e) {
 
   if (data.action === 'updateTransfer') {
     for (let i = 1; i < values.length; i++) {
-      var rowRing = parseInt(values[i][2], 10);
-      var targetRing = parseInt(data.ring, 10);
-      var ringMatches = (!isNaN(rowRing) && !isNaN(targetRing)) ? (rowRing === targetRing) : (values[i][2] == data.ring);
-      var eventMatches = isEventMatch(values[i][1], data.event_name);
-      if (eventMatches && ringMatches && isGasBoutMatch(values[i][3], data.bout)) {
+      if (isRowMatch(values[i], data)) {
         sheet.getRange(i + 1, 16).setValue("TRANSFERRED: " + data.reason);
         break;
       }
@@ -9416,26 +9719,54 @@ function doPost(e) {
   }
   
   if (data.action === 'newBout') {
-    sheet.appendRow([
-      data.timestamp || new Date().toLocaleString(),
-      data.event_name,
-      data.ring,
-      data.bout,
-      data.category,
-      data.blue_name,
-      data.blue_club,
-      data.red_name,
-      data.red_club,
-      data.r1Blue || '',
-      data.r1Red || '',
-      data.r2Blue || '',
-      data.r2Red || '',
-      data.r3Blue || '',
-      data.r3Red || '',
-      data.winner || '',
-      data.winner_club || '',
-      data.ring
-    ]);
+    var foundIndex = -1;
+    for (let i = 1; i < values.length; i++) {
+      if (isRowMatch(values[i], data)) {
+        foundIndex = i;
+        break;
+      }
+    }
+
+    if (foundIndex !== -1) {
+      if (!isPlaceholder(data.blue_name)) {
+        sheet.getRange(foundIndex + 1, 6).setValue(data.blue_name);
+      }
+      if (!isPlaceholder(data.blue_club)) {
+        sheet.getRange(foundIndex + 1, 7).setValue(data.blue_club);
+      }
+      if (!isPlaceholder(data.red_name)) {
+        sheet.getRange(foundIndex + 1, 8).setValue(data.red_name);
+      }
+      if (!isPlaceholder(data.red_club)) {
+        sheet.getRange(foundIndex + 1, 9).setValue(data.red_club);
+      }
+      if (data.category && data.category !== '-' && data.category !== 'N/A') {
+        sheet.getRange(foundIndex + 1, 5).setValue(data.category);
+      }
+      return ContentService.createTextOutput("Bout Details Updated (Existing Row)");
+    } else {
+      sheet.appendRow([
+        data.timestamp || new Date().toLocaleString(),
+        data.event_name,
+        data.ring,
+        data.bout,
+        data.category,
+        data.blue_name,
+        data.blue_club,
+        data.red_name,
+        data.red_club,
+        data.r1Blue || '',
+        data.r1Red || '',
+        data.r2Blue || '',
+        data.r2Red || '',
+        data.r3Blue || '',
+        data.r3Red || '',
+        data.winner || '',
+        data.winner_club || '',
+        data.bout
+      ]);
+      return ContentService.createTextOutput("New Bout Registered");
+    }
   }
   return ContentService.createTextOutput("Success");
 }`}

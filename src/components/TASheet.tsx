@@ -285,6 +285,18 @@ interface TASheetProps {
   isAutoUpdateNames?: boolean;
   onToggleAutoUpdateNames?: (val: boolean) => void;
   onCreateNewBout?: () => void;
+  categories?: string[];
+  clubs?: string[];
+  onCreateManualInspectionBout?: (
+    ringNo: string,
+    matchNo: string,
+    category: string,
+    blueName: string,
+    blueClub: string,
+    redName: string,
+    redClub: string,
+    colorToInspect: 'blue' | 'red'
+  ) => void;
 }
 
 export function TASheet({ 
@@ -303,7 +315,10 @@ export function TASheet({
   boutNumberingMode = 'alphanumeric',
   isAutoUpdateNames,
   onToggleAutoUpdateNames,
-  onCreateNewBout
+  onCreateNewBout,
+  categories = [],
+  clubs = [],
+  onCreateManualInspectionBout
 }: TASheetProps) {
   const [matches, setMatches] = useState<SheetMatch[]>([]);
   const [fallbackMatches, setFallbackMatches] = useState<SheetMatch[]>([]);
@@ -361,6 +376,83 @@ export function TASheet({
   const [blueChecklist, setBlueChecklist] = useState<Set<string>>(new Set());
   const [redChecklist, setRedChecklist] = useState<Set<string>>(new Set());
 
+  // States for manual inspection bypass
+  const [manualRing, setManualRing] = useState<string>('1');
+  const [manualMatchNo, setManualMatchNo] = useState<string>('');
+  const [manualCategory, setManualCategory] = useState<string>('');
+  const [manualBlueName, setManualBlueName] = useState<string>('');
+  const [manualBlueClub, setManualBlueClub] = useState<string>('');
+  const [manualRedName, setManualRedName] = useState<string>('');
+  const [manualRedClub, setManualRedClub] = useState<string>('');
+  const [showManualBypass, setShowManualBypass] = useState<boolean>(false);
+  const [manualSearchStatus, setManualSearchStatus] = useState<'idle' | 'found' | 'not_found'>('idle');
+
+  useEffect(() => {
+    const trimmedMatchNo = manualMatchNo.trim().toUpperCase();
+    if (!trimmedMatchNo) {
+      setManualSearchStatus('idle');
+      return;
+    }
+
+    // 1. Check inside parsed google sheet matches (matches)
+    const foundSheetMatch = matches.find(m => 
+      m.ringNo?.toString() === manualRing && 
+      m.matchNo?.trim().toUpperCase() === trimmedMatchNo
+    );
+
+    if (foundSheetMatch) {
+      setManualCategory(foundSheetMatch.category || '');
+      setManualBlueName(foundSheetMatch.blueName || '');
+      setManualBlueClub(foundSheetMatch.blueClub || '');
+      setManualRedName(foundSheetMatch.redName || '');
+      setManualRedClub(foundSheetMatch.redClub || '');
+      setManualSearchStatus('found');
+      return;
+    }
+
+    // 2. Check inside rings
+    for (const r of rings) {
+      if (r.ringNumber?.toString() === manualRing) {
+        const bouts = [r.currentBout, r.onDeck, r.inTheHole].filter(Boolean) as MatchData[];
+        const foundActiveBout = bouts.find(b => b.bout?.toString().trim().toUpperCase() === trimmedMatchNo);
+        if (foundActiveBout) {
+          setManualCategory(foundActiveBout.category || '');
+          setManualBlueName(foundActiveBout.blue_name || '');
+          setManualBlueClub(foundActiveBout.blue_club || '');
+          setManualRedName(foundActiveBout.red_name || '');
+          setManualRedClub(foundActiveBout.red_club || '');
+          setManualSearchStatus('found');
+          return;
+        }
+      }
+    }
+
+    // 3. Check inside boutQueue
+    const foundQueueBout = boutQueue.find(q => 
+      q.data?.ring?.toString() === manualRing && 
+      q.data?.bout?.toString().trim().toUpperCase() === trimmedMatchNo
+    );
+
+    if (foundQueueBout) {
+      const data = foundQueueBout.data;
+      setManualCategory(data.category || '');
+      setManualBlueName(data.blue_name || '');
+      setManualBlueClub(data.blue_club || '');
+      setManualRedName(data.red_name || '');
+      setManualRedClub(data.red_club || '');
+      setManualSearchStatus('found');
+      return;
+    }
+
+    setManualSearchStatus('not_found');
+  }, [manualRing, manualMatchNo, matches, rings, boutQueue]);
+
+  useEffect(() => {
+    if (categories && categories.length > 0 && !manualCategory) {
+      setManualCategory(categories[0]);
+    }
+  }, [categories, manualCategory]);
+
   useEffect(() => {
     setBlueChecklist(new Set());
     setRedChecklist(new Set());
@@ -417,7 +509,8 @@ export function TASheet({
               }
 
               const matchNo = row[3] || '';
-              const winner = row[9] || '';
+              const winner = (row.length >= 17 && row[15]) ? (row[15] || '').trim() : (row[9] || '').trim();
+              const winnerClubFromSheet = (row.length >= 17 && row[16]) ? (row[16] || '').trim() : '';
               const category = row[4] || '';
               
               const blueName = row[5] || '';
@@ -446,13 +539,13 @@ export function TASheet({
                 const normBlue = blueName.toLowerCase();
                 const normRed = redName.toLowerCase();
                 
-                let winnerClub = '';
+                let winnerClub = winnerClubFromSheet;
                 let winnerSide: 'Blue' | 'Red' | undefined = undefined;
                 if (normWinner === normBlue || normBlue.includes(normWinner)) {
-                  winnerClub = blueClub;
+                  if (!winnerClub) winnerClub = blueClub;
                   winnerSide = 'Blue';
                 } else if (normWinner === normRed || normRed.includes(normWinner)) {
-                  winnerClub = redClub;
+                  if (!winnerClub) winnerClub = redClub;
                   winnerSide = 'Red';
                 }
 
@@ -950,6 +1043,239 @@ export function TASheet({
           <div className="w-full p-4 bg-red-50 text-red-600 rounded-xl text-sm font-bold flex items-center gap-2 border border-red-100">
             <AlertCircle size={16} />
             {error}
+          </div>
+        )}
+
+        {viewMode === 'signature' && (
+          <div className="w-full bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-4">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 bg-amber-100 text-amber-800 font-extrabold text-[10px] uppercase rounded-lg tracking-wider">
+                  Bypass
+                </span>
+                <div>
+                  <h3 className="text-sm font-black text-slate-800">
+                    Bout Missing? Manual Player Inspection
+                  </h3>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    In case the bout detail is missing from the drop down schedule
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowManualBypass(!showManualBypass)}
+                className={cn(
+                  "px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-sm border",
+                  showManualBypass 
+                    ? "bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200" 
+                    : "bg-blue-600 border-blue-600 text-white hover:bg-blue-700"
+                )}
+              >
+                {showManualBypass ? 'Hide Form' : 'Show Form'}
+              </button>
+            </div>
+
+            {showManualBypass && (
+              <div className="space-y-4 pt-1 animate-fade-in">
+                <p className="text-xs font-bold text-slate-500 leading-normal">
+                  Fill in the details of the missing match. Clicking Blue or Red complete buttons will dynamically create the match in the active tournament registry and automatically mark the respective player inspected!
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Select Ring *</label>
+                    <select
+                      value={manualRing}
+                      onChange={(e) => setManualRing(e.target.value)}
+                      className="w-full h-10 px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-xs shadow-sm"
+                    >
+                      {Array.from({ length: rings.length || 12 }, (_, i) => i + 1).map((num) => (
+                        <option key={num} value={num}>
+                          Ring {num}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Match No *</label>
+                    <input
+                      type="text"
+                      value={manualMatchNo}
+                      onChange={(e) => setManualMatchNo(e.target.value)}
+                      placeholder="e.g. B20"
+                      className="w-full h-10 px-3 py-2 bg-white border border-slate-200 rounded-xl font-black text-xs uppercase shadow-sm"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Category *</label>
+                    <div className="flex gap-2">
+                      <select
+                        value={manualCategory}
+                        onChange={(e) => setManualCategory(e.target.value)}
+                        className="flex-1 h-10 px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-xs shadow-sm"
+                      >
+                        <option value="">-- Choose Category --</option>
+                        {categories.map((cat, index) => (
+                          <option key={index} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                        <option value="CUSTOM">-- Custom (Type below) --</option>
+                      </select>
+                      {manualCategory === 'CUSTOM' && (
+                        <input
+                          type="text"
+                          placeholder="Type custom category..."
+                          onChange={(e) => setManualCategory(e.target.value)}
+                          className="flex-1 h-10 px-3 py-2 bg-white border border-slate-200 rounded-xl font-black text-xs"
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Live Search Lookup Status */}
+                {manualSearchStatus === 'found' && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-black text-emerald-800 flex items-center gap-2 animate-fade-in">
+                    <Check size={16} className="text-emerald-600 shrink-0" />
+                    <span>✨ Match Details Found & Auto-Populated! You can verify and click Complete below.</span>
+                  </div>
+                )}
+                {manualSearchStatus === 'not_found' && manualMatchNo.trim() !== '' && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs font-bold text-amber-800 flex items-center gap-2 animate-fade-in">
+                    <AlertCircle size={16} className="text-amber-600 shrink-0" />
+                    <span>Bout missing from schedule. Enter details manually to register, inspect and sign below.</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Blue Player Card */}
+                  <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-2xl space-y-3">
+                    <h4 className="text-xs font-black text-blue-700 uppercase tracking-widest flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 bg-blue-600 rounded-full"></span>
+                      CHUNG (Blue) Details
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Player Name</label>
+                        <input
+                          type="text"
+                          value={manualBlueName}
+                          onChange={(e) => setManualBlueName(e.target.value)}
+                          placeholder="e.g. JOHN DOE"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Club/NOC</label>
+                        <input
+                          type="text"
+                          value={manualBlueClub}
+                          onChange={(e) => setManualBlueClub(e.target.value)}
+                          placeholder="e.g. SKID TKD"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Red Player Card */}
+                  <div className="p-4 bg-red-50/50 border border-red-100 rounded-2xl space-y-3">
+                    <h4 className="text-xs font-black text-red-700 uppercase tracking-widest flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 bg-red-600 rounded-full"></span>
+                      HONG (Red) Details
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Player Name</label>
+                        <input
+                          type="text"
+                          value={manualRedName}
+                          onChange={(e) => setManualRedName(e.target.value)}
+                          placeholder="e.g. ALEX SMITH"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Club/NOC</label>
+                        <input
+                          type="text"
+                          value={manualRedClub}
+                          onChange={(e) => setManualRedClub(e.target.value)}
+                          placeholder="e.g. POWER CLUB"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!manualMatchNo.trim()) {
+                        alert("Please enter a Match No.");
+                        return;
+                      }
+                      if (!onCreateManualInspectionBout) {
+                        alert("Missing creation handler in App.tsx!");
+                        return;
+                      }
+                      onCreateManualInspectionBout(
+                        manualRing,
+                        manualMatchNo,
+                        manualCategory || 'MANUAL CATEGORY',
+                        manualBlueName || 'BLUE PLAYER',
+                        manualBlueClub || '',
+                        manualRedName || 'RED PLAYER',
+                        manualRedClub || '',
+                        'blue'
+                      );
+                      setTimeout(() => {
+                        setRingAndMatch(manualRing, manualMatchNo.toUpperCase().trim());
+                      }, 400);
+                    }}
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl transition-all shadow-sm flex items-center gap-2 uppercase tracking-widest"
+                  >
+                    <Check size={14} /> Complete Blue Inspection
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!manualMatchNo.trim()) {
+                        alert("Please enter a Match No.");
+                        return;
+                      }
+                      if (!onCreateManualInspectionBout) {
+                        alert("Missing creation handler in App.tsx!");
+                        return;
+                      }
+                      onCreateManualInspectionBout(
+                        manualRing,
+                        manualMatchNo,
+                        manualCategory || 'MANUAL CATEGORY',
+                        manualBlueName || 'BLUE PLAYER',
+                        manualBlueClub || '',
+                        manualRedName || 'RED PLAYER',
+                        manualRedClub || '',
+                        'red'
+                      );
+                      setTimeout(() => {
+                        setRingAndMatch(manualRing, manualMatchNo.toUpperCase().trim());
+                      }, 400);
+                    }}
+                    className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs rounded-xl transition-all shadow-sm flex items-center gap-2 uppercase tracking-widest"
+                  >
+                    <Check size={14} /> Complete Red Inspection
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
