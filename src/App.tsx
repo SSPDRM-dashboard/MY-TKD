@@ -7459,15 +7459,15 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
 
   React.useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isFullscreen && totalPages > 1) {
+    if (totalPages > 1) {
       interval = setInterval(() => {
         setCurrentPage((prev) => (prev + 1) % totalPages);
-      }, 30000); // 30 seconds
+      }, 15000); // 15 seconds
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isFullscreen, totalPages]);
+  }, [totalPages]);
 
   const displayedRings = effectiveRings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage);
 
@@ -7770,15 +7770,15 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
 
   React.useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isFullscreen && totalPages > 1) {
+    if (totalPages > 1) {
       interval = setInterval(() => {
         setCurrentPage((prev) => (prev + 1) % totalPages);
-      }, 30000); // 30 seconds
+      }, 15000); // 15 seconds
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isFullscreen, totalPages]);
+  }, [totalPages]);
 
   const displayedRings = effectiveRings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage);
 
@@ -8122,15 +8122,15 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
   // Auto-scroll logic for fullscreen mode
   React.useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isFullscreen && totalPages > 1) {
+    if (totalPages > 1) {
       interval = setInterval(() => {
         setCurrentPage((prev) => (prev + 1) % totalPages);
-      }, 30000); // 30 seconds
+      }, 15000); // 15 seconds
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isFullscreen, totalPages]);
+  }, [totalPages]);
 
   const displayedRings = effectiveRings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage);
 
@@ -8141,6 +8141,14 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
     if (len <= 35) return isFullscreen ? 'text-[28px] tracking-tight' : 'text-[20px] tracking-tight';
     if (len <= 45) return isFullscreen ? 'text-[22px] tracking-tighter' : 'text-[16px] tracking-tighter';
     return isFullscreen ? 'text-[18px] tracking-tighter' : 'text-[12px] tracking-tighter';
+  };
+
+  const getStandbyDynamicFontSize = (name: string) => {
+    const len = name.length;
+    if (len <= 15) return 'text-[17px]';
+    if (len <= 25) return 'text-[15px]';
+    if (len <= 35) return 'text-[13px]';
+    return 'text-[11px]';
   };
 
   return (
@@ -8393,11 +8401,12 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                           isRingInactive ? "bg-slate-800" : "bg-blue-600/90"
                         )}>
                           {!isRingInactive && <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />}
-                          <p className="text-[13px] font-bold text-white uppercase leading-none mb-0.5 relative z-10">
+                          <p className="text-[11px] font-bold text-white uppercase leading-none mb-0.5 relative z-10">
                             {bout ? cleanPlaceholder(bout.data.blue_club) : ""}
                           </p>
                           <p className={cn(
-                            "text-[17px] font-black uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2",
+                            "font-black uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2",
+                            getStandbyDynamicFontSize(bout?.data.blue_name || ""),
                             isRingInactive ? "text-slate-400" : "text-white"
                           )}>
                             {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.blue_name)) : ""}
@@ -8421,11 +8430,12 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                             isRingInactive ? "bg-slate-800" : "bg-red-600/90"
                           )}>
                             {!isRingInactive && <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/10 to-transparent pointer-events-none" />}
-                            <p className="text-[13px] font-bold text-white uppercase leading-none mb-0.5 relative z-10">
+                            <p className="text-[11px] font-bold text-white uppercase leading-none mb-0.5 relative z-10">
                               {bout ? cleanPlaceholder(bout.data.red_club) : ""}
                             </p>
                             <p className={cn(
-                              "text-[17px] font-black uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2",
+                              "font-black uppercase tracking-[1px] relative z-10 leading-tight line-clamp-2",
+                              getStandbyDynamicFontSize(bout?.data.red_name || ""),
                               isRingInactive ? "text-slate-400" : "text-white"
                             )}>
                               {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.red_name)) : ""}
