@@ -999,6 +999,7 @@ export default function App() {
   const [pendingWinnerSelection, setPendingWinnerSelection] = useState<{ ringNumber: number; boutNumber: string | number; winner: string } | null>(null);
   const [publicEventId, setPublicEventId] = useSyncedState<string>('tkd_public_event_id', 'active');
   const [visibleRingsCount, setVisibleRingsCount] = useSyncedState<number>('tkd_visible_rings_count', 12);
+  const [slideInterval, setSlideInterval] = useSyncedState<number>('tkd_slide_interval', 15);
   const [backupData, setBackupData] = useSyncedState<Record<string, { mappings: BoutMapping[], matches: MatchData[] }>>('tkd_backup_data_v3', {});
   const [backupToLoad, setBackupToLoad] = useState<{ mappings: Partial<BoutMapping>[], matches: MatchData[] } | null>(null);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
@@ -3985,6 +3986,7 @@ export default function App() {
               showEmptyBoutAsInactive={showEmptyBoutAsInactive}
               isAdmin={user?.role === 'admin' || user?.role === 'ta'}
               onUpdateInspection={handleUpdateMatchInspection}
+              slideInterval={slideInterval}
             />
           )}
 
@@ -4000,6 +4002,7 @@ export default function App() {
               showOnlyActiveRings={showOnlyActiveRings}
               showEmptyBoutAsInactive={showEmptyBoutAsInactive}
               isAdmin={user?.role === 'admin'}
+              slideInterval={slideInterval}
             />
           )}
 
@@ -4015,6 +4018,7 @@ export default function App() {
               showOnlyActiveRings={showOnlyActiveRings}
               showEmptyBoutAsInactive={showEmptyBoutAsInactive}
               isAdmin={user?.role === 'admin'}
+              slideInterval={slideInterval}
             />
           )}
 
@@ -4530,6 +4534,23 @@ export default function App() {
                         {Array.from({ length: 12 }, (_, i) => i + 1).map((num) => (
                           <option key={num} value={num}>
                             {num} {num === 1 ? 'Ring' : 'Rings'} (1 - {ringNamingMode === 'alphabet' ? String.fromCharCode(64 + num) : num})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-700 font-sans">Slide Change Interval</p>
+                        <p className="text-[10px] text-slate-500 font-sans">How many seconds before auto-sliding in Standby/Points/Onsite views</p>
+                      </div>
+                      <select
+                        value={slideInterval}
+                        onChange={(e) => setSlideInterval(Number(e.target.value))}
+                        className="px-4 py-2 bg-white rounded-xl text-[10px] md:text-xs font-black text-slate-600 border border-slate-200 focus:ring-2 focus:ring-red-500 outline-none w-full sm:w-auto min-w-[200px] cursor-pointer"
+                      >
+                        {[5, 10, 15, 20, 30, 45, 60].map((num) => (
+                          <option key={num} value={num}>
+                            {num} seconds
                           </option>
                         ))}
                       </select>
@@ -7424,7 +7445,7 @@ interface PublicRingCardProps {
   publicViewLayout?: 'standard' | 'point';
 }
 
-function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, isAdmin = false, onUpdateInspection }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, isAdmin?: boolean, onUpdateInspection?: (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean) => void }) {
+function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, isAdmin = false, onUpdateInspection, slideInterval = 15 }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, isAdmin?: boolean, onUpdateInspection?: (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean) => void, slideInterval?: number }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
@@ -7462,12 +7483,12 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
     if (totalPages > 1) {
       interval = setInterval(() => {
         setCurrentPage((prev) => (prev + 1) % totalPages);
-      }, 15000); // 15 seconds
+      }, slideInterval * 1000);
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [totalPages]);
+  }, [totalPages, slideInterval]);
 
   const displayedRings = effectiveRings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage);
 
@@ -7735,7 +7756,7 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
   );
 }
 
-function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, isAdmin = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, isAdmin?: boolean }) {
+function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, isAdmin = false, slideInterval = 15 }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, isAdmin?: boolean, slideInterval?: number }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
@@ -7773,12 +7794,12 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
     if (totalPages > 1) {
       interval = setInterval(() => {
         setCurrentPage((prev) => (prev + 1) % totalPages);
-      }, 15000); // 15 seconds
+      }, slideInterval * 1000);
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [totalPages]);
+  }, [totalPages, slideInterval]);
 
   const displayedRings = effectiveRings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage);
 
@@ -8086,7 +8107,7 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
 
 
 
-function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, isAdmin = false }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, isAdmin?: boolean }) {
+function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, isAdmin = false, slideInterval = 15 }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, isAdmin?: boolean, slideInterval?: number }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
@@ -8125,12 +8146,12 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
     if (totalPages > 1) {
       interval = setInterval(() => {
         setCurrentPage((prev) => (prev + 1) % totalPages);
-      }, 15000); // 15 seconds
+      }, slideInterval * 1000);
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [totalPages]);
+  }, [totalPages, slideInterval]);
 
   const displayedRings = effectiveRings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage);
 
