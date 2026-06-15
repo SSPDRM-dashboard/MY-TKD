@@ -438,17 +438,18 @@ function PinnedTransferBanner({ transfers, isAdmin, onDelete }: {
   if (activeTransfers.length === 0) return null;
 
   return (
-    <div className="w-full flex flex-col gap-3 px-8 pt-4 pb-2 shrink-0 transition-all">
+    <div className="w-full grid grid-cols-1 lg:grid-cols-2 gap-3 px-8 pt-4 pb-2 shrink-0 transition-all">
       {activeTransfers.map((t) => {
         const expiry = new Date(t.pinnedUntil);
         const diffMs = expiry.getTime() - now.getTime();
         const diffMin = Math.max(0, Math.floor(diffMs / 60000));
         const diffSec = Math.max(0, Math.floor((diffMs % 60000) / 1000));
+        const isSingle = activeTransfers.length === 1;
         
         return (
           <div 
             key={t.id} 
-            className="bg-yellow-500 text-slate-950 border-4 border-yellow-400 rounded-3xl p-5 md:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-[0_10px_30px_rgba(234,179,8,0.25)] relative"
+            className={`bg-yellow-500 text-slate-950 border-4 border-yellow-400 rounded-3xl p-5 md:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-[0_10px_30px_rgba(234,179,8,0.25)] relative ${isSingle ? "lg:col-span-2" : ""}`}
           >
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-slate-950 text-yellow-500 rounded-2xl flex items-center justify-center font-black shrink-0">
