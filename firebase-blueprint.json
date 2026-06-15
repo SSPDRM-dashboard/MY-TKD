@@ -97,6 +97,22 @@
         "slot": { "type": "string", "enum": ["Chung", "Hong"] }
       },
       "required": ["eventId", "categoryName", "sourceBout", "nextBout", "slot"]
+    },
+    "BoutTransfer": {
+      "title": "BoutTransfer",
+      "description": "A broadcast bout transfer",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fromRing": { "type": "string" },
+        "toRing": { "type": "string" },
+        "boutNumber": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "pinnedUntil": { "type": "string", "format": "date" },
+        "isPinned": { "type": "boolean" },
+        "author": { "type": "string" }
+      },
+      "required": ["fromRing", "toRing", "boutNumber", "pinnedUntil", "isPinned"]
     }
   },
   "firestore": {
@@ -131,6 +147,10 @@
     "/event_logic/{mappingId}": {
       "schema": "BoutMapping",
       "description": "Bracket advancement logic"
+    },
+    "/bout_transfers/{transferId}": {
+      "schema": "BoutTransfer",
+      "description": "Collection of pinned bout transfers."
     }
   }
 }

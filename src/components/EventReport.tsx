@@ -22,7 +22,7 @@ interface RawMatch {
 }
 
 interface WinnerResult {
-  place: '1st' | '2nd' | '3rd';
+  place: '1st' | '2nd' | '3rd' | '4th';
   name: string;
   club: string;
 }
@@ -40,6 +40,9 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
   const [error, setError] = useState<string | null>(null);
   const [matches, setMatches] = useState<RawMatch[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Option A (Joint 3rd Place) vs Option B (3rd Place Playoff)
+  const [placementOption, setPlacementOption] = useState<'a' | 'b'>('a');
   
   // Feature: Option to combine multiple events
   const [includeAllEvents, setIncludeAllEvents] = useState(false);
@@ -298,13 +301,13 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
         }
       }
 
-      // Determine Bronzes
-      // Bronze 1: Loser to Gold in Gold's previous match
-      // Bronze 2: Loser to Silver in Silver's previous match
+      // Determine Bronzes and 4th place
       const bronzes: WinnerResult[] = [];
 
-      // Find Gold's previous match
+      // Find Semi-Finalist 1's previous match & loser (who lost to Gold in Gold's previous match)
       let goldPrevMatch;
+      let semi1LoserName = '';
+      let semi1LoserClub = '';
       if (goldName && goldName !== '-' && goldName.toLowerCase() !== 'bye') {
         goldPrevMatch = catMatches.find(m => 
           m.matchNo < finalMatch.matchNo &&
@@ -313,24 +316,19 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
       }
 
       if (goldPrevMatch) {
-         let loserName = '';
-         let loserClub = '';
          if (goldPrevMatch.blueName.toLowerCase() === goldName.toLowerCase()) {
-           loserName = goldPrevMatch.redName;
-           loserClub = goldPrevMatch.redClub;
+           semi1LoserName = goldPrevMatch.redName;
+           semi1LoserClub = goldPrevMatch.redClub;
          } else {
-           loserName = goldPrevMatch.blueName;
-           loserClub = goldPrevMatch.blueClub;
-         }
-         // Ensure it wasn't a bye
-         if (loserName && loserName !== '-' && loserName.toLowerCase() !== 'bye') {
-           bronzes.push({ place: '3rd', name: loserName, club: loserClub });
+           semi1LoserName = goldPrevMatch.blueName;
+           semi1LoserClub = goldPrevMatch.blueClub;
          }
       }
 
-      // Find Silver's previous match
-      // Note: Silver lost the final, but we need the match they *won* to get to the final.
+      // Find Semi-Finalist 2's previous match & loser (who lost to Silver in Silver's previous match)
       let silverPrevMatch;
+      let semi2LoserName = '';
+      let semi2LoserClub = '';
       if (silverName && silverName !== '-' && silverName.toLowerCase() !== 'bye') {
         silverPrevMatch = catMatches.find(m => 
           m.matchNo < finalMatch.matchNo &&
@@ -339,18 +337,77 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
       }
 
       if (silverPrevMatch) {
-         let loserName = '';
-         let loserClub = '';
          if (silverPrevMatch.blueName.toLowerCase() === silverName.toLowerCase()) {
-           loserName = silverPrevMatch.redName;
-           loserClub = silverPrevMatch.redClub;
+           semi2LoserName = silverPrevMatch.redName;
+           semi2LoserClub = silverPrevMatch.redClub;
          } else {
-           loserName = silverPrevMatch.blueName;
-           loserClub = silverPrevMatch.blueClub;
+           semi2LoserName = silverPrevMatch.blueName;
+           semi2LoserClub = silverPrevMatch.blueClub;
          }
-         if (loserName && loserName !== '-' && loserName.toLowerCase() !== 'bye') {
-           bronzes.push({ place: '3rd', name: loserName, club: loserClub });
-         }
+      }
+
+      // Look for a specific "Third Place Playoff" / "Bronze medal match"
+      let thirdPlaceMatch = catMatches.find(m => 
+        m.matchNoStr.toUpperCase().includes("BRONZE") || 
+        m.matchNoStr.toUpperCase().includes("3RD") ||
+        (semi1LoserName && semi2LoserName && 
+         ((m.blueName.toLowerCase() === semi1LoserName.toLowerCase() && m.redName.toLowerCase() === semi2LoserName.toLowerCase()) ||
+          (m.redName.toLowerCase() === semi1LoserName.toLowerCase() && m.blueName.toLowerCase() === semi2LoserName.toLowerCase())))
+      );
+
+      if (placementOption === 'b' && thirdPlaceMatch && thirdPlaceMatch.winner && thirdPlaceMatch.winner !== '-') {
+        // Option B: Decide 3rd and 4th using the third-place playoff match
+        const tWinnerLower = thirdPlaceMatch.winner.trim().toLowerCase();
+        let thirdName = thirdPlaceMatch.winner;
+        let thirdClub = '';
+        let fourthName = '';
+        let fourthClub = '';
+
+        const isTWinnerBlue = tWinnerLower === thirdPlaceMatch.blueName.toLowerCase() || 
+                             tWinnerLower === 'winner blue' || 
+                             tWinnerLower === 'blue';
+        const isTWinnerRed = tWinnerLower === thirdPlaceMatch.redName.toLowerCase() || 
+                            tWinnerLower === 'winner red' || 
+                            tWinnerLower === 'red';
+
+        if (isTWinnerBlue) {
+          thirdName = thirdPlaceMatch.blueName;
+          thirdClub = thirdPlaceMatch.blueClub;
+          fourthName = thirdPlaceMatch.redName;
+          fourthClub = thirdPlaceMatch.redClub;
+        } else if (isTWinnerRed) {
+          thirdName = thirdPlaceMatch.redName;
+          thirdClub = thirdPlaceMatch.redClub;
+          fourthName = thirdPlaceMatch.blueName;
+          fourthClub = thirdPlaceMatch.blueClub;
+        } else {
+          if (thirdPlaceMatch.blueName.toLowerCase().includes(tWinnerLower)) {
+            thirdName = thirdPlaceMatch.blueName;
+            thirdClub = thirdPlaceMatch.blueClub;
+            fourthName = thirdPlaceMatch.redName;
+            fourthClub = thirdPlaceMatch.redClub;
+          } else {
+            thirdName = thirdPlaceMatch.redName || thirdPlaceMatch.winner;
+            thirdClub = thirdPlaceMatch.redClub;
+            fourthName = thirdPlaceMatch.blueName;
+            fourthClub = thirdPlaceMatch.blueClub;
+          }
+        }
+
+        if (thirdName && thirdName !== '-' && thirdName.toLowerCase() !== 'bye') {
+          bronzes.push({ place: '3rd', name: thirdName, club: thirdClub });
+        }
+        if (fourthName && fourthName !== '-' && fourthName.toLowerCase() !== 'bye') {
+          bronzes.push({ place: '4th', name: fourthName, club: fourthClub });
+        }
+      } else {
+        // Option A (Joint 3rd Place): Award both Semi-final losers with a 3rd place
+        if (semi1LoserName && semi1LoserName !== '-' && semi1LoserName.toLowerCase() !== 'bye') {
+          bronzes.push({ place: '3rd', name: semi1LoserName, club: semi1LoserClub });
+        }
+        if (semi2LoserName && semi2LoserName !== '-' && semi2LoserName.toLowerCase() !== 'bye') {
+          bronzes.push({ place: '3rd', name: semi2LoserName, club: semi2LoserClub });
+        }
       }
 
       results.push({
@@ -363,7 +420,7 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
 
     // Sort categories alphabetically
     return results.sort((a, b) => a.category.localeCompare(b.category));
-  }, [matches]);
+  }, [matches, placementOption]);
 
   const clubStandings = useMemo(() => {
     const pointsTracker: Record<string, { gold: number, silver: number, bronze: number, points: number }> = {};
@@ -446,8 +503,10 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
 
   const downloadCategoryPlacings = () => {
     const data = filteredCategories.map(c => {
-      const b1 = c.bronzes[0] || { name: '', club: '' };
-      const b2 = c.bronzes[1] || { name: '', club: '' };
+      const b1 = c.bronzes.find(b => b.place === '3rd') || c.bronzes[0] || { name: '', club: '', place: '3rd' };
+      const b2 = c.bronzes.find(b => b.place === '4th') || c.bronzes[1] || { name: '', club: '', place: '3rd' };
+      const b2RankLabel = b2.place === '4th' ? '4th Place' : '3rd Place (Bronze 2)';
+      const b2ClubLabel = b2.place === '4th' ? '4th Place Club' : '3rd Place Club 2';
       return {
         'Category': c.category,
         '1st Place (Gold)': c.gold?.name || '',
@@ -456,8 +515,8 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
         '2nd Place Club': c.silver?.club || '',
         '3rd Place (Bronze 1)': b1.name || '',
         '3rd Place Club 1': b1.club || '',
-        '3rd Place (Bronze 2)': b2.name || '',
-        '3rd Place Club 2': b2.club || ''
+        [b2RankLabel]: b2.name || '',
+        [b2ClubLabel]: b2.club || ''
       };
     });
     
@@ -561,8 +620,34 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
             )}
           </p>
         </div>
-        <div className="flex gap-4">
-          <label className="flex items-center gap-2 cursor-pointer text-slate-600 font-medium bg-slate-50 px-4 py-2 rounded-xl hover:bg-slate-100 transition-colors">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 p-1 rounded-xl">
+            <button
+              onClick={() => setPlacementOption('a')}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-black transition-all uppercase tracking-wide",
+                placementOption === 'a' 
+                  ? "bg-red-600 text-white shadow-sm" 
+                  : "text-slate-600 hover:bg-slate-200"
+              )}
+              title="Option A: Both Semi-Final losers are awarded Joint 3rd place (WT standard)"
+            >
+              Option A (Joint 3rd)
+            </button>
+            <button
+              onClick={() => setPlacementOption('b')}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-black transition-all uppercase tracking-wide",
+                placementOption === 'b' 
+                  ? "bg-red-600 text-white shadow-sm" 
+                  : "text-slate-600 hover:bg-slate-200"
+              )}
+              title="Option B: 3rd and 4th place decided via Bronze Medal Match playoff"
+            >
+              Option B (Playoff)
+            </button>
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer text-slate-600 font-medium bg-slate-50 px-4 py-2 rounded-xl hover:bg-slate-100 transition-colors h-[40px]">
             <input 
               type="checkbox" 
               checked={includeAllEvents}
@@ -574,7 +659,7 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
           <button 
             onClick={fetchMatches}
             disabled={isLoading}
-            className="px-4 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold rounded-xl flex items-center gap-2 transition-all"
+            className="px-4 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold rounded-xl flex items-center gap-2 transition-all h-[40px]"
           >
             <RefreshCw size={18} className={cn(isLoading && "animate-spin")} />
             {isLoading ? "Analyzing Data..." : "Refresh Report API"}
@@ -694,8 +779,8 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
                          {c.bronzes.length > 0 ? (
                            <div className="flex flex-col gap-2">
                              {c.bronzes.map((b, bi) => (
-                               <div key={bi} className="bg-amber-50 px-2 py-1 rounded border border-amber-100 inline-block w-max">
-                                 <div className="font-bold text-slate-800 text-sm flex gap-2"><span>{b.name}</span><span className="text-amber-700/60 font-black">#3</span></div>
+                               <div key={bi} className={cn("px-2 py-1 rounded border inline-block w-max", b.place === '4th' ? "bg-slate-50 border-slate-200 text-slate-700" : "bg-amber-50 border-amber-100")}>
+                                 <div className="font-bold text-slate-800 text-sm flex gap-2"><span>{b.name}</span><span className={cn("font-black", b.place === '4th' ? "text-slate-500" : "text-amber-700/60")}>{b.place === '4th' ? '#4' : '#3'}</span></div>
                                  <div className="text-xs text-blue-900 font-bold">{b.club}</div>
                                </div>
                              ))}

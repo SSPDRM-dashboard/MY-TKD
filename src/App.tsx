@@ -406,6 +406,83 @@ interface UserAccount {
   assignedRing?: number;
 }
 
+interface BoutTransferBroadcast {
+  id: string;
+  fromRing: string;
+  toRing: string;
+  boutNumber: string;
+  timestamp: any;
+  pinnedUntil: string;
+  isPinned: boolean;
+  author?: string;
+}
+
+function PinnedTransferBanner({ transfers, isAdmin, onDelete }: { 
+  transfers: BoutTransferBroadcast[], 
+  isAdmin: boolean,
+  onDelete: (id: string) => void 
+}) {
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const activeTransfers = transfers.filter(t => {
+    if (!t.isPinned) return false;
+    const expiry = new Date(t.pinnedUntil);
+    return expiry > now;
+  });
+
+  if (activeTransfers.length === 0) return null;
+
+  return (
+    <div className="w-full flex flex-col gap-3 px-8 pt-4 pb-2 shrink-0 transition-all">
+      {activeTransfers.map((t) => {
+        const expiry = new Date(t.pinnedUntil);
+        const diffMs = expiry.getTime() - now.getTime();
+        const diffMin = Math.max(0, Math.floor(diffMs / 60000));
+        const diffSec = Math.max(0, Math.floor((diffMs % 60000) / 1000));
+        
+        return (
+          <div 
+            key={t.id} 
+            className="bg-yellow-500 text-slate-950 border-4 border-yellow-400 rounded-3xl p-5 md:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-[0_10px_30px_rgba(234,179,8,0.25)] relative"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-slate-950 text-yellow-500 rounded-2xl flex items-center justify-center font-black shrink-0">
+                <Bell size={24} className="animate-bounce" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-800 leading-none">
+                  Announcement Bout Transfer
+                </span>
+                <span className="text-lg md:text-2xl font-black uppercase tracking-tight text-slate-950 mt-1">
+                  Ring {t.fromRing} ➡️ Ring {t.toRing} - Bout {t.boutNumber}
+                </span>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end shrink-0">
+              {isAdmin && (
+                <button
+                  onClick={() => onDelete(t.id)}
+                  className="p-3 bg-red-650 hover:bg-red-700 bg-red-600 text-white rounded-2xl transition-all font-black uppercase text-[10px] tracking-widest flex items-center gap-1.5 shadow shadow-red-900/20 active:scale-95 cursor-pointer"
+                  title="Cancel and Delete Pin"
+                >
+                  <X size={14} />
+                  <span>Cancel Pin</span>
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function AnnouncementPopup({ announcement, onClose, size = 'normal' }: { announcement: { message: string, id: string } | null, onClose: () => void, size?: 'normal' | 'large' }) {
   const isLarge = size === 'large';
   return (
@@ -528,6 +605,11 @@ export default function App() {
   const [showAnnouncementInput, setShowAnnouncementInput] = useState(false);
   const [announcementText, setAnnouncementText] = useState('');
   const [announcementTarget, setAnnouncementTarget] = useState<'all' | 'users'>('all');
+  const [broadcastModalType, setBroadcastModalType] = useState<'standard' | 'transfer'>('standard');
+  const [transferFromRing, setTransferFromRing] = useState('');
+  const [transferToRing, setTransferToRing] = useState('');
+  const [transferBoutNumber, setTransferBoutNumber] = useState('');
+  const [boutTransfers, setBoutTransfers] = useState<BoutTransferBroadcast[]>([]);
   const [dashboardSelectedRing, setDashboardSelectedRing] = useState<number>(() => {
     try {
       const savedUser = localStorage.getItem('tkd_user');
@@ -928,6 +1010,73 @@ export default function App() {
       window.removeEventListener('firestore-quota-exceeded', handleGlobalQuota);
     };
   }, [user?.role]);
+
+  useEffect(() => {
+    if (isFirestoreQuotaExceeded) return;
+    const q = query(collection(db, 'bout_transfers'), orderBy('timestamp', 'desc'));
+    let unsubscribe = () => {};
+
+    try {
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        const list = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as BoutTransferBroadcast));
+        setBoutTransfers(list);
+      }, (error) => {
+        if (error.code !== 'permission-denied') {
+          console.error("Firestore Bout Transfers Error:", error);
+        }
+      });
+    } catch (e) {
+      console.error("Error setting up bout transfers listener:", e);
+    }
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleSendTransferBroadcast = async () => {
+    if (!transferFromRing || !transferToRing || !transferBoutNumber) return;
+    if (isFirestoreQuotaExceeded) {
+      console.warn("Firestore quota exceeded, cannot send transfer announcement.");
+      return;
+    }
+    
+    try {
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutes later
+      
+      await addDoc(collection(db, 'bout_transfers'), {
+        fromRing: transferFromRing.trim(),
+        toRing: transferToRing.trim(),
+        boutNumber: transferBoutNumber.trim().toUpperCase(),
+        timestamp: serverTimestamp(),
+        pinnedUntil: expiresAt.toISOString(),
+        isPinned: true,
+        author: user?.username || 'Admin'
+      });
+      
+      setTransferFromRing('');
+      setTransferToRing('');
+      setTransferBoutNumber('');
+      setShowAnnouncementInput(false);
+      setBroadcastModalType('standard');
+    } catch (error: any) {
+      console.error("Error sending transfer broadcast:", error);
+      if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
+        handleGlobalQuotaTrigger();
+      }
+    }
+  };
+
+  const handleCancelTransferPin = async (id: string) => {
+    if (isFirestoreQuotaExceeded) return;
+    try {
+      await deleteDoc(doc(db, 'bout_transfers', id));
+    } catch (error: any) {
+      console.error("Error deleting transfer broadcast:", error);
+    }
+  };
 
   const handleAnnouncementClose = () => {
     if (activeAnnouncement) {
@@ -1689,6 +1838,18 @@ export default function App() {
     });
 
     addToSyncLog("Transfer Bout Ring", "success", `Transferred Bout ${match.bout} from Ring ${getRingName(ringNumber)} to Ring ${getRingName(targetRing)}`);
+
+    if (!isFirestoreQuotaExceeded) {
+      addDoc(collection(db, 'bout_transfers'), {
+        fromRing: ringNumber.toString(),
+        toRing: targetRing.toString(),
+        boutNumber: match.bout.toString().toUpperCase(),
+        timestamp: serverTimestamp(),
+        pinnedUntil: new Date(new Date().getTime() + 30 * 60 * 1000).toISOString(),
+        isPinned: true,
+        author: user?.username || 'Admin'
+      }).catch(err => console.error("Auto transfer broadcast error:", err));
+    }
   };
 
   const pullRingSlotToActive = (ringNumber: number, slot: 'onDeck' | 'inTheHole') => {
@@ -3363,6 +3524,9 @@ export default function App() {
         showPublicStandbyQueue={showPublicStandbyQueue}
         publicViewLayout={publicViewLayout}
         selectedEventName={publicEventName}
+        boutTransfers={boutTransfers}
+        isAdmin={false}
+        onDeleteTransfer={handleCancelTransferPin}
       />
     );
   }
@@ -3381,6 +3545,9 @@ export default function App() {
         showPublicStandbyQueue={showPublicStandbyQueue}
         publicViewLayout={publicViewLayout}
         selectedEventName={publicEventName}
+        boutTransfers={boutTransfers}
+        isAdmin={user?.role === 'admin'}
+        onDeleteTransfer={handleCancelTransferPin}
       />
     );
   }
@@ -3437,6 +3604,12 @@ export default function App() {
                 label="Standby View" 
                 active={activeTab === 'standby'} 
                 onClick={() => setActiveTab('standby')} 
+              />
+              <NavItem 
+                icon={<LayoutDashboard size={20} />} 
+                label="Site VIew" 
+                active={activeTab === 'site_view'} 
+                onClick={() => setActiveTab('site_view')} 
               />
               <NavItem 
                 icon={<LayoutDashboard size={20} />} 
@@ -3509,6 +3682,12 @@ export default function App() {
               />
               <NavItem 
                 icon={<LayoutDashboard size={20} />} 
+                label="Site VIew" 
+                active={activeTab === 'site_view'} 
+                onClick={() => setActiveTab('site_view')} 
+              />
+              <NavItem 
+                icon={<LayoutDashboard size={20} />} 
                 label="Point View" 
                 active={activeTab === 'points'} 
                 onClick={() => setActiveTab('points')} 
@@ -3522,6 +3701,12 @@ export default function App() {
                 label="Standby View" 
                 active={activeTab === 'standby'} 
                 onClick={() => setActiveTab('standby')} 
+              />
+              <NavItem 
+                icon={<LayoutDashboard size={20} />} 
+                label="Site VIew" 
+                active={activeTab === 'site_view'} 
+                onClick={() => setActiveTab('site_view')} 
               />
               <NavItem 
                 icon={<LayoutDashboard size={20} />} 
@@ -4025,6 +4210,17 @@ export default function App() {
                                                   } else {
                                                     setBoutQueue(prev => prev.map(q => q.id === item.id ? { ...q, data: { ...q.data, ring: targetRing, originalRing: q.data.originalRing || q.data.ring } } : q));
                                                     addToSyncLog("Transfer Bout Ring", "success", `Transferred Bout ${item.data.bout} from Ring ${item.data.ring} to Ring ${targetRing}`);
+                                                    if (!isFirestoreQuotaExceeded) {
+                                                      addDoc(collection(db, 'bout_transfers'), {
+                                                        fromRing: (item.data.originalRing || item.data.ring).toString(),
+                                                        toRing: targetRing.toString(),
+                                                        boutNumber: item.data.bout.toString().toUpperCase(),
+                                                        timestamp: serverTimestamp(),
+                                                        pinnedUntil: new Date(new Date().getTime() + 30 * 60 * 1000).toISOString(),
+                                                        isPinned: true,
+                                                        author: user?.username || 'Admin'
+                                                      }).catch(err => console.error("Auto transfer broadcast error:", err));
+                                                    }
                                                   }
                                                 }
                                               }}
@@ -4088,8 +4284,31 @@ export default function App() {
               showOnlyActiveRings={showOnlyActiveRings}
               showEmptyBoutAsInactive={showEmptyBoutAsInactive}
               isAdmin={user?.role === 'admin' || user?.role === 'ta'}
+              isAdminOnly={user?.role === 'admin'}
               onUpdateInspection={handleUpdateMatchInspection}
               slideInterval={slideInterval}
+              boutTransfers={boutTransfers}
+              onDeleteTransfer={handleCancelTransferPin}
+            />
+          )}
+
+          {activeTab === 'site_view' && (
+            <SiteView 
+              rings={currentRings} 
+              boutQueue={currentBoutQueue} 
+              namingMode={ringNamingMode} 
+              activeAnnouncement={activeAnnouncement}
+              onAnnouncementClose={handleAnnouncementClose}
+              currentEventId={currentEventId}
+              boutNumberingMode={boutNumberingMode}
+              showOnlyActiveRings={showOnlyActiveRings}
+              showEmptyBoutAsInactive={showEmptyBoutAsInactive}
+              isAdmin={user?.role === 'admin' || user?.role === 'ta'}
+              isAdminOnly={user?.role === 'admin'}
+              onUpdateInspection={handleUpdateMatchInspection}
+              slideInterval={slideInterval}
+              boutTransfers={boutTransfers}
+              onDeleteTransfer={handleCancelTransferPin}
             />
           )}
 
@@ -4104,8 +4323,11 @@ export default function App() {
               boutNumberingMode={boutNumberingMode}
               showOnlyActiveRings={showOnlyActiveRings}
               showEmptyBoutAsInactive={showEmptyBoutAsInactive}
-              isAdmin={user?.role === 'admin'}
+              isAdmin={user?.role === 'admin' || user?.role === 'ta'}
+              isAdminOnly={user?.role === 'admin'}
               slideInterval={slideInterval}
+              boutTransfers={boutTransfers}
+              onDeleteTransfer={handleCancelTransferPin}
             />
           )}
 
@@ -4120,8 +4342,11 @@ export default function App() {
               boutNumberingMode={boutNumberingMode}
               showOnlyActiveRings={showOnlyActiveRings}
               showEmptyBoutAsInactive={showEmptyBoutAsInactive}
-              isAdmin={user?.role === 'admin'}
+              isAdmin={user?.role === 'admin' || user?.role === 'ta'}
+              isAdminOnly={user?.role === 'admin'}
               slideInterval={slideInterval}
+              boutTransfers={boutTransfers}
+              onDeleteTransfer={handleCancelTransferPin}
             />
           )}
 
@@ -4253,6 +4478,17 @@ export default function App() {
                                               if (targetRing) {
                                                 setBoutQueue(prev => prev.map(q => q.id === item.id ? { ...q, data: { ...q.data, ring: targetRing, originalRing: q.data.originalRing || q.data.ring } } : q));
                                                 addToSyncLog("Transfer Bout Ring", "success", `Transferred Bout ${item.data.bout} from Ring ${item.data.ring} to Ring ${targetRing}`);
+                                                if (!isFirestoreQuotaExceeded) {
+                                                  addDoc(collection(db, 'bout_transfers'), {
+                                                    fromRing: (item.data.originalRing || item.data.ring).toString(),
+                                                    toRing: targetRing.toString(),
+                                                    boutNumber: item.data.bout.toString().toUpperCase(),
+                                                    timestamp: serverTimestamp(),
+                                                    pinnedUntil: new Date(new Date().getTime() + 30 * 60 * 1000).toISOString(),
+                                                    isPinned: true,
+                                                    author: user?.username || 'Admin'
+                                                  }).catch(err => console.error("Auto transfer broadcast error:", err));
+                                                }
                                               }
                                             }}
                                             className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded px-1 py-0.5 outline-none cursor-pointer hover:bg-indigo-100 transition-colors"
@@ -5284,7 +5520,7 @@ export default function App() {
         />
       )}
 
-      {!['standby', 'general'].includes(activeTab) && (
+      {!['standby', 'general', 'site_view'].includes(activeTab) && (
         <AnnouncementPopup announcement={activeAnnouncement} onClose={handleAnnouncementClose} />
       )}
 
@@ -5313,44 +5549,130 @@ export default function App() {
                 </button>
               </div>
               
-              <div className="p-8 space-y-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Target Audience</label>
-                  <select
-                    value={announcementTarget}
-                    onChange={(e) => setAnnouncementTarget(e.target.value as 'all' | 'users')}
-                    className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-3xl text-sm font-bold text-slate-800 focus:border-red-600 focus:ring-0 outline-none transition-all"
-                  >
-                    <option value="all">Broadcast to All (Including Viewers)</option>
-                    <option value="users">Ring Controllers Only</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Announcement Text</label>
-                  <textarea 
-                    value={announcementText}
-                    onChange={(e) => setAnnouncementText(e.target.value)}
-                    placeholder="Enter your message here..."
-                    className="w-full h-32 px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-3xl text-lg font-bold text-slate-800 focus:border-red-600 focus:ring-0 outline-none transition-all resize-none"
-                  />
-                </div>
-                
-                <div className="flex gap-4">
-                  <button 
-                    onClick={() => setShowAnnouncementInput(false)}
-                    className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    onClick={handleSendAnnouncement}
-                    disabled={!announcementText.trim()}
-                    className="flex-2 py-4 bg-red-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-red-700 disabled:bg-slate-200 disabled:text-slate-400 transition-all shadow-lg shadow-red-200"
-                  >
-                    Send Broadcast
-                  </button>
-                </div>
+              {/* Tab selector */}
+              <div className="flex border-b border-slate-100 bg-slate-50">
+                <button
+                  onClick={() => setBroadcastModalType('standard')}
+                  className={cn(
+                    "flex-1 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all cursor-pointer",
+                    broadcastModalType === 'standard'
+                      ? "border-red-600 text-red-600 bg-white"
+                      : "border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                  )}
+                >
+                  Standard
+                </button>
+                <button
+                  onClick={() => setBroadcastModalType('transfer')}
+                  className={cn(
+                    "flex-1 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all cursor-pointer",
+                    broadcastModalType === 'transfer'
+                      ? "border-red-600 text-red-600 bg-white"
+                      : "border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                  )}
+                >
+                  Bout Transfer
+                </button>
               </div>
+
+              {broadcastModalType === 'standard' ? (
+                <div className="p-8 space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Target Audience</label>
+                    <select
+                      value={announcementTarget}
+                      onChange={(e) => setAnnouncementTarget(e.target.value as 'all' | 'users')}
+                      className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-3xl text-sm font-bold text-slate-800 focus:border-red-600 focus:ring-0 outline-none transition-all"
+                    >
+                      <option value="all">Broadcast to All (Including Viewers)</option>
+                      <option value="users">Ring Controllers Only</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Announcement Text</label>
+                    <textarea 
+                      value={announcementText}
+                      onChange={(e) => setAnnouncementText(e.target.value)}
+                      placeholder="Enter your message here..."
+                      className="w-full h-32 px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-3xl text-lg font-bold text-slate-800 focus:border-red-600 focus:ring-0 outline-none transition-all resize-none"
+                    />
+                  </div>
+                  
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={() => {
+                        setShowAnnouncementInput(false);
+                        setBroadcastModalType('standard');
+                      }}
+                      className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-200 transition-all cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={handleSendAnnouncement}
+                      disabled={!announcementText.trim()}
+                      className="flex-2 py-4 bg-red-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-red-700 disabled:bg-slate-200 disabled:text-slate-400 transition-all shadow-lg shadow-red-200 cursor-pointer"
+                    >
+                      Send Broadcast
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-8 space-y-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">From Ring</label>
+                      <input 
+                        type="text"
+                        value={transferFromRing}
+                        onChange={(e) => setTransferFromRing(e.target.value)}
+                        placeholder="e.g. 1"
+                        className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-3xl text-base font-bold text-slate-800 focus:border-red-600 focus:ring-0 outline-none transition-all"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Transfer Ring</label>
+                      <input 
+                        type="text"
+                        value={transferToRing}
+                        onChange={(e) => setTransferToRing(e.target.value)}
+                        placeholder="e.g. 2"
+                        className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-3xl text-base font-bold text-slate-800 focus:border-red-600 focus:ring-0 outline-none transition-all"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Bout Number</label>
+                    <input 
+                      type="text"
+                      value={transferBoutNumber}
+                      onChange={(e) => setTransferBoutNumber(e.target.value)}
+                      placeholder="e.g. A101"
+                      className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-3xl text-base font-bold text-slate-800 focus:border-red-600 focus:ring-0 outline-none transition-all"
+                    />
+                  </div>
+                  
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={() => {
+                        setShowAnnouncementInput(false);
+                        setBroadcastModalType('standard');
+                      }}
+                      className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-200 transition-all cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={handleSendTransferBroadcast}
+                      disabled={!transferFromRing.trim() || !transferToRing.trim() || !transferBoutNumber.trim()}
+                      className="flex-2 py-4 bg-red-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-red-700 disabled:bg-slate-200 disabled:text-slate-400 transition-all shadow-lg shadow-red-200 cursor-pointer"
+                    >
+                      Send &amp; Pin (30m)
+                    </button>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </div>
         )}
@@ -5472,6 +5794,13 @@ export default function App() {
             >
               <LayoutDashboard size={24} />
               <span className="text-[10px] font-bold">Standby</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('site_view')}
+              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'site_view' ? "text-red-600" : "text-slate-400")}
+            >
+              <LayoutDashboard size={24} />
+              <span className="text-[10px] font-bold">Site</span>
             </button>
             <button 
               onClick={() => setActiveTab('points')}
@@ -7548,7 +7877,39 @@ interface PublicRingCardProps {
   publicViewLayout?: 'standard' | 'point';
 }
 
-function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, isAdmin = false, onUpdateInspection, slideInterval = 15 }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, isAdmin?: boolean, onUpdateInspection?: (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean) => void, slideInterval?: number }) {
+function StandbyView({ 
+  rings, 
+  boutQueue, 
+  namingMode, 
+  activeAnnouncement, 
+  onAnnouncementClose, 
+  currentEventId, 
+  boutNumberingMode = 'alphanumeric', 
+  showOnlyActiveRings = false, 
+  showEmptyBoutAsInactive = false, 
+  isAdmin = false, 
+  isAdminOnly = false,
+  onUpdateInspection, 
+  slideInterval = 15,
+  boutTransfers = [],
+  onDeleteTransfer = () => {}
+}: { 
+  rings: RingStatus[], 
+  boutQueue: {id: string, data: MatchData}[], 
+  namingMode: 'number' | 'alphabet', 
+  activeAnnouncement?: { message: string, id: string } | null, 
+  onAnnouncementClose?: () => void, 
+  currentEventId: string | null, 
+  boutNumberingMode?: 'numeric' | 'alphanumeric', 
+  showOnlyActiveRings?: boolean, 
+  showEmptyBoutAsInactive?: boolean, 
+  isAdmin?: boolean, 
+  isAdminOnly?: boolean,
+  onUpdateInspection?: (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean) => void, 
+  slideInterval?: number,
+  boutTransfers?: BoutTransferBroadcast[],
+  onDeleteTransfer?: (id: string) => void
+}) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
@@ -7607,6 +7968,11 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
         backgroundSize: '4px 4px'
       }}
     >
+      <PinnedTransferBanner 
+        transfers={boutTransfers} 
+        isAdmin={isAdminOnly} 
+        onDelete={onDeleteTransfer} 
+      />
       {/* Header */}
       <div className="flex items-center justify-between px-8 py-4 bg-[#1a2235]/50 border-b border-white/10 backdrop-blur-sm">
         <div className="flex items-center gap-4">
@@ -7859,7 +8225,337 @@ function StandbyView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnou
   );
 }
 
-function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, isAdmin = false, slideInterval = 15 }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, isAdmin?: boolean, slideInterval?: number }) {
+function SiteView({ 
+  rings, 
+  boutQueue, 
+  namingMode, 
+  activeAnnouncement, 
+  onAnnouncementClose, 
+  currentEventId, 
+  boutNumberingMode = 'alphanumeric', 
+  showOnlyActiveRings = false, 
+  showEmptyBoutAsInactive = false, 
+  isAdmin = false, 
+  isAdminOnly = false,
+  onUpdateInspection, 
+  slideInterval = 15,
+  boutTransfers = [],
+  onDeleteTransfer = () => {}
+}: { 
+  rings: RingStatus[], 
+  boutQueue: {id: string, data: MatchData}[], 
+  namingMode: 'number' | 'alphabet', 
+  activeAnnouncement?: { message: string, id: string } | null, 
+  onAnnouncementClose?: () => void, 
+  currentEventId: string | null, 
+  boutNumberingMode?: 'numeric' | 'alphanumeric', 
+  showOnlyActiveRings?: boolean, 
+  showEmptyBoutAsInactive?: boolean, 
+  isAdmin?: boolean, 
+  isAdminOnly?: boolean,
+  onUpdateInspection?: (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean) => void, 
+  slideInterval?: number,
+  boutTransfers?: BoutTransferBroadcast[],
+  onDeleteTransfer?: (id: string) => void
+}) {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [currentPage, setCurrentPage] = React.useState(0);
+  const [ringsPerPage, setRingsPerPage] = React.useState<number>(() => {
+    const saved = localStorage.getItem('tkd_site_rings_per_page');
+    return saved ? parseInt(saved, 10) : 4;
+  });
+  
+  const effectiveRings = showOnlyActiveRings ? rings.filter(r => r.currentBout && hasPlayers(r.currentBout)) : rings;
+  const totalPages = Math.ceil(effectiveRings.length / ringsPerPage);
+
+  const toggleFullScreen = () => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen().catch(err => {
+        console.error(`Error attempting to enable full-screen mode: ${err.message}`);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  React.useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+      if (!document.fullscreenElement) {
+        setCurrentPage(0);
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  React.useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (totalPages > 1) {
+      interval = setInterval(() => {
+        setCurrentPage((prev) => (prev + 1) % totalPages);
+      }, slideInterval * 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [totalPages, slideInterval]);
+
+  const displayedRings = effectiveRings.slice(currentPage * ringsPerPage, (currentPage + 1) * ringsPerPage);
+
+  return (
+    <div 
+      ref={containerRef}
+      className={cn(
+        "bg-[#0a0e1a] min-h-full shadow-2xl border border-slate-800 transition-all duration-500 flex flex-col relative overflow-hidden",
+        isFullscreen ? "rounded-none p-0" : "rounded-[2.5rem] p-6 space-y-8"
+      )}
+      style={{
+        backgroundImage: `radial-gradient(circle at 2px 2px, rgba(255,255,255,0.03) 1px, transparent 0)`,
+        backgroundSize: '4px 4px'
+      }}
+    >
+      <PinnedTransferBanner 
+        transfers={boutTransfers} 
+        isAdmin={isAdminOnly} 
+        onDelete={onDeleteTransfer} 
+      />
+      {/* Header */}
+      <div className="flex items-center justify-between px-8 py-4 bg-[#1a2235]/50 border-b border-white/10 backdrop-blur-sm">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-900/20">
+            <Trophy size={24} className="text-white" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic leading-none">Site VIew</h2>
+            <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Tournament Site Monitoring</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-6">
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2 bg-[#0d1526] border border-white/10 px-3 py-1.5 rounded-2xl">
+              <button
+                onClick={() => setCurrentPage(prev => (prev - 1 + totalPages) % totalPages)}
+                className="p-1 hover:bg-slate-800 text-white rounded transition-colors"
+                title="Previous Page"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest px-1">
+                {currentPage + 1}/{totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(prev => (prev + 1) % totalPages)}
+                className="p-1 hover:bg-slate-800 text-white rounded transition-colors"
+                title="Next Page"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          )}
+          {isAdmin && (
+            <div className="flex items-center gap-2 bg-[#0d1526]/80 text-white rounded-2xl border border-white/10 px-3 py-1.5">
+              <span className="text-[11px] font-black uppercase text-slate-400 tracking-[0.15em] leading-none select-none">Show Layout:</span>
+              <select
+                value={ringsPerPage === 999 ? 'all' : ringsPerPage}
+                onChange={(e) => {
+                  const val = e.target.value === 'all' ? 999 : parseInt(e.target.value, 10);
+                  setRingsPerPage(val);
+                  localStorage.setItem('tkd_site_rings_per_page', val.toString());
+                  setCurrentPage(0);
+                }}
+                className="bg-transparent text-white text-xs font-black outline-none border-none focus:ring-0 cursor-pointer pr-1"
+              >
+                {[1, 2, 3, 4, 5, 6, 8].map(n => (
+                  <option key={n} value={n} className="bg-[#1a2235] text-white font-bold">{n} Court{n > 1 ? 's' : ''}</option>
+                ))}
+                <option value="all" className="bg-[#1a2235] text-white font-bold">All Courts</option>
+              </select>
+            </div>
+          )}
+          <button 
+            onClick={toggleFullScreen}
+            className="p-3 bg-slate-900 text-white hover:bg-slate-800 rounded-2xl border border-slate-800 transition-all group"
+          >
+            {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 p-4 space-y-4">
+        {displayedRings.map((ring, i) => {
+          const ringQueueAll = boutQueue
+            .filter(q => 
+              q.data.ring === ring.ringNumber && 
+              q.data.eventId === currentEventId
+            )
+            .sort((a, b) => {
+              const parseBout = (bout: string | number) => {
+                const s = bout.toString().replace(/\s+/g, '').toUpperCase().replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
+                if (/^[A-Z]/.test(s)) return s;
+                return parseInt(s.replace(/[^0-9]/g, '')) || 0;
+              };
+              const valA = parseBout(a.data.bout);
+              const valB = parseBout(b.data.bout);
+              if (typeof valA === 'number' && typeof valB === 'number') return valA - valB;
+              return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+            });
+
+          const standbyRaw: typeof ringQueueAll = [];
+          if (ring.onDeck) {
+            standbyRaw.push({ id: `ondeck-${ring.ringNumber}`, data: ring.onDeck });
+          }
+          if (ring.inTheHole) {
+            standbyRaw.push({ id: `inthehole-${ring.ringNumber}`, data: ring.inTheHole });
+          }
+          ringQueueAll.forEach(q => {
+            const isAlreadyOnDeck = ring.onDeck && isBoutMatch(q.data.bout, ring.onDeck.bout);
+            const isAlreadyInTheHole = ring.inTheHole && isBoutMatch(q.data.bout, ring.inTheHole.bout);
+            if (!isAlreadyOnDeck && !isAlreadyInTheHole) {
+              standbyRaw.push(q);
+            }
+          });
+          const standby = standbyRaw.slice(0, 3);
+          const current = ring.currentBout;
+          const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
+          const isPoomsaeModeCurrent = current?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
+                               current?.category?.toUpperCase().includes('FREESTYLE') ||
+                               (current?.category?.toUpperCase().includes('POOMSAE') && !current.red_name);
+          
+          return (
+            <div key={`${ring.ringNumber}-${i}`} className="flex gap-1 h-48">
+              {/* Left: Current Match */}
+              <div className="flex-[3] flex flex-col bg-[#0d1526] border border-white/10 rounded-lg overflow-hidden">
+                {/* Header */}
+                <div className="grid grid-cols-12 bg-[#1a2235] border-b border-white/10 py-2 px-4">
+                  <div className="col-span-2 bg-lime-500 text-slate-950 text-[16px] font-black px-3 py-1 rounded flex items-center justify-center mr-4">
+                    Ring {ringName}
+                  </div>
+                  <div className="col-span-10 text-white text-[18px] font-bold flex items-center">
+                    {cleanPlaceholder(current?.category || "")}
+                  </div>
+                </div>
+                {/* Content */}
+                <div className="flex-1 grid grid-cols-12">
+                  {(!current || !hasPlayers(current)) && showEmptyBoutAsInactive ? (
+                    <div className="col-span-12 flex flex-col items-center justify-center text-slate-500/50 space-y-4 py-8">
+                      <AlertCircle size={32} />
+                      <p className="text-xl font-black uppercase tracking-[0.3em]">Ring Inactive</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Bout Num */}
+                      <div className="col-span-2 flex items-center justify-center text-3xl font-black text-white border-r border-[#1a1f2e] bg-[#161f33]">
+                        {current && hasPlayers(current) ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
+                      </div>
+                      {/* Players */}
+                      <div className="col-span-10 flex flex-col">
+                        <div className={cn(
+                          "flex-1 bg-blue-600/90 flex flex-col justify-center px-4 relative",
+                          !isPoomsaeModeCurrent && "border-b border-white/10"
+                        )}>
+                          <p className="text-[15px] font-bold text-white uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
+                          <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.blue_name || "") : "---"}</h4>
+                        </div>
+                        {!isPoomsaeModeCurrent && (
+                          <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
+                            <p className="text-[15px] font-bold text-white uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
+                            <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.red_name || "") : "---"}</h4>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Middle: Ring Num */}
+              <div className="flex-1 flex flex-col items-center justify-center">
+                <span className="text-9xl font-black text-white italic tracking-tighter leading-none">{ringName}</span>
+                <span className="text-[18px] font-black text-white uppercase tracking-[0.5em] mt-4">COURT</span>
+              </div>
+
+              {/* Right: Standby Queue */}
+              <div className="flex-[2] flex flex-col gap-1">
+                {[0, 1, 2].map((idx) => {
+                  const b = standby[idx];
+                  const isPoomsaeItem = b?.data?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
+                                        b?.data?.category?.toUpperCase().includes('FREESTYLE') ||
+                                        (b?.data?.category?.toUpperCase().includes('POOMSAE') && !b?.data?.red_name);
+                  const isRingInactive = showEmptyBoutAsInactive && (!current || !hasPlayers(current));
+                  return (
+                    <div key={idx} className="flex-1 grid grid-cols-12 bg-[#0d1526] border border-white/10 rounded overflow-hidden">
+                      <div className="col-span-3 flex items-center justify-center text-xl font-black text-white bg-[#161f33] border-r border-[#1a1f2e]">
+                        {b?.data?.bout ? formatBoutNumber(ring.ringNumber, b.data.bout, boutNumberingMode) : "---"}
+                      </div>
+                      <div className={cn(
+                        "flex flex-col justify-center px-3 relative",
+                        isPoomsaeItem ? "col-span-9" : "col-span-5 border-r border-white/10",
+                        isRingInactive ? "bg-slate-800" : "bg-blue-600/80"
+                      )}>
+                        <span className="text-[13px] font-bold text-white uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.blue_club || "")}</span>
+                        <span className={cn(
+                          "text-[16px] font-black uppercase leading-tight break-words whitespace-normal w-full mt-0.5",
+                          isRingInactive ? "text-slate-400" : "text-white"
+                        )}>{cleanPlaceholder(b?.data.blue_name || "")}</span>
+                      </div>
+                      {!isPoomsaeItem && (
+                        <div className={cn(
+                          "col-span-4 flex flex-col justify-center px-3 relative",
+                          isRingInactive ? "bg-slate-800" : "bg-red-600/80"
+                        )}>
+                          <span className="text-[13px] font-bold text-white uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.red_club || "")}</span>
+                          <span className={cn(
+                            "text-[16px] font-black uppercase leading-tight break-words whitespace-normal w-full mt-0.5",
+                            isRingInactive ? "text-slate-400" : "text-white"
+                          )}>{cleanPlaceholder(b?.data.red_name || "")}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <AnnouncementPopup announcement={activeAnnouncement || null} onClose={onAnnouncementClose || (() => {})} size={isFullscreen ? 'large' : 'normal'} />
+    </div>
+  );
+}
+
+function PointsView({ 
+  rings, 
+  boutQueue, 
+  namingMode, 
+  activeAnnouncement, 
+  onAnnouncementClose, 
+  currentEventId, 
+  boutNumberingMode = 'alphanumeric', 
+  showOnlyActiveRings = false, 
+  showEmptyBoutAsInactive = false, 
+  isAdmin = false, 
+  isAdminOnly = false,
+  slideInterval = 15,
+  boutTransfers = [],
+  onDeleteTransfer = () => {}
+}: { 
+  rings: RingStatus[], 
+  boutQueue: {id: string, data: MatchData}[], 
+  namingMode: 'number' | 'alphabet', 
+  activeAnnouncement?: { message: string, id: string } | null, 
+  onAnnouncementClose?: () => void, 
+  currentEventId: string | null, 
+  boutNumberingMode?: 'numeric' | 'alphanumeric', 
+  showOnlyActiveRings?: boolean, 
+  showEmptyBoutAsInactive?: boolean, 
+  isAdmin?: boolean, 
+  isAdminOnly?: boolean,
+  slideInterval?: number,
+  boutTransfers?: BoutTransferBroadcast[],
+  onDeleteTransfer?: (id: string) => void
+}) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
@@ -7918,6 +8614,11 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
         backgroundSize: '4px 4px'
       }}
     >
+      <PinnedTransferBanner 
+        transfers={boutTransfers} 
+        isAdmin={isAdminOnly} 
+        onDelete={onDeleteTransfer} 
+      />
       {/* Header */}
       <div className="flex items-center justify-between px-8 py-4 bg-[#1a2235]/50 border-b border-white/10 backdrop-blur-sm">
         <div className="flex items-center gap-4">
@@ -8210,7 +8911,37 @@ function PointsView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
 
 
 
-function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnouncementClose, currentEventId, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, isAdmin = false, slideInterval = 15 }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', activeAnnouncement?: { message: string, id: string } | null, onAnnouncementClose?: () => void, currentEventId: string | null, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, isAdmin?: boolean, slideInterval?: number }) {
+function OnsiteView({ 
+  rings, 
+  boutQueue, 
+  namingMode, 
+  activeAnnouncement, 
+  onAnnouncementClose, 
+  currentEventId, 
+  boutNumberingMode = 'alphanumeric', 
+  showOnlyActiveRings = false, 
+  showEmptyBoutAsInactive = false, 
+  isAdmin = false, 
+  isAdminOnly = false,
+  slideInterval = 15,
+  boutTransfers = [],
+  onDeleteTransfer = () => {}
+}: { 
+  rings: RingStatus[], 
+  boutQueue: {id: string, data: MatchData}[], 
+  namingMode: 'number' | 'alphabet', 
+  activeAnnouncement?: { message: string, id: string } | null, 
+  onAnnouncementClose?: () => void, 
+  currentEventId: string | null, 
+  boutNumberingMode?: 'numeric' | 'alphanumeric', 
+  showOnlyActiveRings?: boolean, 
+  showEmptyBoutAsInactive?: boolean, 
+  isAdmin?: boolean, 
+  isAdminOnly?: boolean,
+  slideInterval?: number,
+  boutTransfers?: BoutTransferBroadcast[],
+  onDeleteTransfer?: (id: string) => void
+}) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(0);
@@ -8283,6 +9014,11 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
         isFullscreen ? "rounded-none px-12 py-6 overflow-hidden" : "rounded-[2.5rem] p-6 space-y-8"
       )}
     >
+      <PinnedTransferBanner 
+        transfers={boutTransfers} 
+        isAdmin={isAdminOnly} 
+        onDelete={onDeleteTransfer} 
+      />
       {!isFullscreen && (
         <div className="flex items-center justify-between px-4 flex-shrink-0">
           <div className="flex items-center gap-4">
@@ -8595,7 +9331,39 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
   );
 }
 
-function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator, showTotalBouts = true, boutNumberingMode = 'alphanumeric', showOnlyActiveRings = false, showEmptyBoutAsInactive = false, showPublicStandbyQueue = true, publicViewLayout = 'standard', selectedEventName = '' }: { rings: RingStatus[], boutQueue: {id: string, data: MatchData}[], namingMode: 'number' | 'alphabet', onBack: () => void, isSpectator?: boolean, showTotalBouts?: boolean, boutNumberingMode?: 'numeric' | 'alphanumeric', showOnlyActiveRings?: boolean, showEmptyBoutAsInactive?: boolean, showPublicStandbyQueue?: boolean, publicViewLayout?: 'standard' | 'point', selectedEventName?: string }) {
+function PublicDashboardView({ 
+  rings, 
+  boutQueue, 
+  namingMode, 
+  onBack, 
+  isSpectator, 
+  showTotalBouts = true, 
+  boutNumberingMode = 'alphanumeric', 
+  showOnlyActiveRings = false, 
+  showEmptyBoutAsInactive = false, 
+  showPublicStandbyQueue = true, 
+  publicViewLayout = 'standard', 
+  selectedEventName = '',
+  boutTransfers = [],
+  isAdmin = false,
+  onDeleteTransfer = () => {}
+}: { 
+  rings: RingStatus[], 
+  boutQueue: {id: string, data: MatchData}[], 
+  namingMode: 'number' | 'alphabet', 
+  onBack: () => void, 
+  isSpectator?: boolean, 
+  showTotalBouts?: boolean, 
+  boutNumberingMode?: 'numeric' | 'alphanumeric', 
+  showOnlyActiveRings?: boolean, 
+  showEmptyBoutAsInactive?: boolean, 
+  showPublicStandbyQueue?: boolean, 
+  publicViewLayout?: 'standard' | 'point', 
+  selectedEventName?: string,
+  boutTransfers?: BoutTransferBroadcast[],
+  isAdmin?: boolean,
+  onDeleteTransfer?: (id: string) => void
+}) {
   const [logoClicks, setLogoClicks] = React.useState(0);
   const clickTimer = React.useRef<NodeJS.Timeout | null>(null);
   const [isQuotaExceeded, setIsQuotaExceeded] = React.useState(false);
@@ -8685,6 +9453,11 @@ function PublicDashboardView({ rings, boutQueue, namingMode, onBack, isSpectator
       </header>
 
       <div className="p-3 sm:p-6 md:p-8 space-y-6 md:space-y-8 max-w-[1600px] mx-auto flex-1 w-full">
+        <PinnedTransferBanner 
+          transfers={boutTransfers} 
+          isAdmin={isAdmin} 
+          onDelete={onDeleteTransfer} 
+        />
         <div className="grid grid-cols-1 gap-6 md:gap-8">
           {/* Mats Grid */}
           <div className="space-y-4 md:space-y-6">
