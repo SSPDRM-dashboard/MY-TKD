@@ -1691,6 +1691,47 @@ export default function App() {
     addToSyncLog("Transfer Bout Ring", "success", `Transferred Bout ${match.bout} from Ring ${getRingName(ringNumber)} to Ring ${getRingName(targetRing)}`);
   };
 
+  const pullRingSlotToActive = (ringNumber: number, slot: 'onDeck' | 'inTheHole') => {
+    const ring = rings.find(r => r.ringNumber === ringNumber);
+    const itemData = ring ? ring[slot] : null;
+    if (!itemData) return;
+
+    // Put current active match into suspended list
+    if (ring && ring.currentBout && hasPlayers(ring.currentBout)) {
+      const currentBout = ring.currentBout;
+      setRings(prev => {
+        const updated = prev.map(r => {
+          if (r.ringNumber === ringNumber) {
+            const suspended = r.suspendedBouts ? [...r.suspendedBouts] : [];
+            if (!suspended.some(b => isBoutMatch(b.bout, currentBout.bout))) {
+              suspended.push({ ...currentBout, eventId: currentEventId || null });
+            }
+            return {
+              ...r,
+              suspendedBouts: suspended,
+              [slot]: null
+            };
+          }
+          return r;
+        });
+        localStorage.setItem('tkd_rings', JSON.stringify(updated));
+        return updated;
+      });
+    } else {
+      setRings(prev => {
+        const updated = prev.map(r => r.ringNumber === ringNumber ? {
+          ...r,
+          [slot]: null
+        } : r);
+        localStorage.setItem('tkd_rings', JSON.stringify(updated));
+        return updated;
+      });
+    }
+
+    // Update ring
+    handleBoutUpdate(ringNumber, itemData);
+  };
+
   const handleMissingBoutReason = async (ringNumber: number, boutNumber: number, reason: string) => {
     const userRole = sessionStorage.getItem('user_role');
     const assignedRing = sessionStorage.getItem('assigned_ring');
@@ -4011,9 +4052,13 @@ export default function App() {
                                             <ChevronLeft size={18} />
                                           </button>
                                         ) : (
-                                          <span className="text-[10px] font-extrabold text-slate-400 bg-slate-100 border border-slate-200 px-2 py-1 rounded-lg">
-                                            Active Ring
-                                          </span>
+                                          <button 
+                                            onClick={() => pullRingSlotToActive(selectedRingObj.ringNumber, item.type as 'onDeck' | 'inTheHole')}
+                                            className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+                                            title="Pull to Active Ring"
+                                          >
+                                            <ChevronLeft size={18} />
+                                          </button>
                                         )}
                                       </div>
                                     </div>
@@ -8410,10 +8455,10 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                         )}>
                           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/20 to-transparent pointer-events-none" />
                           <div className="absolute -right-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">{(!current || !hasPlayers(current)) ? 'BLURRED' : 'BLUE'}</div>
-                          <p className="text-[16px] font-black text-white uppercase tracking-[0.2em] mb-1 relative z-10 truncate w-full">
+                          <p className="text-[16px] font-black text-yellow-400 uppercase tracking-[0.2em] mb-1 relative z-10 truncate w-full">
                             {current ? cleanPlaceholder(current.blue_club || "") : "---"}
                           </p>
-                          <h4 className="font-black text-white uppercase relative z-10 leading-tight text-[25px] truncate w-full">
+                          <h4 className="font-black text-white uppercase relative z-10 leading-tight text-[25px] break-words whitespace-normal w-full">
                             {current?.privacy_mode || !current?.blue_name ? "---" : cleanPlaceholder(current.blue_name)}
                           </h4>
                         </div>
@@ -8433,10 +8478,10 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                           <div className="flex-1 h-full bg-red-600 flex flex-col justify-center px-10 text-right relative overflow-hidden group">
                             <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/20 to-transparent pointer-events-none" />
                             <div className="absolute -left-4 top-1/2 -translate-y-1/2 text-8xl font-black text-white/5 italic select-none">{(!current || !hasPlayers(current)) ? 'BLURRED' : 'RED'}</div>
-                            <p className="text-[16px] font-black text-white uppercase tracking-[0.2em] mb-1 relative z-10 truncate w-full text-right">
+                            <p className="text-[16px] font-black text-yellow-400 uppercase tracking-[0.2em] mb-1 relative z-10 truncate w-full text-right">
                               {current ? cleanPlaceholder(current.red_club || "") : "---"}
                             </p>
-                            <h4 className="font-black text-white uppercase relative z-10 leading-tight text-[25px] truncate w-full text-right">
+                            <h4 className="font-black text-white uppercase relative z-10 leading-tight text-[25px] break-words whitespace-normal w-full text-right">
                               {current?.privacy_mode || !current?.red_name ? "---" : cleanPlaceholder(current.red_name)}
                             </h4>
                           </div>
@@ -8478,7 +8523,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                           isRingInactive ? "bg-slate-800" : "bg-blue-600/90"
                         )}>
                           {!isRingInactive && <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />}
-                          <p className="text-[9px] font-bold text-white uppercase leading-none mb-0.5 relative z-10">
+                          <p className="text-[9px] font-bold text-yellow-400 uppercase leading-none mb-0.5 relative z-10">
                             {bout ? cleanPlaceholder(bout.data.blue_club) : ""}
                           </p>
                           <p className={cn(
@@ -8507,7 +8552,7 @@ function OnsiteView({ rings, boutQueue, namingMode, activeAnnouncement, onAnnoun
                             isRingInactive ? "bg-slate-800" : "bg-red-600/90"
                           )}>
                             {!isRingInactive && <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-bl from-white/10 to-transparent pointer-events-none" />}
-                            <p className="text-[9px] font-bold text-white uppercase leading-none mb-0.5 relative z-10">
+                            <p className="text-[9px] font-bold text-yellow-400 uppercase leading-none mb-0.5 relative z-10">
                               {bout ? cleanPlaceholder(bout.data.red_club) : ""}
                             </p>
                             <p className={cn(
