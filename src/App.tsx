@@ -547,9 +547,9 @@ export default function App() {
     if (saved && loginTime) {
       const now = new Date().getTime();
       const loginTs = parseInt(loginTime);
-      const oneWeek = 7 * 24 * 60 * 60 * 1000;
+      const twoWeeks = 14 * 24 * 60 * 60 * 1000;
       
-      if (now - loginTs > oneWeek) {
+      if (now - loginTs > twoWeeks) {
         localStorage.removeItem('tkd_user');
         localStorage.removeItem('tkd_login_time');
         return null;
@@ -940,9 +940,9 @@ export default function App() {
       if (loginTime) {
         const now = new Date().getTime();
         const loginTs = parseInt(loginTime);
-        const oneWeek = 7 * 24 * 60 * 60 * 1000;
+        const twoWeeks = 14 * 24 * 60 * 60 * 1000;
         
-        if (now - loginTs > oneWeek) {
+        if (now - loginTs > twoWeeks) {
           handleLogout();
         }
       }
@@ -3693,6 +3693,11 @@ export default function App() {
                 active={activeTab === 'points'} 
                 onClick={() => setActiveTab('points')} 
               />
+              <NavItem 
+                icon={<QrCode size={20} />} 
+                label="Public View" 
+                onClick={() => setIsPublicView(true)} 
+              />
             </>
           )}
           {user?.role === 'ta' && (
@@ -3759,10 +3764,9 @@ export default function App() {
                 onClick={() => setActiveTab('inspection-logs')} 
               />
               <NavItem 
-                icon={<Settings size={20} />} 
-                label="Settings" 
-                active={activeTab === 'settings'} 
-                onClick={() => setActiveTab('settings')} 
+                icon={<QrCode size={20} />} 
+                label="Public View" 
+                onClick={() => setIsPublicView(true)} 
               />
             </>
           )}
@@ -3785,13 +3789,18 @@ export default function App() {
               <LogOut size={16} />
             </button>
           </div>
-          {(user?.role === 'admin' || user?.role === 'viewer') && (
+          {user?.role === 'admin' && (
             <button 
-              onClick={() => setIsPublicView(true)}
-              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 hover:bg-red-50 hover:text-red-600 transition-all group"
+              onClick={() => setActiveTab('settings')}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold transition-all group",
+                activeTab === 'settings' 
+                  ? "bg-red-50 text-red-600" 
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+              )}
             >
-              <QrCode size={20} className="group-hover:scale-110 transition-transform" />
-              Public View
+              <Settings size={20} className="group-hover:rotate-45 transition-transform duration-300" />
+              Settings
             </button>
           )}
         </div>
@@ -9514,6 +9523,7 @@ function PublicDashboardView({
                     namingMode={namingMode} 
                     queueCount={ringQueueAllSorted.length}
                     showTotalBouts={showTotalBouts}
+                    boutNumberingMode={boutNumberingMode}
                     ringQueue={rQueue}
                     showPublicStandbyQueue={showPublicStandbyQueue}
                     showEmptyBoutAsInactive={showEmptyBoutAsInactive}
@@ -9606,7 +9616,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
         </div>
         {current && (
           <div className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center pointer-events-none">
-            <p className="text-xl sm:text-3xl md:text-[40px] font-black text-white leading-none drop-shadow-md pointer-events-auto">
+            <p className="text-xl sm:text-3xl md:text-[40px] font-black text-white leading-none drop-shadow-md pointer-events-auto translate-x-10">
               {(() => {
                 const isTransferred = (() => {
                   if (!current?.bout) return false;
@@ -9837,7 +9847,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                         <div key={idx} className="flex items-center bg-slate-900 rounded-lg sm:rounded-xl border border-slate-700 overflow-hidden min-h-[2.5rem] sm:min-h-[3rem] shadow-sm">
                           {/* Bout Num */}
                           <div className="w-10 sm:w-12 h-full bg-slate-800 flex items-center justify-center border-r border-slate-700 flex-shrink-0">
-                            <span className="text-[10px] sm:text-[12px] font-black text-white">
+                            <span className="text-[12px] sm:text-[14px] font-black text-white">
                               {bout?.data?.bout ? formatBoutNumber(ring.ringNumber, bout.data.bout, boutNumberingMode) : "---"}
                             </span>
                           </div>
