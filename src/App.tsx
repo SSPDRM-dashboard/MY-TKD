@@ -4114,6 +4114,7 @@ export default function App() {
                         onResumeSuspended={(boutNum) => resumeSuspendedBout(selectedRingObj.ringNumber, boutNum)}
                         onRemoveSuspended={(boutNum) => removeSuspendedBout(selectedRingObj.ringNumber, boutNum)}
                         onSuspendCurrentBout={() => suspendActiveBout(selectedRingObj.ringNumber)}
+                        transfers={boutTransfers}
                       />
                     </div>
                   </div>
@@ -4416,6 +4417,7 @@ export default function App() {
                       onResumeSuspended={(boutNum) => resumeSuspendedBout(ring.ringNumber, boutNum)}
                       onRemoveSuspended={(boutNum) => removeSuspendedBout(ring.ringNumber, boutNum)}
                       onSuspendCurrentBout={() => suspendActiveBout(ring.ringNumber)}
+                      transfers={boutTransfers}
                     />
                   ))
                 ) : (
@@ -4446,91 +4448,176 @@ export default function App() {
                           onResumeSuspended={(boutNum) => resumeSuspendedBout(ring.ringNumber, boutNum)}
                           onRemoveSuspended={(boutNum) => removeSuspendedBout(ring.ringNumber, boutNum)}
                           onSuspendCurrentBout={() => suspendActiveBout(ring.ringNumber)}
+                          transfers={boutTransfers}
                         />
                       ))}
                     </div>
-                    <div className="lg:col-span-2 space-y-6">
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
-                            <Calendar size={20} className="text-red-600" />
-                            Upcoming Bouts
-                          </h3>
-                          <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full">
-                            {getFilteredQueue().length}
-                          </span>
-                        </div>
-                        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col max-h-[600px]">
-                          <div className="p-4 overflow-y-auto space-y-3">
-                            {getFilteredQueue().length === 0 ? (
-                              <p className="text-sm text-slate-500 text-center py-8">No upcoming bouts.</p>
-                            ) : (
-                              getFilteredQueue().map((item, idx) => (
-                                <div key={`${item.id}-${idx}`} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
-                                  <div className="flex items-center gap-3 w-full">
-                                    <button 
-                                      onClick={() => deleteBoutFromQueue(item.id)}
-                                      className="p-1.5 text-slate-300 hover:text-red-500 transition-all shrink-0"
-                                      title="Remove from Queue"
-                                    >
-                                      <X size={14} />
-                                    </button>
-                                    <div className="flex-1">
-                                      <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                        <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-md">Ring {item.data.ring}</span>
-                                        <span className="text-[11px] font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">Bout {formatBoutNumber(item.data.ring, item.data.bout, boutNumberingMode)}</span>
-                                        <div className="flex items-center gap-1">
-                                          <span className="text-[10px] font-bold text-slate-400">Move:</span>
-                                          <select
-                                            value={item.data.ring || ''}
-                                            onChange={(e) => {
-                                              const targetRing = parseInt(e.target.value);
-                                              if (targetRing) {
-                                                setBoutQueue(prev => prev.map(q => q.id === item.id ? { ...q, data: { ...q.data, ring: targetRing, originalRing: q.data.originalRing || q.data.ring } } : q));
-                                                addToSyncLog("Transfer Bout Ring", "success", `Transferred Bout ${item.data.bout} from Ring ${item.data.ring} to Ring ${targetRing}`);
-                                                if (!isFirestoreQuotaExceeded) {
-                                                  addDoc(collection(db, 'bout_transfers'), {
-                                                    fromRing: (item.data.originalRing || item.data.ring).toString(),
-                                                    toRing: targetRing.toString(),
-                                                    boutNumber: item.data.bout.toString().toUpperCase(),
-                                                    timestamp: serverTimestamp(),
-                                                    pinnedUntil: new Date(new Date().getTime() + 30 * 60 * 1000).toISOString(),
-                                                    isPinned: true,
-                                                    author: user?.username || 'Admin'
-                                                  }).catch(err => console.error("Auto transfer broadcast error:", err));
-                                                }
-                                              }
-                                            }}
-                                            className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded px-1 py-0.5 outline-none cursor-pointer hover:bg-indigo-100 transition-colors"
+                    {(() => {
+                      const userUpcomingBouts: { id: string; type: 'onDeck' | 'inTheHole' | 'normal'; data: MatchData }[] = [];
+                      
+                      rings.filter(r => r.ringNumber === Number(user?.assignedRing) && !r.isDeleted && r.ringNumber <= visibleRingsCount).forEach(ringObj => {
+                        if (ringObj.onDeck && (!ringObj.onDeck.eventId || ringObj.onDeck.eventId === currentEventId)) {
+                          userUpcomingBouts.push({
+                            id: `ondeck-${ringObj.ringNumber}-${ringObj.onDeck.bout}`,
+                            type: 'onDeck',
+                            data: ringObj.onDeck
+                          });
+                        }
+                        if (ringObj.inTheHole && (!ringObj.inTheHole.eventId || ringObj.inTheHole.eventId === currentEventId)) {
+                          userUpcomingBouts.push({
+                            id: `inhole-${ringObj.ringNumber}-${ringObj.inTheHole.bout}`,
+                            type: 'inTheHole',
+                            data: ringObj.inTheHole
+                          });
+                        }
+                      });
+
+                      getFilteredQueue().forEach(item => {
+                        userUpcomingBouts.push({
+                          id: item.id,
+                          type: 'normal',
+                          data: item.data
+                        });
+                      });
+
+                      return (
+                        <div className="lg:col-span-2 space-y-6">
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                                <Calendar size={20} className="text-red-600" />
+                                Upcoming Bouts
+                              </h3>
+                              <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full">
+                                {userUpcomingBouts.length}
+                              </span>
+                            </div>
+                            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col max-h-[600px]">
+                              <div className="p-4 overflow-y-auto space-y-3">
+                                {userUpcomingBouts.length === 0 ? (
+                                  <p className="text-sm text-slate-500 text-center py-8">No upcoming bouts.</p>
+                                ) : (
+                                  userUpcomingBouts.map((item, idx) => (
+                                    <div key={`${item.id}-${idx}`} className={cn(
+                                      "border rounded-2xl p-4 flex items-center justify-between shadow-sm",
+                                      item.type === 'onDeck' ? "bg-blue-50/70 border-blue-100" :
+                                      item.type === 'inTheHole' ? "bg-amber-50/70 border-amber-100" :
+                                      "bg-slate-50 border-slate-100"
+                                    )}>
+                                      <div className="flex items-center gap-3 w-full">
+                                        {item.type === 'normal' && (
+                                          <button 
+                                            onClick={() => deleteBoutFromQueue(item.id)}
+                                            className="p-1.5 text-slate-300 hover:text-red-500 transition-all shrink-0 cursor-pointer"
+                                            title="Remove from Queue"
                                           >
-                                            {currentRings.map(r => (
-                                              <option key={r.ringNumber} value={r.ringNumber}>
-                                                Ring {getRingName(r.ringNumber)}
-                                              </option>
-                                            ))}
-                                          </select>
+                                            <X size={14} />
+                                          </button>
+                                        )}
+                                        {item.type === 'onDeck' && (
+                                          <button 
+                                            onClick={() => removeBoutFromRingSlot(item.data.ring, 'onDeck')}
+                                            className="p-1.5 text-slate-300 hover:text-red-500 transition-all shrink-0 cursor-pointer"
+                                            title="Remove from On Deck"
+                                          >
+                                            <X size={14} />
+                                          </button>
+                                        )}
+                                        {item.type === 'inTheHole' && (
+                                          <button 
+                                            onClick={() => removeBoutFromRingSlot(item.data.ring, 'inTheHole')}
+                                            className="p-1.5 text-slate-300 hover:text-red-500 transition-all shrink-0 cursor-pointer"
+                                            title="Remove from In The Hole"
+                                          >
+                                            <X size={14} />
+                                          </button>
+                                        )}
+                                        <div className="flex-1">
+                                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                            <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-md">Ring {getRingName(item.data.ring)}</span>
+                                            <span className="text-[11px] font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">Bout {formatBoutNumber(item.data.ring, item.data.bout, boutNumberingMode)}</span>
+                                            
+                                            {item.type === 'onDeck' && (
+                                              <span className="text-[10px] font-black text-blue-600 bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                                On Deck
+                                              </span>
+                                            )}
+                                            {item.type === 'inTheHole' && (
+                                              <span className="text-[10px] font-black text-amber-600 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                                In Hole
+                                              </span>
+                                            )}
+
+                                            <div className="flex items-center gap-1">
+                                              <span className="text-[10px] font-bold text-slate-400">Move:</span>
+                                              <select
+                                                value={item.data.ring || ''}
+                                                onChange={(e) => {
+                                                  const targetRing = parseInt(e.target.value);
+                                                  if (targetRing) {
+                                                    if (item.type === 'onDeck') {
+                                                      transferBoutFromRingSlot(item.data.ring, 'onDeck', targetRing);
+                                                    } else if (item.type === 'inTheHole') {
+                                                      transferBoutFromRingSlot(item.data.ring, 'inTheHole', targetRing);
+                                                    } else {
+                                                      setBoutQueue(prev => prev.map(q => q.id === item.id ? { ...q, data: { ...q.data, ring: targetRing, originalRing: q.data.originalRing || q.data.ring } } : q));
+                                                      addToSyncLog("Transfer Bout Ring", "success", `Transferred Bout ${item.data.bout} from Ring ${item.data.ring} to Ring ${targetRing}`);
+                                                      if (!isFirestoreQuotaExceeded) {
+                                                        addDoc(collection(db, 'bout_transfers'), {
+                                                          fromRing: (item.data.originalRing || item.data.ring).toString(),
+                                                          toRing: targetRing.toString(),
+                                                          boutNumber: item.data.bout.toString().toUpperCase(),
+                                                          timestamp: serverTimestamp(),
+                                                          pinnedUntil: new Date(new Date().getTime() + 30 * 60 * 1000).toISOString(),
+                                                          isPinned: true,
+                                                          author: user?.username || 'Admin'
+                                                        }).catch(err => console.error("Auto transfer broadcast error:", err));
+                                                      }
+                                                    }
+                                                  }
+                                                }}
+                                                className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded px-1 py-0.5 outline-none cursor-pointer hover:bg-indigo-100 transition-colors"
+                                              >
+                                                {currentRings.map(r => (
+                                                  <option key={r.ringNumber} value={r.ringNumber}>
+                                                    Ring {getRingName(r.ringNumber)}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            </div>
+                                          </div>
+                                          <p className="text-sm font-bold text-slate-800">{cleanPlaceholder(item.data.blue_name)} vs {cleanPlaceholder(item.data.red_name)}</p>
+                                          <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{cleanPlaceholder(item.data.category)}</p>
                                         </div>
                                       </div>
-                                      <p className="text-sm font-bold text-slate-800">{cleanPlaceholder(item.data.blue_name)} vs {cleanPlaceholder(item.data.red_name)}</p>
-                                      <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{cleanPlaceholder(item.data.category)}</p>
+                                      <div className="flex flex-col items-end gap-2 shrink-0">
+                                        {item.type === 'normal' ? (
+                                          <button 
+                                            onClick={() => pullBout(item.id)}
+                                            className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+                                            title="Pull to Active Ring"
+                                          >
+                                            <ChevronLeft size={18} />
+                                          </button>
+                                        ) : (
+                                          <button 
+                                            onClick={() => pullRingSlotToActive(item.data.ring, item.type as 'onDeck' | 'inTheHole')}
+                                            className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+                                            title="Pull to Active Ring"
+                                          >
+                                            <ChevronLeft size={18} />
+                                          </button>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
-                                  <div className="flex flex-col items-end gap-2 shrink-0">
-                                    <button 
-                                      onClick={() => pullBout(item.id)}
-                                      className="p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors"
-                                      title="Pull to Active Ring"
-                                    >
-                                      <ChevronLeft size={18} />
-                                    </button>
-                                  </div>
-                                </div>
-                              ))
-                            )}
+                                  ))
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </div>
+                      );
+                    })()}
                   </>
                 )}
               </div>
@@ -5692,7 +5779,7 @@ export default function App() {
         <AddRingModal
           onClose={() => setShowAddRingModal(false)}
           onAdd={addRing}
-          existingRings={rings.map(r => r.ringNumber)}
+          existingRings={rings.filter(r => !r.isDeleted).map(r => r.ringNumber)}
           namingMode={ringNamingMode}
         />
       )}
@@ -6180,6 +6267,7 @@ interface RingCardProps {
   onResumeSuspended?: (boutNumber: string | number) => void;
   onRemoveSuspended?: (boutNumber: string | number) => void;
   onSuspendCurrentBout?: () => void;
+  transfers?: BoutTransferBroadcast[];
 }
 
 interface EditResultModalProps {
@@ -6897,7 +6985,14 @@ function AddRingModal({ onClose, onAdd, existingRings, namingMode }: AddRingModa
   );
 }
 
-function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onPointsUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, currentEventId, onForceSync, isAutoPull, onToggleAutoPull, user, boutNumberingMode = 'alphanumeric', layout = 'winner', showInspectionPopupSetting = true, onReturnToQueue, onResumeSuspended, onRemoveSuspended, onSuspendCurrentBout }: RingCardProps & { currentEventId?: string | null, onForceSync?: (data: MatchData) => void }) {
+function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdate, onPointsUpdate, onUpdateTotalBouts, onStart, onDelete, onWinnerSelect, currentEventId, onForceSync, isAutoPull, onToggleAutoPull, user, boutNumberingMode = 'alphanumeric', layout = 'winner', showInspectionPopupSetting = true, onReturnToQueue, onResumeSuspended, onRemoveSuspended, onSuspendCurrentBout, transfers = [] }: RingCardProps & { currentEventId?: string | null, onForceSync?: (data: MatchData) => void }) {
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isFinalBoutSelection, setIsFinalBoutSelection] = useState(false);
   const [isSyncingLocal, setIsSyncingLocal] = useState(false);
@@ -6993,6 +7088,20 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
   }, [current?.bout, current?.blue_inspected, current?.red_inspected, isPoomsaeMode, dismissedBouts, currentEventId, ring.ringNumber]);
   
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
+  
+  const activeTransfersForRing = (transfers || []).filter(t => {
+    if (!t.isPinned) return false;
+    const expiry = new Date(t.pinnedUntil);
+    if (expiry <= now) return false;
+    
+    const ringNumStr = ring.ringNumber.toString().trim().toUpperCase();
+    const ringNameNorm = ringName.trim().toUpperCase();
+    const fromRingNorm = t.fromRing.trim().toUpperCase();
+    const toRingNorm = t.toRing.trim().toUpperCase();
+    
+    return fromRingNorm === ringNumStr || fromRingNorm === ringNameNorm ||
+           toRingNorm === ringNumStr || toRingNorm === ringNameNorm;
+  });
   
   const progress = ring.totalBouts && current ? Math.min(100, (getBoutNumber(current.bout) / ring.totalBouts) * 100) : 0;
 
@@ -7170,6 +7279,18 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
           )}
         </div>
       </div>
+
+      {activeTransfersForRing.map(t => (
+        <div 
+          key={t.id} 
+          className="bg-yellow-500 text-slate-950 px-5 py-3 flex items-center justify-between gap-3 font-bold text-xs uppercase animate-pulse border-b border-yellow-400"
+        >
+          <span className="flex items-center gap-2">
+            <Bell size={14} className="shrink-0 text-slate-950 animate-bounce" />
+            <span>Bout Transfer Notice: Ring {t.fromRing} ➡️ Ring {t.toRing} - Bout {t.boutNumber}</span>
+          </span>
+        </div>
+      ))}
 
       {ring.totalBouts && (
         <div className="h-1 bg-slate-800 w-full relative z-10">
@@ -7885,6 +8006,7 @@ interface PublicRingCardProps {
   showPublicStandbyQueue?: boolean;
   showEmptyBoutAsInactive?: boolean;
   publicViewLayout?: 'standard' | 'point';
+  transfers?: BoutTransferBroadcast[];
 }
 
 function StandbyView({ 
@@ -8047,6 +8169,21 @@ function StandbyView({
 
       <div className="flex-1 p-4 space-y-4">
         {displayedRings.map((ring, i) => {
+          const activeTransfersForRing = (boutTransfers || []).filter(t => {
+            if (!t.isPinned) return false;
+            const expiry = new Date(t.pinnedUntil);
+            const nowTime = new Date();
+            if (expiry <= nowTime) return false;
+            
+            const ringNumStr = ring.ringNumber.toString().trim().toUpperCase();
+            const ringNameNorm = (namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber)).trim().toUpperCase();
+            const fromRingNorm = t.fromRing.trim().toUpperCase();
+            const toRingNorm = t.toRing.trim().toUpperCase();
+            
+            return fromRingNorm === ringNumStr || fromRingNorm === ringNameNorm ||
+                   toRingNorm === ringNumStr || toRingNorm === ringNameNorm;
+          });
+
           const ringQueueAll = boutQueue
             .filter(q => 
               q.data.ring === ring.ringNumber && 
@@ -8098,6 +8235,15 @@ function StandbyView({
                     {cleanPlaceholder(current?.category || "")}
                   </div>
                 </div>
+                {activeTransfersForRing.map(t => (
+                  <div 
+                    key={t.id} 
+                    className="bg-yellow-500 text-slate-950 font-black text-xs uppercase px-4 py-1.5 flex items-center gap-2 animate-pulse border-b border-yellow-400 shrink-0"
+                  >
+                    <Bell size={12} className="shrink-0 animate-bounce" />
+                    <span>BOUT TRANSFER: Court {t.fromRing} ➡️ Court {t.toRing} - Bout {t.boutNumber}</span>
+                  </div>
+                ))}
                 {/* Content */}
                 <div className="flex-1 grid grid-cols-12">
                   {(!current || !hasPlayers(current)) && showEmptyBoutAsInactive ? (
@@ -9528,6 +9674,7 @@ function PublicDashboardView({
                     showPublicStandbyQueue={showPublicStandbyQueue}
                     showEmptyBoutAsInactive={showEmptyBoutAsInactive}
                     publicViewLayout={publicViewLayout}
+                    transfers={boutTransfers}
                   />
                 );
               })}
@@ -9566,9 +9713,31 @@ function PublicDashboardView({
   );
 }
 
-function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, boutNumberingMode = 'alphanumeric', ringQueue, showPublicStandbyQueue = true, showEmptyBoutAsInactive = false, publicViewLayout = 'standard' }: PublicRingCardProps) {
+function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, boutNumberingMode = 'alphanumeric', ringQueue, showPublicStandbyQueue = true, showEmptyBoutAsInactive = false, publicViewLayout = 'standard', transfers = [] }: PublicRingCardProps) {
+  const [now, setNow] = React.useState(new Date());
+
+  React.useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const current = ring.currentBout;
   const ringName = namingMode === 'number' ? ring.ringNumber.toString() : String.fromCharCode(64 + ring.ringNumber);
+  
+  const activeTransfersForRing = (transfers || []).filter(t => {
+    if (!t.isPinned) return false;
+    const expiry = new Date(t.pinnedUntil);
+    if (expiry <= now) return false;
+    
+    const ringNumStr = ring.ringNumber.toString().trim().toUpperCase();
+    const ringNameNorm = ringName.trim().toUpperCase();
+    const fromRingNorm = t.fromRing.trim().toUpperCase();
+    const toRingNorm = t.toRing.trim().toUpperCase();
+    
+    return fromRingNorm === ringNumStr || fromRingNorm === ringNameNorm ||
+           toRingNorm === ringNumStr || toRingNorm === ringNameNorm;
+  });
+
   const isRingInactive = showEmptyBoutAsInactive && (!current || !hasPlayers(current));
   const isPoomsaeModeCurrent = current?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
                                current?.category?.toUpperCase().includes('FREESTYLE') ||
@@ -9651,6 +9820,22 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
       </div>
       
       <div className="p-2.5 sm:p-6 space-y-2.5 sm:space-y-4">
+        {activeTransfersForRing.map(t => (
+          <div 
+            key={t.id} 
+            className="bg-yellow-500 text-slate-950 border-2 border-yellow-400 rounded-xl p-2 md:p-3 flex flex-col items-center justify-center text-center gap-1 shadow-[0_4px_12px_rgba(234,179,8,0.15)] animate-pulse"
+          >
+            <div className="flex items-center gap-1.5 justify-center">
+              <Bell size={14} className="shrink-0 text-slate-950 animate-bounce" />
+              <span className="text-[9px] font-black uppercase tracking-wider text-slate-800">
+                Bout Transfer Broadcast
+              </span>
+            </div>
+            <span className="text-[11px] sm:text-xs font-black uppercase tracking-tight text-slate-950 mt-0.5">
+              Court {t.fromRing} ➡️ Court {t.toRing} - Bout {t.boutNumber}
+            </span>
+          </div>
+        ))}
         {(!current || !hasPlayers(current)) && showEmptyBoutAsInactive ? (
           <div className="py-4 sm:py-8 flex flex-col items-center justify-center text-slate-600 space-y-2 sm:space-y-4">
             <AlertCircle className="w-8 h-8 sm:w-12 sm:h-12" />

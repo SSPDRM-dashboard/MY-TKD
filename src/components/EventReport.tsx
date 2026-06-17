@@ -42,7 +42,7 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
   const [searchQuery, setSearchQuery] = useState('');
   
   // Option A (Joint 3rd Place) vs Option B (3rd Place Playoff)
-  const [placementOption, setPlacementOption] = useState<'a' | 'b'>('a');
+  const [placementOption, setPlacementOption] = useState<'a' | 'b'>('b');
   
   // Feature: Option to combine multiple events
   const [includeAllEvents, setIncludeAllEvents] = useState(false);

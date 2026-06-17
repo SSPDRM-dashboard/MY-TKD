@@ -28,13 +28,20 @@ If the specific tournament requires a 4th place ranking:
     - If `third_place_match` exists: Winner = 3rd, Loser = 4th.
     - If not: Both Losers = 3rd.
 
-## Match Numbering Data Rule
+## Match Numbering Data Rule & Three-Part Composite ID Standard
 When processing tournament queries, remember that MATCH = BOUT.
-Match numbers are NOT unique on their own. They reset and duplicate across different Event Names and different Dates. "Match 1" in one event is completely unrelated to "Match 1" in another event.
+Match numbers (e.g., "E09", "B14") are NOT unique on their own. They reset and duplicate across different Event Names and different Dates. "Match 1" or "Bout E09" in one event is completely unrelated to "Match 1" or "Bout E09" in another event.
 
-**Crucial Processing Steps:**
-1. ALWAYS cross-reference the Match Number with the specific Event Name (e.g., "Day 1 Poomsae" vs "Day 2 Kyorugi") or Date.
-2. Never assume Match 1 from yesterday is the same as Match 1 today.
+### CRITICAL DATA SEPARATION RULE:
+1. Every single match must be identified internally by combining the [Date], the [Event Name], and the [Bout Number].
+   - Example Formula: `Date_EventName_BoutNumber`
+   - Example: "2026-06-16_Event A_E09" is treated as completely independent and separate from "2026-06-17_Event A_E09" or "2026-06-16_Event B_E09".
+
+2. When the system or a user requests an update (such as updating a winner or a club name), you must explicitly verify all three criteria—the Date, the Event Name, and the Bout Number—before modifying any values. Never update a bout based on the bout number alone.
+
+3. If data is received or queried without explicit Date and Event Name context, DO NOT guess or apply changes blindly. Immediately halt the process and respond with: "ERROR: Missing Date or Event Name context for unique bout identification."
+
+4. Treat every combination of Date and Event Name as isolated data capsules. Match histories, athlete rosters, and bout queues must never bleed across different days or different events, even if the match codes look identical.
 
 ## 3. Event Management and Administrative Rules
 - **Explicit Permission Prior to Changes**: The system and agent MUST explicitly ask the user for permission and confirm details before executing any code changes, state updates, or database adjustments concerning active tournament events, current configurations, or active logic.
