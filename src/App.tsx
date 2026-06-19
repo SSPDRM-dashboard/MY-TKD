@@ -2299,12 +2299,33 @@ export default function App() {
         if (!nameStr) return;
         const sourceBoutStr = extractWinnerOfBout(nameStr);
         if (sourceBoutStr) {
+          // 1. Prioritize match in the exact SAME ring and category
           let historyMatch = matchHistory.find(h => 
             isBoutMatch(h.bout, sourceBoutStr) && 
             h.eventId === currentEventId &&
+            h.ring === boutData.ring &&
             normalizeStr(h.category) === normalizeStr(boutData.category)
           );
           
+          // 2. Cross-ring match with SAME category
+          if (!historyMatch) {
+            historyMatch = matchHistory.find(h => 
+              isBoutMatch(h.bout, sourceBoutStr) && 
+              h.eventId === currentEventId &&
+              normalizeStr(h.category) === normalizeStr(boutData.category)
+            );
+          }
+          
+          // 3. Fallback: ignore category, prioritizing same ring
+          if (!historyMatch) {
+            historyMatch = matchHistory.find(h => 
+              isBoutMatch(h.bout, sourceBoutStr) && 
+              h.eventId === currentEventId &&
+              h.ring === boutData.ring
+            );
+          }
+
+          // 4. Last fallback: any ring, any category
           if (!historyMatch) {
             historyMatch = matchHistory.find(h => 
               isBoutMatch(h.bout, sourceBoutStr) && 
