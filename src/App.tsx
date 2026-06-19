@@ -780,8 +780,23 @@ export default function App() {
           let historyMatch = matchHistory.find((h: MatchHistoryItem) => 
             isBoutMatch(h.bout, blueBoutId) && 
             h.eventId === currentEventId &&
+            h.ring === bout.ring &&
             normalizeStr(h.category) === normalizeStr(bout.category)
           );
+          if (!historyMatch) {
+            historyMatch = matchHistory.find((h: MatchHistoryItem) => 
+              isBoutMatch(h.bout, blueBoutId) && 
+              h.eventId === currentEventId &&
+              normalizeStr(h.category) === normalizeStr(bout.category)
+            );
+          }
+          if (!historyMatch) {
+            historyMatch = matchHistory.find((h: MatchHistoryItem) => 
+              isBoutMatch(h.bout, blueBoutId) && 
+              h.eventId === currentEventId &&
+              h.ring === bout.ring
+            );
+          }
           if (!historyMatch) {
             historyMatch = matchHistory.find((h: MatchHistoryItem) => 
               isBoutMatch(h.bout, blueBoutId) && 
@@ -800,8 +815,23 @@ export default function App() {
           let historyMatch = matchHistory.find((h: MatchHistoryItem) => 
             isBoutMatch(h.bout, redBoutId) && 
             h.eventId === currentEventId &&
+            h.ring === bout.ring &&
             normalizeStr(h.category) === normalizeStr(bout.category)
           );
+          if (!historyMatch) {
+            historyMatch = matchHistory.find((h: MatchHistoryItem) => 
+              isBoutMatch(h.bout, redBoutId) && 
+              h.eventId === currentEventId &&
+              normalizeStr(h.category) === normalizeStr(bout.category)
+            );
+          }
+          if (!historyMatch) {
+            historyMatch = matchHistory.find((h: MatchHistoryItem) => 
+              isBoutMatch(h.bout, redBoutId) && 
+              h.eventId === currentEventId &&
+              h.ring === bout.ring
+            );
+          }
           if (!historyMatch) {
             historyMatch = matchHistory.find((h: MatchHistoryItem) => 
               isBoutMatch(h.bout, redBoutId) && 
@@ -2202,7 +2232,6 @@ export default function App() {
 
   useEffect(() => {
     // Advancement logic: Pull winners to next bouts based on mappings
-    return; // DISABLED TO PREVENT RACE CONDITIONS
     if (!currentEventId) {
       return;
     }
