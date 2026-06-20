@@ -119,13 +119,16 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
       updatedCategory = updatedCategory.replace(/\s*\(INDIVIDUAL POOMSAE\)/gi, '').replace(/INDIVIDUAL POOMSAE/gi, '').trim();
     }
 
+    const containsPlaceholder = /WINNER(?: OF)?\s+/i.test(formData.blue_name || '') || 
+                                (!formData.is_poomsae_solo && /WINNER(?: OF)?\s+/i.test(formData.red_name || ''));
+
     onSubmit(formData.ring, formData.bout, {
       blue_name: formData.blue_name,
       blue_club: formData.blue_club,
       red_name: formData.is_poomsae_solo ? '' : formData.red_name,
       red_club: formData.is_poomsae_solo ? '' : formData.red_club,
       category: updatedCategory,
-      isManuallyEdited: true
+      isManuallyEdited: !containsPlaceholder
     });
     onClose();
   };

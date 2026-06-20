@@ -239,12 +239,7 @@ function useSyncedState<T>(key: string, initialValue: T) {
               const remoteRingsStr = JSON.stringify(remoteRings);
               lastRemoteValue.current = remoteRingsStr;
               
-              setState(mergedRings as unknown as T);
-              localStorage.setItem(key, JSON.stringify(mergedRings));
-              
-              setTimeout(() => {
-                setSyncedState(mergedRings as unknown as T);
-              }, 100);
+              setSyncedState(mergedRings as unknown as T);
               return;
             } else {
               remoteValue = mergedRings;
@@ -782,7 +777,6 @@ export default function App() {
       let queueUpdated = false;
       
       const processBout = (bout: MatchData) => {
-        if (bout.isManuallyEdited) return false;
         let updated = false;
         
         const { matchHistory, currentEventId, events } = latestDataRef.current;
@@ -791,9 +785,17 @@ export default function App() {
 
         const normalizeStr = (s: string | null | undefined) => s ? s.toLowerCase().replace(/[^a-z0-9]/g, '').trim() : '';
 
+        // Helper to determine if a field is currently a placeholder or empty
+        const isPlaceholderOrEmpty = (name: string | null | undefined) => {
+          if (!name) return true;
+          const u = name.trim().toUpperCase();
+          return u === '' || u === '-' || u === '---' || u.startsWith('WINNER OF ') || cleanPlaceholder(name) === '---';
+        };
+
         // 1. Try to fulfill "WINNER OF X" placeholders using matchHistory
         const blueBoutId = extractWinnerOfBout(bout.blue_name);
-        if (blueBoutId) {
+        // Only allow automatic advancement if this field is currently a placeholder or empty, or not manually edited
+        if (blueBoutId && (isPlaceholderOrEmpty(bout.blue_name) || !bout.isManuallyEdited)) {
           let historyMatch = matchHistory.find((h: MatchHistoryItem) => 
             isBoutMatch(h.bout, blueBoutId) && 
             h.eventId === currentEventId &&
@@ -828,7 +830,8 @@ export default function App() {
         }
         
         const redBoutId = extractWinnerOfBout(bout.red_name);
-        if (redBoutId) {
+        // Only allow automatic advancement if this field is currently a placeholder or empty, or not manually edited
+        if (redBoutId && (isPlaceholderOrEmpty(bout.red_name) || !bout.isManuallyEdited)) {
           let historyMatch = matchHistory.find((h: MatchHistoryItem) => 
             isBoutMatch(h.bout, redBoutId) && 
             h.eventId === currentEventId &&
@@ -871,18 +874,24 @@ export default function App() {
           return matchesBout && matchesRing && matchesEvent;
         });
         if (sheetM) {
+          // Rule: If the bout was manually edited, we only let sheet names overwrite the corner name
+          // if that corner is CURRENTLY a placeholder or empty. If it contains a real name, we NEVER let sheets overwrite it.
           if (sheetM.blueName && sheetM.blueName !== '-' && !/WINNER(?: OF)?\s+/i.test(sheetM.blueName)) {
-            if (bout.blue_name?.toUpperCase() !== sheetM.blueName.toUpperCase()) {
-              bout.blue_name = sheetM.blueName.toUpperCase();
-              if (sheetM.blueClub) bout.blue_club = sheetM.blueClub.toUpperCase();
-              updated = true;
+            if (isPlaceholderOrEmpty(bout.blue_name) || !bout.isManuallyEdited) {
+              if (bout.blue_name?.toUpperCase() !== sheetM.blueName.toUpperCase()) {
+                bout.blue_name = sheetM.blueName.toUpperCase();
+                if (sheetM.blueClub) bout.blue_club = sheetM.blueClub.toUpperCase();
+                updated = true;
+              }
             }
           }
           if (sheetM.redName && sheetM.redName !== '-' && !/WINNER(?: OF)?\s+/i.test(sheetM.redName)) {
-            if (bout.red_name?.toUpperCase() !== sheetM.redName.toUpperCase()) {
-              bout.red_name = sheetM.redName.toUpperCase();
-              if (sheetM.redClub) bout.red_club = sheetM.redClub.toUpperCase();
-              updated = true;
+            if (isPlaceholderOrEmpty(bout.red_name) || !bout.isManuallyEdited) {
+              if (bout.red_name?.toUpperCase() !== sheetM.redName.toUpperCase()) {
+                bout.red_name = sheetM.redName.toUpperCase();
+                if (sheetM.redClub) bout.red_club = sheetM.redClub.toUpperCase();
+                updated = true;
+              }
             }
           }
         }
@@ -2117,9 +2126,9 @@ export default function App() {
     });
 
     if (ring && ring.totalBouts && nextExpectedBout <= ring.totalBouts) {
-      const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
-      if (nextBoutIndex !== -1) {
-        pullBout(boutQueue[nextBoutIndex].id);
+      const sortedQueueForRing = getFilteredQueue(ringNumber);
+      if (sortedQueueForRing.length > 0) {
+        pullBout(sortedQueueForRing[0].id);
       }
     }
     
@@ -2584,7 +2593,10 @@ export default function App() {
           if (bout && isBoutMatch(bout.bout, targetBoutStr)) {
             found = true;
             if (bout.isManuallyEdited) {
-              return bout;
+              const hasPlaceholder = /WINNER(?: OF)?\s+/i.test(bout.blue_name || '') || /WINNER(?: OF)?\s+/i.test(bout.red_name || '');
+              if (!hasPlaceholder) {
+                return bout;
+              }
             }
             const newData = { ...bout };
             let boutChanged = false;
@@ -2626,7 +2638,10 @@ export default function App() {
         if (isBoutMatch(item.data.bout, targetBoutStr)) {
           found = true;
           if (item.data.isManuallyEdited) {
-            return item;
+            const hasPlaceholder = /WINNER(?: OF)?\s+/i.test(item.data.blue_name || '') || /WINNER(?: OF)?\s+/i.test(item.data.red_name || '');
+            if (!hasPlaceholder) {
+              return item;
+            }
           }
           const newData = { ...item.data };
           let itemChanged = false;
@@ -2837,6 +2852,37 @@ export default function App() {
       const normalizedBout = normalizeBoutWithRing(q.data.bout, ringNumber);
       const isCompleted = currentCompletedHistory.some(h => isBoutMatch(h.bout, normalizedBout));
       return !isCompleted;
+    });
+
+    // Sort ringQueue so that nextItemToPull is the first/top upcoming bout in actual sorted sequence
+    ringQueue.sort((a, b) => {
+      const parseBout = (bout: string | number) => {
+        let s = bout.toString().replace(/\s+/g, '').toUpperCase();
+        s = s.replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
+        if (/^[A-Z]/.test(s)) return s;
+        const parsed = parseInt(s.replace(/[^0-9]/g, ''));
+        return isNaN(parsed) ? s : parsed;
+      };
+
+      const valA = parseBout(a.data.bout);
+      const valB = parseBout(b.data.bout);
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        if (valA !== valB) return valA - valB;
+      } else if (typeof valA === 'string' && typeof valB === 'string') {
+        if (valA !== valB) return valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+      } else if (typeof valA === 'number') {
+        return -1;
+      } else {
+        return 1;
+      }
+      
+      const strA = (a.data.bout || '').toString();
+      const strB = (b.data.bout || '').toString();
+      if (a.id === b.id) return 0;
+      const strCmp = strA.localeCompare(strB, undefined, { numeric: true, sensitivity: 'base' });
+      if (strCmp !== 0) return strCmp;
+      return a.id.localeCompare(b.id);
     });
 
     const nextBoutIndex = boutQueue.findIndex(q => {
@@ -3134,7 +3180,10 @@ export default function App() {
           const updated = [...prev];
           const existing = updated[existingQueueIndex].data;
           if (existing.isManuallyEdited) {
-            return prev;
+            const hasPlaceholder = /WINNER(?: OF)?\s+/i.test(existing.blue_name || '') || /WINNER(?: OF)?\s+/i.test(existing.red_name || '');
+            if (!hasPlaceholder) {
+              return prev;
+            }
           }
           updated[existingQueueIndex].data = {
             ...existing,
@@ -3161,7 +3210,10 @@ export default function App() {
                 (boutInSlot.eventId === currentEventId || !boutInSlot.eventId) &&
                 normHelper(boutInSlot.category) === normHelper(targetCategory)) {
               if (boutInSlot.isManuallyEdited) {
-                return;
+                const hasPlaceholder = /WINNER(?: OF)?\s+/i.test(boutInSlot.blue_name || '') || /WINNER(?: OF)?\s+/i.test(boutInSlot.red_name || '');
+                if (!hasPlaceholder) {
+                  return;
+                }
               }
               updatedRing = {
                 ...updatedRing,
@@ -3438,7 +3490,7 @@ export default function App() {
 
   const startRing = (ringNumber: number) => {
     const ring = rings.find(r => r.ringNumber === ringNumber);
-    const nextBoutIndex = boutQueue.findIndex(q => q.data.ring === ringNumber && (!q.data.eventId || q.data.eventId === currentEventId));
+    const sortedQueueForRing = getFilteredQueue(ringNumber);
     
     // Reset final bouts flag when starting a new session
     setRings(prev => {
@@ -3447,8 +3499,8 @@ export default function App() {
       return updated;
     });
 
-    if (nextBoutIndex !== -1) {
-      pullBout(boutQueue[nextBoutIndex].id);
+    if (sortedQueueForRing.length > 0) {
+      pullBout(sortedQueueForRing[0].id);
     } else if (ring && ring.totalBouts) {
       // If queue is empty but we have total bouts, show the missing bout prompt
       const expectedBout = ring.nextBoutNumber || 1;
@@ -9861,7 +9913,7 @@ function PublicDashboardView({
               <LayoutDashboard size={18} className="text-red-500" />
               Live Ring Status
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
               {displayedRings.map((ring, i) => {
                 const ringQueueAllSorted = boutQueue
                   .filter(q => q.data.ring === ring.ringNumber)
@@ -10248,7 +10300,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
         )}
 
         {/* Public Standby Queue */}
-        {!isRingInactive && showPublicStandbyQueue && ringQueue && ringQueue.length > 0 && (
+        {showPublicStandbyQueue && ringQueue && ringQueue.length > 0 && (
           <div className="mt-4 sm:mt-6 border-t border-slate-700 pt-3 sm:pt-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] sm:tracking-[0.2em] flex items-center gap-1.5">
@@ -10266,12 +10318,21 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                   <div key={idx} className="flex flex-col bg-slate-900 rounded-lg sm:rounded-xl border border-slate-700 overflow-hidden shadow-sm">
                     {/* Top bar with category */}
                     <div className="flex items-center justify-between px-2 sm:px-3 py-1 bg-slate-800/40 border-b border-slate-700/50">
-                      <span className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate max-w-[80%]">
+                      <span className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate max-w-[50%]">
                         {formatCategoryName(bout?.data?.category)}
                       </span>
-                      {isPoomsaeItem && (
-                        <span className="text-[8px] sm:text-[9px] font-black text-blue-400 uppercase tracking-wider">Poomsae</span>
-                      )}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {idx === 0 ? (
+                          <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded text-[8px] sm:text-[9px] font-black uppercase tracking-wider">BOUT 1 (ON DECK)</span>
+                        ) : idx === 1 ? (
+                          <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded text-[8px] sm:text-[9px] font-black uppercase tracking-wider">BOUT 2 (IN THE HOLE)</span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 bg-slate-500/20 text-slate-300 border border-slate-500/30 rounded text-[8px] sm:text-[9px] font-black uppercase tracking-wider">BOUT {idx + 1}</span>
+                        )}
+                        {isPoomsaeItem && (
+                          <span className="text-[8px] sm:text-[9px] font-black text-blue-400 uppercase tracking-wider">Poomsae</span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-center min-h-[2.5rem] sm:min-h-[3rem]">
