@@ -845,6 +845,36 @@ export function AIBracketSetup({
         };
       });
 
+      // Align placeholder names in processedMatches with the advancement mappings
+      previewData.mappings.forEach((m) => {
+        const targetBout = normalizeBoutNumber(m.nextBout || '');
+        const sourceBout = normalizeBoutNumber(m.sourceBout || '');
+        const slot = (m.slot || '').toLowerCase().trim();
+        
+        // Find the next bout match in processedMatches
+        const matchToUpdate = processedMatches.find((match: MatchData) => 
+          isBoutMatch(match.bout, targetBout)
+        );
+        
+        if (matchToUpdate) {
+          const placeholderStr = `WINNER OF ${sourceBout}`;
+          if (slot === 'blue' || slot === 'chung') {
+            // Check if current name is empty or currently looks like a placeholder
+            const currName = (matchToUpdate.blue_name || '').toUpperCase().trim();
+            if (!currName || currName === 'WINNER' || currName.includes('WINNER OF') || currName.includes('WINNER') || currName.match(/^[A-L]?\d+$/)) {
+              matchToUpdate.blue_name = placeholderStr;
+              matchToUpdate.blue_club = '';
+            }
+          } else if (slot === 'red' || slot === 'hong') {
+            const currName = (matchToUpdate.red_name || '').toUpperCase().trim();
+            if (!currName || currName === 'WINNER' || currName.includes('WINNER OF') || currName.includes('WINNER') || currName.match(/^[A-L]?\d+$/)) {
+              matchToUpdate.red_name = placeholderStr;
+              matchToUpdate.red_club = '';
+            }
+          }
+        }
+      });
+
       // 1. Save Mappings to Firestore (event_logic) with uppercase category matching
       const mappingPromises = previewData.mappings.map(m => {
         const matchingMatch = processedMatches.find((match: MatchData) => 

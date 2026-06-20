@@ -3,7 +3,7 @@ import { Download, AlertCircle, RefreshCw, Eraser, Check, History, X, Search, Pr
 import { motion } from 'motion/react';
 import { MatchData, RingStatus, EventData, MatchHistoryItem } from '../types';
 import Papa from 'papaparse';
-import { cn, formatBoutNumber, normalizeBoutNumber, normalizeBoutWithRing, parseRingNumber, getEventSpreadsheetUrl } from '../lib/utils';
+import { cn, formatBoutNumber, normalizeBoutNumber, normalizeBoutWithRing, parseRingNumber, getEventSpreadsheetUrl, isBoutMatch } from '../lib/utils';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { handleGlobalQuotaTrigger, isFirestoreQuotaExceeded } from '../App';
 import { db } from '../firebase';
@@ -320,25 +320,109 @@ export function TASheet({
   clubs = [],
   onCreateManualInspectionBout
 }: TASheetProps) {
-  const [matches, setMatches] = useState<SheetMatch[]>([]);
   const [fallbackMatches, setFallbackMatches] = useState<SheetMatch[]>([]);
   const [internalSelectedRing, setInternalSelectedRing] = useState<string>('');
   const [internalSelectedMatchNo, setInternalSelectedMatchNo] = useState<string>('');
+
+  const matches = React.useMemo(() => {
+    const allMatches: SheetMatch[] = [];
+
+    if (!currentEventId) {
+      return [];
+    }
+
+    // Add matches from rings
+    rings.forEach(ring => {
+      const ringMatches = [ring.currentBout, ring.onDeck, ring.inTheHole].filter(Boolean) as MatchData[];
+      ringMatches.forEach(match => {
+        if (match.eventId === currentEventId) {
+          allMatches.push({
+            eventName: currentEventName || '',
+            ringNo: match.ring.toString(),
+            matchNo: match.bout.toString(),
+            category: match.category || '',
+            blueName: match.blue_name || '',
+            blueClub: match.blue_club || '',
+            redName: match.red_name || '',
+            redClub: match.red_club || ''
+          });
+        }
+      });
+    });
+
+    // Add matches from queue
+    boutQueue.forEach(item => {
+      const match = item.data;
+      if (match.eventId === currentEventId) {
+        allMatches.push({
+          eventName: currentEventName || '',
+          ringNo: match.ring.toString(),
+          matchNo: match.bout.toString(),
+          category: match.category || '',
+          blueName: match.blue_name || '',
+          blueClub: match.blue_club || '',
+          redName: match.red_name || '',
+          redClub: match.red_club || ''
+        });
+      }
+    });
+
+    // Merge fallback matches (only add if not already in allMatches)
+    fallbackMatches.forEach(fallbackMatch => {
+      if (currentEventName && fallbackMatch.eventName && fallbackMatch.eventName.trim().toLowerCase() !== currentEventName.trim().toLowerCase()) {
+        return;
+      }
+      const exists = allMatches.some(m => m.ringNo === fallbackMatch.ringNo && m.matchNo === fallbackMatch.matchNo);
+      if (!exists) {
+        allMatches.push(fallbackMatch);
+      }
+    });
+
+    // Sort matches by bout number to correctly handle alphanumeric combinations (e.g., A01, B02)
+    allMatches.sort((a, b) => {
+      const parseBout = (bout: string | number) => {
+        let s = bout.toString().replace(/\s+/g, '').toUpperCase();
+        s = s.replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
+        if (/^[A-Z]/.test(s)) return s;
+        const parsed = parseInt(s.replace(/[^0-9]/g, ''));
+        return isNaN(parsed) ? s : parsed;
+      };
+
+      const valA = parseBout(a.matchNo);
+      const valB = parseBout(b.matchNo);
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        if (valA !== valB) return valA - valB;
+      } else if (typeof valA === 'string' && typeof valB === 'string') {
+        if (valA !== valB) return valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+      } else if (typeof valA === 'number') {
+        return -1;
+      } else {
+        return 1;
+      }
+      return 0;
+    });
+
+    return allMatches;
+  }, [boutQueue, rings, currentEventName, fallbackMatches, currentEventId]);
   
   const selectedRing = sharedRing !== undefined ? sharedRing : internalSelectedRing;
   const selectedMatchNo = sharedMatchNo !== undefined ? sharedMatchNo : internalSelectedMatchNo;
 
   const setSelectedRing = (ring: string) => {
+    console.log('[LOOP TRACE] setSelectedRing:', ring);
     if (onSharedSelectionChange) onSharedSelectionChange(ring, selectedMatchNo);
     setInternalSelectedRing(ring);
   };
 
   const setSelectedMatchNo = (matchNo: string) => {
+    console.log('[LOOP TRACE] setSelectedMatchNo:', matchNo);
     if (onSharedSelectionChange) onSharedSelectionChange(selectedRing, matchNo);
     setInternalSelectedMatchNo(matchNo);
   };
 
   const setRingAndMatch = (ring: string, matchNo: string) => {
+    console.log('[LOOP TRACE] setRingAndMatch:', ring, matchNo);
     if (onSharedSelectionChange) onSharedSelectionChange(ring, matchNo);
     setInternalSelectedRing(ring);
     setInternalSelectedMatchNo(matchNo);
@@ -446,12 +530,6 @@ export function TASheet({
 
     setManualSearchStatus('not_found');
   }, [manualRing, manualMatchNo, matches, rings, boutQueue]);
-
-  useEffect(() => {
-    if (categories && categories.length > 0 && !manualCategory) {
-      setManualCategory(categories[0]);
-    }
-  }, [categories, manualCategory]);
 
   useEffect(() => {
     setBlueChecklist(new Set());
@@ -629,105 +707,8 @@ export function TASheet({
     }
   }, [currentEventId]);
 
-  useEffect(() => {
-    const allMatches: SheetMatch[] = [];
+  // Selection states are synchronized safely below
 
-    if (!currentEventId) {
-      setMatches([]);
-      setRingAndMatch('', '');
-      return;
-    }
-
-    // Add matches from rings
-    rings.forEach(ring => {
-      const ringMatches = [ring.currentBout, ring.onDeck, ring.inTheHole].filter(Boolean) as MatchData[];
-      ringMatches.forEach(match => {
-        if (match.eventId === currentEventId) {
-          allMatches.push({
-            eventName: currentEventName || '',
-            ringNo: match.ring.toString(),
-            matchNo: match.bout.toString(),
-            category: match.category || '',
-            blueName: match.blue_name || '',
-            blueClub: match.blue_club || '',
-            redName: match.red_name || '',
-            redClub: match.red_club || ''
-          });
-        }
-      });
-    });
-
-    // Add matches from queue
-    boutQueue.forEach(item => {
-      const match = item.data;
-      if (match.eventId === currentEventId) {
-        allMatches.push({
-          eventName: currentEventName || '',
-          ringNo: match.ring.toString(),
-          matchNo: match.bout.toString(),
-          category: match.category || '',
-          blueName: match.blue_name || '',
-          blueClub: match.blue_club || '',
-          redName: match.red_name || '',
-          redClub: match.red_club || ''
-        });
-      }
-    });
-
-    // Merge fallback matches (only add if not already in allMatches)
-    fallbackMatches.forEach(fallbackMatch => {
-      if (currentEventName && fallbackMatch.eventName && fallbackMatch.eventName.trim().toLowerCase() !== currentEventName.trim().toLowerCase()) {
-        return;
-      }
-      const exists = allMatches.some(m => m.ringNo === fallbackMatch.ringNo && m.matchNo === fallbackMatch.matchNo);
-      if (!exists) {
-        allMatches.push(fallbackMatch);
-      }
-    });
-
-    // Sort matches by bout number to correctly handle alphanumeric combinations (e.g., A01, B02)
-    allMatches.sort((a, b) => {
-      const parseBout = (bout: string | number) => {
-        let s = bout.toString().replace(/\s+/g, '').toUpperCase();
-        s = s.replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
-        if (/^[A-Z]/.test(s)) return s;
-        const parsed = parseInt(s.replace(/[^0-9]/g, ''));
-        return isNaN(parsed) ? s : parsed;
-      };
-
-      const valA = parseBout(a.matchNo);
-      const valB = parseBout(b.matchNo);
-
-      if (typeof valA === 'number' && typeof valB === 'number') {
-        if (valA !== valB) return valA - valB;
-      } else if (typeof valA === 'string' && typeof valB === 'string') {
-        if (valA !== valB) return valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
-      } else if (typeof valA === 'number') {
-        return -1;
-      } else {
-        return 1;
-      }
-      return 0;
-    });
-
-    setMatches(allMatches);
-
-    // Auto-select first available ring if none selected or if selected ring has no matches
-    if (allMatches.length > 0) {
-      const uniqueRings = Array.from(new Set(allMatches.map(m => m.ringNo)));
-      if (!selectedRing || !uniqueRings.includes(selectedRing)) {
-        const firstRing = uniqueRings[0];
-        const firstMatch = allMatches.find(m => m.ringNo === firstRing);
-        if (firstMatch) {
-          setRingAndMatch(firstRing, firstMatch.matchNo);
-        } else {
-          setSelectedRing(firstRing);
-        }
-      }
-    } else {
-      setRingAndMatch('', '');
-    }
-  }, [boutQueue, rings, currentEventName, fallbackMatches]);
 
   // Helper to check if any match in a list is signed
   const getMatchStatus = (m: SheetMatch) => {
@@ -767,97 +748,140 @@ export function TASheet({
     fetchFallbackData(true);
   };
 
-  const filteredMatches = matches.filter(m => {
-    // Check if the match is completed in matchHistory
-    const isCompleted = matchHistory.some(h => 
-      h.eventId === currentEventId && 
-      normalizeBoutNumber(h.bout) === normalizeBoutNumber(m.matchNo)
-    );
-    if (isCompleted) {
-      return false;
-    }
-
-    // ALWAYS include the currently selected match so it doesn't disappear during reprint
-    if (m.ringNo === selectedRing && m.matchNo === selectedMatchNo && selectedMatchNo) {
-      return true;
-    }
-
-    const isPrinted = printedMatches.has(`${m.ringNo}-${m.matchNo}`);
-    const status = getMatchStatus(m);
-    const isSigned = status.isSigned;
-    
-    // Check if this match is currently in one of the active ring slots (Current, On Deck, In The Hole)
-    const isInActiveRing = rings.some(r => 
-      (r.ringNumber.toString() === m.ringNo || 
-       r.currentBout?.originalRing?.toString() === m.ringNo || 
-       r.onDeck?.originalRing?.toString() === m.ringNo || 
-       r.inTheHole?.originalRing?.toString() === m.ringNo) && (
-        (r.currentBout && r.currentBout.bout.toString() === m.matchNo) ||
-        (r.onDeck && r.onDeck.bout.toString() === m.matchNo) ||
-        (r.inTheHole && r.inTheHole.bout.toString() === m.matchNo)
-      )
-    );
-
-    if (searchQuery) {
-      const searchLower = searchQuery.toLowerCase();
-      const matchNoMatch = m.matchNo.toLowerCase().includes(searchLower);
-      const blueMatch = m.blueName.toLowerCase().includes(searchLower);
-      const redMatch = m.redName.toLowerCase().includes(searchLower);
-      const catMatch = m.category.toLowerCase().includes(searchLower);
-      const ringMatch = `ring ${m.ringNo}`.toLowerCase().includes(searchLower) || m.ringNo.toLowerCase() === searchLower;
-      return matchNoMatch || blueMatch || redMatch || catMatch || ringMatch;
-    }
-    
-    // For TA account, hide matches based on the current view mode
-    if (viewMode === 'signature') {
-      // For player signature, remove match from list once both players have signed
-      // But if it's in the active ring and not both signed, it MUST be visible
-      return !isSigned;
-    } else {
-      // For TA sheet, keep it if it's in an active ring and not fully signed/inspected,
-      // OR if it hasn't been printed yet.
-      if (isInActiveRing && !isSigned) return true;
-      
-      // Otherwise, hide if already printed
-      return !isPrinted;
-    }
-  });
-
-  const uniqueRings = Array.from(new Set(filteredMatches.map(m => m.ringNo))).sort((a, b) => {
-    const numA = parseInt(a as string);
-    const numB = parseInt(b as string);
-    if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-    return (a as string).localeCompare(b as string);
-  });
-  
-  const ringMatches = filteredMatches.filter(m => m.ringNo === selectedRing);
-
-  // Auto-reset selection if the current match becomes hidden (e.g., signed or printed)
-  useEffect(() => {
-    if (selectedMatchNo && ringMatches.length > 0) {
-      const isAvailable = ringMatches.some(m => m.matchNo === selectedMatchNo);
-      if (!isAvailable) {
-        // Automatically select the next available match in this ring
-        setSelectedMatchNo(ringMatches[0].matchNo);
+  const filteredMatches = React.useMemo(() => {
+    return matches.filter(m => {
+      // Check if the match is completed in matchHistory
+      const normalizedBout = normalizeBoutWithRing(m.matchNo, parseInt(m.ringNo) || 1);
+      const isCompleted = matchHistory.some(h => 
+        h.eventId === currentEventId && 
+        isBoutMatch(h.bout, normalizedBout)
+      );
+      if (isCompleted) {
+        return false;
       }
-    } else if (!selectedMatchNo && ringMatches.length > 0) {
-      // If none selected but matches available, select first one
-      setSelectedMatchNo(ringMatches[0].matchNo);
-    }
-  }, [ringMatches, selectedMatchNo, viewMode]);
 
-  // Auto-select first search result if search query is active and current match is not in filtered list
+      // ALWAYS include the currently selected match so it doesn't disappear during reprint
+      if (m.ringNo === selectedRing && m.matchNo === selectedMatchNo && selectedMatchNo) {
+        return true;
+      }
+
+      const isPrinted = printedMatches.has(`${m.ringNo}-${m.matchNo}`);
+      const status = getMatchStatus(m);
+      const isSigned = status.isSigned;
+      
+      // Check if this match is currently in one of the active ring slots (Current, On Deck, In The Hole)
+      const isInActiveRing = rings.some(r => 
+        (r.ringNumber.toString() === m.ringNo || 
+         r.currentBout?.originalRing?.toString() === m.ringNo || 
+         r.onDeck?.originalRing?.toString() === m.ringNo || 
+         r.inTheHole?.originalRing?.toString() === m.ringNo) && (
+          (r.currentBout && r.currentBout.bout.toString() === m.matchNo) ||
+          (r.onDeck && r.onDeck.bout.toString() === m.matchNo) ||
+          (r.inTheHole && r.inTheHole.bout.toString() === m.matchNo)
+        )
+      );
+
+      if (searchQuery) {
+        const searchLower = searchQuery.toLowerCase();
+        const matchNoMatch = m.matchNo.toLowerCase().includes(searchLower);
+        const blueMatch = m.blueName.toLowerCase().includes(searchLower);
+        const redMatch = m.redName.toLowerCase().includes(searchLower);
+        const catMatch = m.category.toLowerCase().includes(searchLower);
+        const ringMatch = `ring ${m.ringNo}`.toLowerCase().includes(searchLower) || m.ringNo.toLowerCase() === searchLower;
+        return matchNoMatch || blueMatch || redMatch || catMatch || ringMatch;
+      }
+      
+      // For TA account, hide matches based on the current view mode
+      if (viewMode === 'signature') {
+        // For player signature, remove match from list once both players have signed
+        // But if it's in the active ring and not both signed, it MUST be visible
+        return !isSigned;
+      } else {
+        // For TA sheet, keep it if it's in an active ring and not fully signed/inspected,
+        // OR if it hasn't been printed yet.
+        if (isInActiveRing && !isSigned) return true;
+        
+        // Otherwise, hide if already printed
+        return !isPrinted;
+      }
+    });
+  }, [matches, matchHistory, currentEventId, selectedRing, selectedMatchNo, printedMatches, localSignedMatches, rings, searchQuery, viewMode]);
+
+  const uniqueRings = React.useMemo(() => {
+    return Array.from(new Set(filteredMatches.map(m => m.ringNo))).sort((a, b) => {
+      const numA = parseInt(a as string);
+      const numB = parseInt(b as string);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return (a as string).localeCompare(b as string);
+    });
+  }, [filteredMatches]);
+  
+  const ringMatches = React.useMemo(() => {
+    return filteredMatches.filter(m => m.ringNo === selectedRing);
+  }, [filteredMatches, selectedRing]);
+
+  // Consolidated safe auto-selection effect to prevent cascade loops
   useEffect(() => {
+    // 1. If matches is completely empty, clear selection
+    if (matches.length === 0) {
+      if (selectedRing !== '' || selectedMatchNo !== '') {
+        setRingAndMatch('', '');
+      }
+      return;
+    }
+
+    const uniqueRings = Array.from(new Set(matches.map(m => m.ringNo))) as string[];
+    
+    // 2. Check if current selected ring is valid
+    const isRingValid = selectedRing && uniqueRings.includes(selectedRing);
+    
+    if (!isRingValid) {
+      // If ring is not selected or not valid, select the first available ring
+      const targetRing = uniqueRings[0];
+      // Find matches for this target ring in filteredMatches
+      const targetRingMatches = filteredMatches.filter(m => m.ringNo === targetRing);
+      const targetMatchNo = targetRingMatches.length > 0 ? targetRingMatches[0].matchNo : '';
+      
+      if (selectedRing !== targetRing || selectedMatchNo !== targetMatchNo) {
+        setRingAndMatch(targetRing, targetMatchNo);
+      }
+      return;
+    }
+
+    // 3. If search query is active, ensure we select the first search result if current match is not in the set
     if (searchQuery && filteredMatches.length > 0) {
       const isCurrentInFiltered = filteredMatches.some(
         m => m.ringNo === selectedRing && m.matchNo === selectedMatchNo
       );
       if (!isCurrentInFiltered) {
         const firstMatch = filteredMatches[0];
-        setRingAndMatch(firstMatch.ringNo, firstMatch.matchNo);
+        if (selectedRing !== firstMatch.ringNo || selectedMatchNo !== firstMatch.matchNo) {
+          setRingAndMatch(firstMatch.ringNo, firstMatch.matchNo);
+        }
+        return;
       }
     }
-  }, [searchQuery, filteredMatches, selectedRing, selectedMatchNo]);
+
+    // 4. Current selected ring is valid. Check if current selected match is valid in ringMatches
+    if (ringMatches.length > 0) {
+      if (!selectedMatchNo) {
+        // If no match selected, automatically select the first one
+        const targetMatchNo = ringMatches[0].matchNo;
+        if (selectedMatchNo !== targetMatchNo) {
+          setSelectedMatchNo(targetMatchNo);
+        }
+      } else {
+        const isMatchAvailable = ringMatches.some(m => m.matchNo === selectedMatchNo);
+        if (!isMatchAvailable) {
+          // If selected match is not available (e.g. got printed/signed), select the first available
+          const targetMatchNo = ringMatches[0].matchNo;
+          if (selectedMatchNo !== targetMatchNo) {
+            setSelectedMatchNo(targetMatchNo);
+          }
+        }
+      }
+    }
+  }, [matches, filteredMatches, ringMatches, selectedRing, selectedMatchNo, searchQuery]);
 
   const currentMatch = ringMatches.find(m => m.matchNo === selectedMatchNo) || ringMatches[0];
 

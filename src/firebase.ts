@@ -20,22 +20,43 @@ export const disableFirestoreNetwork = async () => {
   }
 };
 
-// Test Firestore connection on boot
+// Test Firestore connection on boot with safety retries and grace delays
 async function testFirestoreConnection() {
   if (localStorage.getItem('tkd_disable_firebase') === 'true') {
     disableFirestoreNetwork();
     return;
   }
-  try {
-    await getDocFromServer(doc(db, 'sync', 'connection_test'));
-    console.log("Firestore connection verified.");
-  } catch (error: any) {
-    if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
-      console.warn("Firestore Quota Exceeded on boot.");
-      disableFirestoreNetwork();
-      window.dispatchEvent(new CustomEvent('firestore-quota-exceeded'));
-    } else if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("CRITICAL: Firestore is offline. This usually means the configuration in firebase-applet-config.json is incorrect or the database is not ready.");
+
+  // Defer first check to allow network interfaces to fully settle
+  await new Promise(resolve => setTimeout(resolve, 2000));
+
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      await getDocFromServer(doc(db, 'sync', 'connection_test'));
+      console.log("Firestore connection verified.");
+      return; // Success!
+    } catch (error: any) {
+      if (error.code === 'resource-exhausted' || error.message?.toLowerCase().includes('quota')) {
+        console.warn("Firestore Quota Exceeded on boot.");
+        disableFirestoreNetwork();
+        window.dispatchEvent(new CustomEvent('firestore-quota-exceeded'));
+        return;
+      }
+      
+      retries--;
+      if (retries > 0) {
+        console.warn(`Firestore connection attempt failed. Retrying in 2s... (Remaining: ${retries})`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } else {
+        // All retries failed. Handle gracefully to allow local/offline operation.
+        console.log("Firestore connection test finished: cache-first or offline mode active.");
+        if (error instanceof Error && error.message.toLowerCase().includes('offline')) {
+          console.info("Firestore connection check info: Cache/Offline mode is currently active.", error.message);
+        } else {
+          console.info("Firestore connection check info: non-blocking warning.", error);
+        }
+      }
     }
   }
 }

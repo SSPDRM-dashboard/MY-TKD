@@ -206,6 +206,16 @@ function useSyncedState<T>(key: string, initialValue: T) {
               }
             });
             
+            const isRingContentChanged = (r1: any, r2: any): boolean => {
+              if (!r1 || !r2) return true;
+              return JSON.stringify(r1.currentBout) !== JSON.stringify(r2.currentBout) ||
+                JSON.stringify(r1.onDeck) !== JSON.stringify(r2.onDeck) ||
+                JSON.stringify(r1.inTheHole) !== JSON.stringify(r2.inTheHole) ||
+                r1.nextBoutNumber !== r2.nextBoutNumber ||
+                r1.totalBouts !== r2.totalBouts ||
+                r1.isFinalBouts !== r2.isFinalBouts;
+            };
+
             const hasLocalNewer = mergedRings.some((mr) => {
               const lr = localRings.find(r => r.ringNumber === mr.ringNumber);
               const rr = remoteRings.find(r => r.ringNumber === mr.ringNumber);
@@ -215,6 +225,10 @@ function useSyncedState<T>(key: string, initialValue: T) {
               const localVersion = lr.version || 0;
               const remoteVersion = rr.version || 0;
               
+              // Only consider local newer if there is actually a change in the physical contents of the ring
+              const contentChanged = isRingContentChanged(lr, rr);
+              if (!contentChanged) return false;
+
               if (localVersion > remoteVersion) return true;
               if (remoteVersion > localVersion) return false;
               
@@ -715,20 +729,16 @@ export default function App() {
     }
     if (!canWrite) return;
 
-    const completedBoutIds = new Set(
-      matchHistory
-        .filter(h => h.eventId === currentEventId && h.winner && h.winner !== '-' && h.winner.trim() !== '')
-        .map(h => normalizeBoutNumber(h.bout))
-    );
-
-    if (completedBoutIds.size === 0) return;
+    const completedHistory = matchHistory.filter(h => h.eventId === currentEventId && h.winner && h.winner !== '-' && h.winner.trim() !== '');
+    if (completedHistory.length === 0) return;
 
     const remainingBouts = boutQueue.filter(item => {
       // Do NOT filter out custom "restored_" entries if they are meant to be replayed
       if (item.id.startsWith('restored_')) return true;
       
-      const boutNumNorm = normalizeBoutNumber(item.data.bout);
-      return !completedBoutIds.has(boutNumNorm);
+      const normalizedBout = normalizeBoutWithRing(item.data.bout, Number(item.data.ring));
+      const isCompleted = completedHistory.some(h => isBoutMatch(h.bout, normalizedBout));
+      return !isCompleted;
     });
 
     if (remainingBouts.length !== boutQueue.length) {
@@ -1292,11 +1302,7 @@ export default function App() {
   };
 
   const getFilteredQueue = (ringNum?: number) => {
-    const completedBoutIds = new Set(
-      matchHistory
-        .filter(h => h.eventId === currentEventId && h.winner && h.winner !== '-' && h.winner.trim() !== '')
-        .map(h => normalizeBoutNumber(h.bout))
-    );
+    const completedHistory = matchHistory.filter(h => h.eventId === currentEventId && h.winner && h.winner !== '-' && h.winner.trim() !== '');
 
     return boutQueue
       .filter(item => {
@@ -1304,7 +1310,8 @@ export default function App() {
         const itemRing = Number(item.data.ring);
         const matchesRing = ringNum === undefined || itemRing === Number(ringNum);
         const matchesUserRing = user?.role === 'admin' || itemRing === Number(user?.assignedRing);
-        const isCompleted = completedBoutIds.has(normalizeBoutNumber(item.data.bout));
+        const normalizedBout = normalizeBoutWithRing(item.data.bout, itemRing);
+        const isCompleted = completedHistory.some(h => isBoutMatch(h.bout, normalizedBout));
         return matchesEvent && matchesRing && matchesUserRing && !isCompleted;
       })
       .sort((a, b) => {
@@ -1781,6 +1788,140 @@ export default function App() {
       setIsSyncing(false);
     }
   };
+
+  const silentSyncResultsFromSheet = async () => {
+    if (!currentEventId || isFirestoreQuotaExceeded) {
+      return;
+    }
+    
+    let activeUrl = "https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/export?format=csv";
+    if (events.length > 0) {
+      const event = events.find(e => e.id === currentEventId);
+      const resolvedSpreadsheet = getEventSpreadsheetUrl(event);
+      if (resolvedSpreadsheet) {
+        activeUrl = resolvedSpreadsheet;
+        if (!activeUrl.includes('/export?')) {
+          activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
+        }
+      }
+    }
+    
+    try {
+      const response = await fetch(activeUrl);
+      if (!response.ok) return;
+      const csvText = await response.text();
+      
+      Papa.parse(csvText, {
+        complete: async (result) => {
+          try {
+            const rows = result.data as string[][];
+            const currentEventName = getCurrentEventName();
+            const sheetMatches: any[] = [];
+            
+            for (let i = 1; i < rows.length; i++) {
+              const row = rows[i];
+              if (row.length >= 10 && row[2] && row[3]) {
+                const sheetEventName = row[1] || '';
+                
+                // Track matches for name propagation
+                const matchNo = row[3] || '';
+                const ringNo = parseRingNumber(row[2]);
+                const normalizedMatchNo = normalizeBoutWithRing(matchNo, ringNo);
+                const blueName = row[5] || '';
+                const blueClub = row[6] || '';
+                const redName = row[7] || '';
+                const redClub = row[8] || '';
+                const winner = (row.length >= 17 && row[15]) ? (row[15] || '').trim() : (row[9] || '').trim();
+                const winnerClubFromSheet = (row.length >= 17 && row[16]) ? (row[16] || '').trim() : '';
+                const category = row[4] || '';
+
+                sheetMatches.push({
+                  eventName: sheetEventName,
+                  ringNo: row[2] || '',
+                  matchNo: matchNo,
+                  category: category,
+                  blueName: blueName,
+                  blueClub: blueClub,
+                  redName: redName,
+                  redClub: redClub,
+                  winner: winner
+                });
+
+                // Match event name and process details
+                if (currentEventName && sheetEventName.trim().toLowerCase() === currentEventName.trim().toLowerCase()) {
+                  if (winner && winner.trim() && winner !== '-') {
+                    const winnerTrimmed = winner.trim();
+                    const normWinner = winnerTrimmed.toLowerCase();
+                    const normBlue = blueName.toLowerCase();
+                    const normRed = redName.toLowerCase();
+
+                    let winnerClub = winnerClubFromSheet;
+                    let winnerSide: 'Blue' | 'Red' | undefined = undefined;
+                    if (normWinner === normBlue || normBlue.includes(normWinner)) {
+                      if (!winnerClub) winnerClub = blueClub;
+                      winnerSide = 'Blue';
+                    } else if (normWinner === normRed || normRed.includes(normWinner)) {
+                      if (!winnerClub) winnerClub = redClub;
+                      winnerSide = 'Red';
+                    }
+
+                    const historyId = `${currentEventId}_${normalizedMatchNo}`;
+                    const existingItem = latestDataRef.current.matchHistory.find((h) => h.id === historyId);
+                    const isDifferent = !existingItem || 
+                                        existingItem.winner !== winnerTrimmed || 
+                                        existingItem.winnerClub !== winnerClub ||
+                                        existingItem.winnerSide !== winnerSide;
+
+                    if (isDifferent && !isFirestoreQuotaExceeded) {
+                      const historyItem = {
+                        id: historyId,
+                        bout: normalizedMatchNo,
+                        category: category,
+                        winner: winnerTrimmed,
+                        winnerClub: winnerClub,
+                        ...(winnerSide && { winnerSide }),
+                        eventId: currentEventId,
+                        syncedAt: serverTimestamp()
+                      };
+                      setDoc(doc(db, 'matchHistory', historyId), historyItem).catch(err => {
+                        console.error("Silent sync save error:", err);
+                      });
+                    }
+                  }
+                }
+              }
+            }
+
+            // Silently trigger name/placeholder propagation
+            if (sheetMatches.length > 0) {
+              window.dispatchEvent(new CustomEvent('tkd_force_propagate_winners', { detail: sheetMatches }));
+            }
+          } catch (e) {
+            console.error("Silent sync parsing error:", e);
+          }
+        },
+        skipEmptyLines: true
+      });
+    } catch (e) {
+      // Fail silently to prevent spamming console or UI
+    }
+  };
+
+  // Silent Automatic Periodic Synchronization with Google Sheets
+  // Safely pulls winners and direct player details and propagates them in real-time
+  useEffect(() => {
+    if (!currentEventId || isFirestoreQuotaExceeded) return;
+
+    // Run silent sync immediately on currentEventId change
+    silentSyncResultsFromSheet();
+
+    // Set up a background interval to poll changes from the Google Sheet every 60 seconds (60000ms)
+    const interval = setInterval(() => {
+      silentSyncResultsFromSheet();
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [currentEventId, events]);
 
   const pullBout = async (queueId: string) => {
     const item = boutQueue.find(q => q.id === queueId);
@@ -2435,6 +2576,9 @@ export default function App() {
         const updateBout = (bout: MatchData | null) => {
           if (bout && isBoutMatch(bout.bout, targetBoutStr)) {
             found = true;
+            if (bout.isManuallyEdited) {
+              return bout;
+            }
             const newData = { ...bout };
             let boutChanged = false;
             
@@ -2474,6 +2618,9 @@ export default function App() {
       updatedQueue = updatedQueue.map(item => {
         if (isBoutMatch(item.data.bout, targetBoutStr)) {
           found = true;
+          if (item.data.isManuallyEdited) {
+            return item;
+          }
           const newData = { ...item.data };
           let itemChanged = false;
 
@@ -2498,8 +2645,16 @@ export default function App() {
         return item;
       });
 
-      // If not found anywhere, generate it (only if both players are available as per user request)
-      if (!found && info.blue && info.red) {
+      // If not found anywhere, generate it (only if both players are available as per user request and it's not already completed in match history)
+      const isTargetCompletedInHistory = matchHistory.some(h => 
+        isBoutMatch(h.bout, targetBoutStr) && 
+        h.eventId === currentEventId && 
+        h.winner && 
+        h.winner !== '-' && 
+        h.winner.trim() !== ''
+      );
+
+      if (!found && info.blue && info.red && !isTargetCompletedInHistory) {
         const normalizedTarget = normalizeBoutNumber(targetBoutStr);
         const boutNum = parseInt(normalizedTarget);
         const prefix = normalizedTarget.charAt(0).toUpperCase();
@@ -2652,22 +2807,38 @@ export default function App() {
       checkAndGenerateNextBout(boutNumber, winnerName || winner, winner === 'Blue' ? currentBout.blue_club : currentBout.red_club, currentBout.category);
     }
     
-    const completedBoutIds = new Set(
-      matchHistory
-        .filter(h => h.eventId === currentEventId && h.winner && h.winner !== '-' && h.winner.trim() !== '')
-        .map(h => normalizeBoutNumber(h.bout))
-    );
+    const currentCompletedHistory = matchHistory.filter(h => h.eventId === currentEventId && h.winner && h.winner !== '-' && h.winner.trim() !== '');
+    if (currentEventId && currentBout) {
+      const currentHistoryId = `${currentEventId}_${normalizeBoutNumber(boutNumber)}`;
+      if (!currentCompletedHistory.some(h => h.id === currentHistoryId)) {
+        currentCompletedHistory.push({
+          id: currentHistoryId,
+          bout: normalizeBoutNumber(boutNumber),
+          category: currentBout.category,
+          winner: winnerName || winner,
+          winnerClub: winner === 'Blue' ? currentBout.blue_club : (winner === 'Red' ? currentBout.red_club : '-'),
+          winnerSide: (winner === 'Blue' || winner === 'Red') ? (winner as 'Blue' | 'Red') : undefined,
+          eventId: currentEventId,
+          ring: ringNumber
+        });
+      }
+    }
 
-    const ringQueue = boutQueue.filter(q => 
-      q.data.ring === ringNumber && 
-      (!q.data.eventId || q.data.eventId === currentEventId) &&
-      !completedBoutIds.has(normalizeBoutNumber(q.data.bout))
-    );
-    const nextBoutIndex = boutQueue.findIndex(q => 
-      q.data.ring === ringNumber && 
-      (!q.data.eventId || q.data.eventId === currentEventId) &&
-      !completedBoutIds.has(normalizeBoutNumber(q.data.bout))
-    );
+    const ringQueue = boutQueue.filter(q => {
+      if (q.data.ring !== ringNumber) return false;
+      if (q.data.eventId && q.data.eventId !== currentEventId) return false;
+      const normalizedBout = normalizeBoutWithRing(q.data.bout, ringNumber);
+      const isCompleted = currentCompletedHistory.some(h => isBoutMatch(h.bout, normalizedBout));
+      return !isCompleted;
+    });
+
+    const nextBoutIndex = boutQueue.findIndex(q => {
+      if (q.data.ring !== ringNumber) return false;
+      if (q.data.eventId && q.data.eventId !== currentEventId) return false;
+      const normalizedBout = normalizeBoutWithRing(q.data.bout, ringNumber);
+      const isCompleted = currentCompletedHistory.some(h => isBoutMatch(h.bout, normalizedBout));
+      return !isCompleted;
+    });
     
     // Check if we need to prompt for final bouts
     // If we have a next bout, and after pulling it, the queue for this ring will be < 3
@@ -2955,6 +3126,9 @@ export default function App() {
         setBoutQueue(prev => {
           const updated = [...prev];
           const existing = updated[existingQueueIndex].data;
+          if (existing.isManuallyEdited) {
+            return prev;
+          }
           updated[existingQueueIndex].data = {
             ...existing,
             blue_name: blue_name ? blue_name.toUpperCase() : existing.blue_name,
@@ -2979,6 +3153,9 @@ export default function App() {
                 isBoutMatch(boutInSlot.bout, nextBoutId) && 
                 (boutInSlot.eventId === currentEventId || !boutInSlot.eventId) &&
                 normHelper(boutInSlot.category) === normHelper(targetCategory)) {
+              if (boutInSlot.isManuallyEdited) {
+                return;
+              }
               updatedRing = {
                 ...updatedRing,
                 [slot]: {
@@ -4679,10 +4856,10 @@ export default function App() {
               <TASheet 
                 key="ta-sheet-view"
                 boutQueue={boutQueue} 
-                rings={rings.filter(r => !r.isDeleted && r.ringNumber <= visibleRingsCount)} 
+                rings={currentRings} 
                 currentEventName={getCurrentEventName()} 
                 currentEventDate={getCurrentEventDate()}
-                currentEventId={currentEventId}
+                currentEventId={currentEventId || undefined}
                 events={events}
                 matchHistory={matchHistory}
                 onUpdateInspection={handleUpdateMatchInspection}
@@ -4698,15 +4875,21 @@ export default function App() {
             </div>
           )}
 
+          {activeTab === 'inspection' && (
+            <div className="max-w-5xl mx-auto">
+              <InspectionLogs rings={currentRings} boutQueue={boutQueue} matchHistory={matchHistory} currentEventId={currentEventId} />
+            </div>
+          )}
+
           {activeTab === 'player-signature' && (
             <div className="max-w-5xl mx-auto">
               <TASheet 
                 key="signature-view"
                 boutQueue={boutQueue} 
-                rings={rings.filter(r => !r.isDeleted && r.ringNumber <= visibleRingsCount)} 
+                rings={currentRings} 
                 currentEventName={getCurrentEventName()} 
                 currentEventDate={getCurrentEventDate()}
-                currentEventId={currentEventId}
+                currentEventId={currentEventId || undefined}
                 events={events}
                 matchHistory={matchHistory}
                 onUpdateInspection={handleUpdateMatchInspection}
@@ -5476,6 +5659,10 @@ export default function App() {
       {showEditBoutDetailsModal && (
         <EditBoutDetailsModal
           onClose={() => setShowEditBoutDetailsModal(false)}
+          rings={currentRings}
+          queue={currentBoutQueue}
+          user={user}
+          boutNumberingMode={boutNumberingMode}
           events={events}
           currentEventId={currentEventId}
           onSubmit={(ringNumber, boutNumber, updates) => {
@@ -5660,10 +5847,6 @@ export default function App() {
               }
             }
           }}
-          rings={currentRings}
-          queue={currentBoutQueue}
-          user={user}
-          boutNumberingMode={boutNumberingMode}
         />
       )}
 
