@@ -235,12 +235,19 @@ function useSyncedState<T>(key: string, initialValue: T) {
               return (lr.updatedAt || 0) > (rr.updatedAt || 0);
             });
             
-            remoteValue = mergedRings;
-            
             if (hasLocalNewer) {
+              const remoteRingsStr = JSON.stringify(remoteRings);
+              lastRemoteValue.current = remoteRingsStr;
+              
+              setState(mergedRings as unknown as T);
+              localStorage.setItem(key, JSON.stringify(mergedRings));
+              
               setTimeout(() => {
                 setSyncedState(mergedRings as unknown as T);
               }, 100);
+              return;
+            } else {
+              remoteValue = mergedRings;
             }
           }
 
@@ -10248,76 +10255,79 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                 <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full" />
                 Standby Queue
               </span>
-              <span className="text-[8px] sm:text-[9px] font-bold text-slate-500 uppercase tracking-widest">Next {ringQueue.length} Bouts</span>
+              <span className="text-[8px] sm:text-[9px] font-bold text-slate-500 uppercase tracking-widest">Next {ringQueue.length} Bouts By Sequence</span>
             </div>
             <div className="space-y-3 sm:space-y-4">
-              {groupedQueue.map((group, groupIdx) => (
-                <div key={groupIdx} className="space-y-1">
-                  <div className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1.5 sm:px-2 py-0.5 bg-slate-800 rounded border border-slate-700 w-fit mb-1.5">
-                    {formatCategoryName(group.category)}
-                  </div>
-                  <div className="space-y-1.5 sm:space-y-2">
-                    {group.bouts.map((bout, idx) => {
-                      const isPoomsaeItem = bout?.data?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
-                                            bout?.data?.category?.toUpperCase().includes('FREESTYLE') ||
-                                            (bout?.data?.category?.toUpperCase().includes('POOMSAE') && !bout?.data?.red_name);
-                      return (
-                        <div key={idx} className="flex items-center bg-slate-900 rounded-lg sm:rounded-xl border border-slate-700 overflow-hidden min-h-[2.5rem] sm:min-h-[3rem] shadow-sm">
-                          {/* Bout Num */}
-                          <div className="w-10 sm:w-12 h-full bg-slate-800 flex items-center justify-center border-r border-slate-700 flex-shrink-0">
-                            <span className="text-[12px] sm:text-[14px] font-black text-white">
-                              {bout?.data?.bout ? formatBoutNumber(ring.ringNumber, bout.data.bout, boutNumberingMode) : "---"}
-                            </span>
-                          </div>
+              {ringQueue.map((bout, idx) => {
+                const isPoomsaeItem = bout?.data?.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || 
+                                      bout?.data?.category?.toUpperCase().includes('FREESTYLE') ||
+                                      (bout?.data?.category?.toUpperCase().includes('POOMSAE') && !bout?.data?.red_name);
+                return (
+                  <div key={idx} className="flex flex-col bg-slate-900 rounded-lg sm:rounded-xl border border-slate-700 overflow-hidden shadow-sm">
+                    {/* Top bar with category */}
+                    <div className="flex items-center justify-between px-2 sm:px-3 py-1 bg-slate-800/40 border-b border-slate-700/50">
+                      <span className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate max-w-[80%]">
+                        {formatCategoryName(bout?.data?.category)}
+                      </span>
+                      {isPoomsaeItem && (
+                        <span className="text-[8px] sm:text-[9px] font-black text-blue-400 uppercase tracking-wider">Poomsae</span>
+                      )}
+                    </div>
 
-                          {/* Blue Side */}
-                          <div className={cn(
-                            "self-stretch py-1.5 sm:py-2.5 flex flex-col justify-center px-2.5 sm:px-4 relative transition-all duration-500 border-l-[3px] sm:border-l-[4px] min-w-0 overflow-hidden",
-                            isPoomsaeItem ? "flex-[10]" : "flex-1 basis-1/2 border-r border-slate-700/50",
-                            isRingInactive ? "border-slate-600" : "border-[#00a2e8]"
+                    <div className="flex items-center min-h-[2.5rem] sm:min-h-[3rem]">
+                      {/* Bout Num */}
+                      <div className="w-10 sm:w-12 self-stretch bg-slate-800/80 flex items-center justify-center border-r border-slate-700 flex-shrink-0">
+                        <span className="text-[12px] sm:text-[14px] font-black text-white">
+                          {bout?.data?.bout ? formatBoutNumber(ring.ringNumber, bout.data.bout, boutNumberingMode) : "---"}
+                        </span>
+                      </div>
+
+                      {/* Blue Side */}
+                      <div className={cn(
+                        "self-stretch py-1.5 sm:py-2.5 flex flex-col justify-center px-2.5 sm:px-4 relative transition-all duration-500 border-l-[3px] sm:border-l-[4px] min-w-0 overflow-hidden",
+                        isPoomsaeItem ? "flex-[10]" : "flex-1 basis-1/2 border-r border-slate-700/50",
+                        isRingInactive ? "border-slate-600" : "border-[#00a2e8]"
+                      )}>
+                        {!isRingInactive && <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-blue-900/10 to-transparent pointer-events-none" />}
+                        <p className={cn(
+                          "text-[9px] sm:text-[11px] font-bold uppercase leading-normal sm:leading-tight mb-0.5 break-words whitespace-normal",
+                          isRingInactive ? "text-slate-400" : "text-white"
+                        )}>
+                          {bout ? cleanPlaceholder(bout.data.blue_club) : ""}
+                        </p>
+                        <p className={cn(
+                          "text-[12px] sm:text-[15px] font-black uppercase tracking-[0.5px] leading-tight break-words whitespace-normal w-full",
+                          isRingInactive ? "text-slate-500" : "text-[#00a2e8]"
+                        )}>
+                          {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.blue_name)) : ""}
+                        </p>
+                      </div>
+
+                      {/* Red Side */}
+                      {!isPoomsaeItem && (
+                        <div className={cn(
+                          "flex-1 basis-1/2 self-stretch py-1.5 sm:py-2.5 flex flex-col justify-center px-2.5 sm:px-4 relative border-l-[3px] sm:border-l-[4px] min-w-0 overflow-hidden",
+                          isRingInactive ? "border-slate-600" : "border-[#ed1c24]"
+                        )}>
+                          {!isRingInactive && <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-red-900/10 to-transparent pointer-events-none" />}
+                          <p className={cn(
+                            "text-[9px] sm:text-[11px] font-bold uppercase leading-normal sm:leading-tight mb-0.5 break-words whitespace-normal",
+                            isRingInactive ? "text-slate-400" : "text-white"
                           )}>
-                            {!isRingInactive && <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-blue-900/10 to-transparent pointer-events-none" />}
-                            <p className={cn(
-                              "text-[9px] sm:text-[13px] font-bold uppercase leading-normal sm:leading-tight mb-0.5 break-words whitespace-normal",
-                              isRingInactive ? "text-slate-400" : "text-white"
-                            )}>
-                              {bout ? cleanPlaceholder(bout.data.blue_club) : ""}
-                            </p>
-                            <p className={cn(
-                              "text-[12px] sm:text-[17px] font-black uppercase tracking-[0.5px] leading-tight break-words whitespace-normal w-full",
-                              isRingInactive ? "text-slate-500" : "text-[#00a2e8]"
-                            )}>
-                              {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.blue_name)) : ""}
-                            </p>
-                          </div>
-
-                          {/* Red Side */}
-                          {!isPoomsaeItem && (
-                            <div className={cn(
-                              "flex-1 basis-1/2 self-stretch py-1.5 sm:py-2.5 flex flex-col justify-center px-2.5 sm:px-4 relative border-l-[3px] sm:border-l-[4px] min-w-0 overflow-hidden",
-                              isRingInactive ? "border-slate-600" : "border-[#ed1c24]"
-                            )}>
-                              {!isRingInactive && <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-red-900/10 to-transparent pointer-events-none" />}
-                              <p className={cn(
-                                "text-[9px] sm:text-[13px] font-bold uppercase leading-normal sm:leading-tight mb-0.5 break-words whitespace-normal",
-                                isRingInactive ? "text-slate-400" : "text-white"
-                              )}>
-                                {bout ? cleanPlaceholder(bout.data.red_club) : ""}
-                              </p>
-                              <p className={cn(
-                                "text-[12px] sm:text-[17px] font-black uppercase tracking-[0.5px] leading-tight break-words whitespace-normal w-full",
-                                isRingInactive ? "text-slate-500" : "text-[#ed1c24]"
-                              )}>
-                                {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.red_name)) : ""}
-                              </p>
-                            </div>
-                          )}
+                            {bout ? cleanPlaceholder(bout.data.red_club) : ""}
+                          </p>
+                          <p className={cn(
+                            "text-[12px] sm:text-[15px] font-black uppercase tracking-[0.5px] leading-tight break-words whitespace-normal w-full",
+                            isRingInactive ? "text-slate-500" : "text-[#ed1c24]"
+                          )}>
+                            {bout ? (bout.data.privacy_mode ? "---" : cleanPlaceholder(bout.data.red_name)) : ""}
+                          </p>
                         </div>
-                      );
-                    })}
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
