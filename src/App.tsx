@@ -122,6 +122,30 @@ export const manuallyEnableFirebase = () => {
   window.dispatchEvent(new CustomEvent('request-reboot'));
 };
 
+function useLocalState<T>(key: string, initialValue: T) {
+  const [state, setState] = useState<T>(() => {
+    const saved = localStorage.getItem(key);
+    if (saved !== null) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return saved as unknown as T;
+      }
+    }
+    return initialValue;
+  });
+
+  const setLocalState = React.useCallback((updater: T | ((prev: T) => T)) => {
+    setState(prev => {
+      const newValue = typeof updater === 'function' ? (updater as any)(prev) : updater;
+      localStorage.setItem(key, JSON.stringify(newValue));
+      return newValue;
+    });
+  }, [key]);
+
+  return [state, setLocalState] as const;
+}
+
 function useSyncedState<T>(key: string, initialValue: T) {
   const [state, setState] = useState<T>(() => {
     const saved = localStorage.getItem(key);
@@ -1243,7 +1267,7 @@ export default function App() {
   const [publicEventId, setPublicEventId] = useSyncedState<string>('tkd_public_event_id', 'active');
   const [visibleRingsCount, setVisibleRingsCount] = useSyncedState<number>('tkd_visible_rings_count', 12);
   const [slideInterval, setSlideInterval] = useSyncedState<number>('tkd_slide_interval', 15);
-  const [backupData, setBackupData] = useSyncedState<Record<string, { mappings: BoutMapping[], matches: MatchData[] }>>('tkd_backup_data_v3', {});
+  const [backupData, setBackupData] = useLocalState<Record<string, { mappings: BoutMapping[], matches: MatchData[] }>>('tkd_backup_data_v3', {});
   const [backupToLoad, setBackupToLoad] = useState<{ mappings: Partial<BoutMapping>[], matches: MatchData[] } | null>(null);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
   const [showRebootModal, setShowRebootModal] = useState(false);
@@ -1629,9 +1653,13 @@ export default function App() {
         return;
       }
 
+      const addedKeys = new Set<string>();
       const newBouts = eventBouts.filter(row => {
         const ringNo = parseRingNumber(row[2]);
         const boutNo = normalizeBoutWithRing(row[3]?.trim(), ringNo);
+        const dupKey = `${ringNo}_${boutNo}`;
+        if (addedKeys.has(dupKey)) return false;
+        
         const existsInQueue = boutQueue.some(q => q.data.eventId === currentEventId && normalizeBoutWithRing(q.data.bout, q.data.ring) === boutNo);
         const existsInRings = rings.some(r => 
           !r.isDeleted && (
@@ -1641,7 +1669,12 @@ export default function App() {
           )
         );
         const existsInHistory = matchHistory.some(h => normalizeBoutWithRing(h.bout, ringNo) === boutNo && h.eventId === currentEventId);
-        return !existsInQueue && !existsInRings && !existsInHistory;
+        
+        if (!existsInQueue && !existsInRings && !existsInHistory) {
+          addedKeys.add(dupKey);
+          return true;
+        }
+        return false;
       }).map(row => {
         const ringNo = parseRingNumber(row[2]);
         const normalizedBout = normalizeBoutWithRing(row[3]?.trim(), ringNo);
@@ -1895,6 +1928,7 @@ export default function App() {
                         category: category,
                         winner: winnerTrimmed,
                         winnerClub: winnerClub,
+                        ring: ringNo,
                         ...(winnerSide && { winnerSide }),
                         eventId: currentEventId,
                         syncedAt: serverTimestamp()
@@ -8489,8 +8523,12 @@ function StandbyView({
               };
               const valA = parseBout(a.data.bout);
               const valB = parseBout(b.data.bout);
-              if (typeof valA === 'number' && typeof valB === 'number') return valA - valB;
-              return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+              if (typeof valA === 'number' && typeof valB === 'number') {
+                if (valA !== valB) return valA - valB;
+                return (a.id || '').localeCompare(b.id || '');
+              }
+              const comp = String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+              return comp !== 0 ? comp : (a.id || '').localeCompare(b.id || '');
             });
 
           const standbyRaw: typeof ringQueueAll = [];
@@ -8846,8 +8884,12 @@ function SiteView({
               };
               const valA = parseBout(a.data.bout);
               const valB = parseBout(b.data.bout);
-              if (typeof valA === 'number' && typeof valB === 'number') return valA - valB;
-              return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+              if (typeof valA === 'number' && typeof valB === 'number') {
+                if (valA !== valB) return valA - valB;
+                return (a.id || '').localeCompare(b.id || '');
+              }
+              const comp = String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+              return comp !== 0 ? comp : (a.id || '').localeCompare(b.id || '');
             });
 
           const standbyRaw: typeof ringQueueAll = [];
@@ -9144,8 +9186,12 @@ function PointsView({
               };
               const valA = parseBout(a.data.bout);
               const valB = parseBout(b.data.bout);
-              if (typeof valA === 'number' && typeof valB === 'number') return valA - valB;
-              return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+              if (typeof valA === 'number' && typeof valB === 'number') {
+                if (valA !== valB) return valA - valB;
+                return (a.id || '').localeCompare(b.id || '');
+              }
+              const comp = String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+              return comp !== 0 ? comp : (a.id || '').localeCompare(b.id || '');
             })
             .slice(0, 3);
           const current = ring.currentBout;
@@ -9577,8 +9623,12 @@ function OnsiteView({
               };
               const valA = parseBout(a.data.bout);
               const valB = parseBout(b.data.bout);
-              if (typeof valA === 'number' && typeof valB === 'number') return valA - valB;
-              return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+              if (typeof valA === 'number' && typeof valB === 'number') {
+                if (valA !== valB) return valA - valB;
+                return (a.id || '').localeCompare(b.id || '');
+              }
+              const comp = String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+              return comp !== 0 ? comp : (a.id || '').localeCompare(b.id || '');
             });
 
           const standbyRaw: typeof ringQueueAll = [];
@@ -9925,8 +9975,12 @@ function PublicDashboardView({
                     };
                     const valA = parseBout(a.data.bout);
                     const valB = parseBout(b.data.bout);
-                    if (typeof valA === 'number' && typeof valB === 'number') return valA - valB;
-                    return String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+                    if (typeof valA === 'number' && typeof valB === 'number') {
+                      if (valA !== valB) return valA - valB;
+                      return (a.id || '').localeCompare(b.id || '');
+                    }
+                    const comp = String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+                    return comp !== 0 ? comp : (a.id || '').localeCompare(b.id || '');
                   });
 
                 const standbyRaw: typeof ringQueueAllSorted = [];

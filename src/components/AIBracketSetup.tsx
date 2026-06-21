@@ -232,7 +232,13 @@ export function AIBracketSetup({
 
   // Handle backup file loading
   React.useEffect(() => {
-    if (backupToLoad) {
+    if (backupToLoad && (backupToLoad.mappings.length > 0 || backupToLoad.matches.length > 0)) {
+      setPreviewData({
+        matches: backupToLoad.matches || [],
+        mappings: backupToLoad.mappings || [],
+        fileName: 'Recovered Bracket Logic',
+        fileType: 'backup'
+      });
       setActivePreviewTab('mappings');
       if (clearBackupToLoad) {
         // Clear it on a slight delay so it doesn't trigger Immediate parent re-renders that clash
@@ -875,6 +881,56 @@ export function AIBracketSetup({
         }
       });
 
+      // Save local backup mapping per ring (Moved higher so it won't be blocked by Firestore network errors)
+      const mappingsByRing: Record<string, BoutMapping[]> = {};
+      previewData.mappings.forEach(m => {
+        const sourceStr = (m.sourceBout || '').toString();
+        
+        const matchingMatch = processedMatches.find((match: MatchData) => 
+          isBoutMatch(match.bout, m.sourceBout) || isBoutMatch(match.bout, m.nextBout)
+        );
+        const ringNum = matchingMatch ? matchingMatch.ring : getRingFromBout(sourceStr);
+        const sRing = ringNum.toString();
+        
+        if (!mappingsByRing[sRing]) mappingsByRing[sRing] = [];
+        const resolvedCategory = (m.categoryName || (matchingMatch ? matchingMatch.category : "Auto-Extracted from File")).toUpperCase().trim();
+        
+        mappingsByRing[sRing].push({
+           ...m,
+           sourceBout: normalizeBoutNumber(m.sourceBout || ''),
+           nextBout: normalizeBoutNumber(m.nextBout || ''),
+           eventId: currentEventId,
+           eventName: currentEvent.name,
+           categoryName: resolvedCategory
+        });
+      });
+
+      const matchesByRing: Record<string, MatchData[]> = {};
+      processedMatches.forEach(m => {
+        const sRing = m.ring.toString();
+        if (!matchesByRing[sRing]) matchesByRing[sRing] = [];
+        matchesByRing[sRing].push(m);
+      });
+      
+      setBackupData(prev => {
+        const next: Record<string, any> = {};
+        Object.keys(prev || {}).forEach(k => {
+          if (k.startsWith(`${currentEventId}_`)) {
+            next[k] = prev[k];
+          }
+        });
+
+        const allRings = new Set([...Object.keys(mappingsByRing), ...Object.keys(matchesByRing)]);
+        allRings.forEach(sRing => {
+           const key = `${currentEventId}_${sRing}`;
+           next[key] = {
+             mappings: mappingsByRing[sRing] || [],
+             matches: matchesByRing[sRing] || []
+           };
+        });
+        return next;
+      });
+
       // 1. Save Mappings to Firestore (event_logic) with uppercase category matching
       const mappingPromises = previewData.mappings.map(m => {
         const matchingMatch = processedMatches.find((match: MatchData) => 
@@ -891,7 +947,7 @@ export function AIBracketSetup({
           eventName: currentEvent.name,
           categoryName: resolvedCategory,
           createdAt: serverTimestamp()
-        });
+        }).catch((err) => console.error("Error saving mapping document:", err));
       });
 
       // Also persist bracket matches + mappings to the "tournaments" doc to fully support the "Auto-fill from bracket data" button
@@ -1065,51 +1121,7 @@ export function AIBracketSetup({
         return updatedQueue;
       });
 
-      await Promise.all(mappingPromises);
-      
-      // Save local backup mapping per ring
-      const mappingsByRing: Record<string, BoutMapping[]> = {};
-      previewData.mappings.forEach(m => {
-        const sourceStr = (m.sourceBout || '').toString();
-        
-        const matchingMatch = processedMatches.find((match: MatchData) => 
-          isBoutMatch(match.bout, m.sourceBout) || isBoutMatch(match.bout, m.nextBout)
-        );
-        const ringNum = matchingMatch ? matchingMatch.ring : getRingFromBout(sourceStr);
-        const sRing = ringNum.toString();
-        
-        if (!mappingsByRing[sRing]) mappingsByRing[sRing] = [];
-        const resolvedCategory = (m.categoryName || (matchingMatch ? matchingMatch.category : "Auto-Extracted from File")).toUpperCase().trim();
-        
-        mappingsByRing[sRing].push({
-           ...m,
-           sourceBout: normalizeBoutNumber(m.sourceBout || ''),
-           nextBout: normalizeBoutNumber(m.nextBout || ''),
-           eventId: currentEventId,
-           eventName: currentEvent.name,
-           categoryName: resolvedCategory
-        });
-      });
-
-      const matchesByRing: Record<string, MatchData[]> = {};
-      processedMatches.forEach(m => {
-        const sRing = m.ring.toString();
-        if (!matchesByRing[sRing]) matchesByRing[sRing] = [];
-        matchesByRing[sRing].push(m);
-      });
-      
-      setBackupData(prev => {
-        const next = { ...prev };
-        const allRings = new Set([...Object.keys(mappingsByRing), ...Object.keys(matchesByRing)]);
-        allRings.forEach(sRing => {
-           const key = `${currentEventId}_${sRing}`;
-           next[key] = {
-             mappings: mappingsByRing[sRing] || [],
-             matches: matchesByRing[sRing] || []
-           };
-        });
-        return next;
-      });
+      await Promise.all(mappingPromises).catch(err => console.error("Error with mapping promises:", err));
 
       alert(`Bracket mappings and ${previewData.matches.length} matches successfully applied!\n\nCheck the Active Advancement Logic panel and the Match Queue.`);
       if (onSuccess) onSuccess();
