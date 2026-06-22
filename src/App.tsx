@@ -61,7 +61,7 @@ import {
   testSync 
 } from './services/googleSheets';
 import { cn, normalizeBoutNumber, normalizeBoutWithRing, getBoutNumber, formatBoutNumber, isBoutMatch, parseRingNumber, extractWinnerOfBout, getEventSpreadsheetUrl, getEventWebAppUrl } from './lib/utils';
-import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, deleteDoc, getDoc, getDocFromServer, where } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, doc, setDoc, deleteDoc, getDoc, getDocFromServer, where, getDocs } from 'firebase/firestore';
 import { db, disableFirestoreNetwork } from './firebase';
 import Papa from 'papaparse';
 
@@ -1346,7 +1346,7 @@ export default function App() {
 
     return boutQueue
       .filter(item => {
-        const matchesEvent = !item.data.eventId || item.data.eventId === currentEventId;
+        const matchesEvent = item.data.eventId === currentEventId;
         const itemRing = Number(item.data.ring);
         const matchesRing = ringNum === undefined || itemRing === Number(ringNum);
         const matchesUserRing = user?.role === 'admin' || itemRing === Number(user?.assignedRing);
@@ -2060,18 +2060,6 @@ export default function App() {
     });
 
     addToSyncLog("Transfer Bout Ring", "success", `Transferred Bout ${match.bout} from Ring ${getRingName(ringNumber)} to Ring ${getRingName(targetRing)}`);
-
-    if (!isFirestoreQuotaExceeded) {
-      addDoc(collection(db, 'bout_transfers'), {
-        fromRing: ringNumber.toString(),
-        toRing: targetRing.toString(),
-        boutNumber: match.bout.toString().toUpperCase(),
-        timestamp: serverTimestamp(),
-        pinnedUntil: new Date(new Date().getTime() + 30 * 60 * 1000).toISOString(),
-        isPinned: true,
-        author: user?.username || 'Admin'
-      }).catch(err => console.error("Auto transfer broadcast error:", err));
-    }
   };
 
   const pullRingSlotToActive = (ringNumber: number, slot: 'onDeck' | 'inTheHole') => {
@@ -2882,7 +2870,7 @@ export default function App() {
 
     const ringQueue = boutQueue.filter(q => {
       if (q.data.ring !== ringNumber) return false;
-      if (q.data.eventId && q.data.eventId !== currentEventId) return false;
+      if (q.data.eventId !== currentEventId) return false;
       const normalizedBout = normalizeBoutWithRing(q.data.bout, ringNumber);
       const isCompleted = currentCompletedHistory.some(h => isBoutMatch(h.bout, normalizedBout));
       return !isCompleted;
@@ -2921,7 +2909,7 @@ export default function App() {
 
     const nextBoutIndex = boutQueue.findIndex(q => {
       if (q.data.ring !== ringNumber) return false;
-      if (q.data.eventId && q.data.eventId !== currentEventId) return false;
+      if (q.data.eventId !== currentEventId) return false;
       const normalizedBout = normalizeBoutWithRing(q.data.bout, ringNumber);
       const isCompleted = currentCompletedHistory.some(h => isBoutMatch(h.bout, normalizedBout));
       return !isCompleted;
@@ -3241,7 +3229,7 @@ export default function App() {
             const boutInSlot = updatedRing[slot as keyof RingStatus] as MatchData | null;
             if (boutInSlot && 
                 isBoutMatch(boutInSlot.bout, nextBoutId) && 
-                (boutInSlot.eventId === currentEventId || !boutInSlot.eventId) &&
+                boutInSlot.eventId === currentEventId &&
                 normHelper(boutInSlot.category) === normHelper(targetCategory)) {
               if (boutInSlot.isManuallyEdited) {
                 const hasPlaceholder = /WINNER(?: OF)?\s+/i.test(boutInSlot.blue_name || '') || /WINNER(?: OF)?\s+/i.test(boutInSlot.red_name || '');
@@ -3700,10 +3688,42 @@ export default function App() {
     }
   };
 
-  const handleDeleteEvent = (id: string) => {
+  const handleDeleteEvent = async (id: string) => {
     const updated = events.filter(e => e.id !== id);
     setEvents(updated);
     localStorage.setItem('tkd_events_v3', JSON.stringify(updated));
+    
+    // Clean up local backups mapping for this event to avoid bloating local storage
+    setBackupData(prev => {
+      const next = { ...prev };
+      Object.keys(next).forEach(key => {
+        if (key.startsWith(`${id}_`)) {
+          delete next[key];
+        }
+      });
+      return next;
+    });
+
+    // Clean up event-specific documents in Firestore to prevent stale records from surviving
+    if (!isFirestoreQuotaExceeded) {
+      try {
+        const qLogic = query(collection(db, 'event_logic'), where('eventId', '==', id));
+        const logicSnapshot = await getDocs(qLogic);
+        const logicPromises = logicSnapshot.docs.map(docSnap => deleteDoc(docSnap.ref));
+        await Promise.all(logicPromises);
+      } catch (err) {
+        console.error("Error cleaning up Firestore event_logic for event:", id, err);
+      }
+
+      try {
+        const qHistory = query(collection(db, 'matchHistory'), where('eventId', '==', id));
+        const historySnapshot = await getDocs(qHistory);
+        const historyPromises = historySnapshot.docs.map(docSnap => deleteDoc(docSnap.ref));
+        await Promise.all(historyPromises);
+      } catch (err) {
+        console.error("Error cleaning up Firestore matchHistory for event:", id, err);
+      }
+    }
     
     if (updated.length === 0) {
       setBoutQueue([]);
@@ -3778,7 +3798,7 @@ export default function App() {
 
   const currentBoutQueue = React.useMemo(() => {
     if (!currentEventId || events.length === 0) return [];
-    return boutQueue.filter(b => !b.data.eventId || b.data.eventId === currentEventId);
+    return boutQueue.filter(b => b.data.eventId === currentEventId);
   }, [boutQueue, currentEventId, events.length]);
 
   const currentRings = React.useMemo(() => {
@@ -3788,9 +3808,9 @@ export default function App() {
     }
     return nonDeleted.map(r => ({
       ...r,
-      currentBout: r.currentBout && (!r.currentBout.eventId || r.currentBout.eventId === currentEventId) ? r.currentBout : null,
-      onDeck: r.onDeck && (!r.onDeck.eventId || r.onDeck.eventId === currentEventId) ? r.onDeck : null,
-      inTheHole: r.inTheHole && (!r.inTheHole.eventId || r.inTheHole.eventId === currentEventId) ? r.inTheHole : null,
+      currentBout: r.currentBout && r.currentBout.eventId === currentEventId ? r.currentBout : null,
+      onDeck: r.onDeck && r.onDeck.eventId === currentEventId ? r.onDeck : null,
+      inTheHole: r.inTheHole && r.inTheHole.eventId === currentEventId ? r.inTheHole : null,
     }));
   }, [rings, currentEventId, visibleRingsCount, events.length]);
 
@@ -3804,7 +3824,7 @@ export default function App() {
 
   const publicBoutQueue = React.useMemo(() => {
     if (!effectivePublicEventId || events.length === 0) return [];
-    return boutQueue.filter(b => !b.data.eventId || b.data.eventId === effectivePublicEventId);
+    return boutQueue.filter(b => b.data.eventId === effectivePublicEventId);
   }, [boutQueue, effectivePublicEventId, events.length]);
 
   const publicRings = React.useMemo(() => {
@@ -3814,9 +3834,9 @@ export default function App() {
     }
     return nonDeleted.map(r => ({
       ...r,
-      currentBout: r.currentBout && (!r.currentBout.eventId || r.currentBout.eventId === effectivePublicEventId) ? r.currentBout : null,
-      onDeck: r.onDeck && (!r.onDeck.eventId || r.onDeck.eventId === effectivePublicEventId) ? r.onDeck : null,
-      inTheHole: r.inTheHole && (!r.inTheHole.eventId || r.inTheHole.eventId === effectivePublicEventId) ? r.inTheHole : null,
+      currentBout: r.currentBout && r.currentBout.eventId === effectivePublicEventId ? r.currentBout : null,
+      onDeck: r.onDeck && r.onDeck.eventId === effectivePublicEventId ? r.onDeck : null,
+      inTheHole: r.inTheHole && r.inTheHole.eventId === effectivePublicEventId ? r.inTheHole : null,
     }));
   }, [rings, effectivePublicEventId, visibleRingsCount, events.length]);
 
@@ -4444,14 +4464,14 @@ export default function App() {
                     const upcomingBouts: { id: string; type: 'onDeck' | 'inTheHole' | 'normal'; data: MatchData }[] = [];
                     
                     if (selectedRingObj) {
-                      if (selectedRingObj.onDeck && (!selectedRingObj.onDeck.eventId || selectedRingObj.onDeck.eventId === currentEventId)) {
+                      if (selectedRingObj.onDeck && selectedRingObj.onDeck.eventId === currentEventId) {
                         upcomingBouts.push({
                           id: `ondeck-${selectedRingObj.onDeck.bout}`,
                           type: 'onDeck',
                           data: selectedRingObj.onDeck
                         });
                       }
-                      if (selectedRingObj.inTheHole && (!selectedRingObj.inTheHole.eventId || selectedRingObj.inTheHole.eventId === currentEventId)) {
+                      if (selectedRingObj.inTheHole && selectedRingObj.inTheHole.eventId === currentEventId) {
                         upcomingBouts.push({
                           id: `inhole-${selectedRingObj.inTheHole.bout}`,
                           type: 'inTheHole',
@@ -4541,17 +4561,6 @@ export default function App() {
                                                   } else {
                                                     setBoutQueue(prev => prev.map(q => q.id === item.id ? { ...q, data: { ...q.data, ring: targetRing, originalRing: q.data.originalRing || q.data.ring } } : q));
                                                     addToSyncLog("Transfer Bout Ring", "success", `Transferred Bout ${item.data.bout} from Ring ${item.data.ring} to Ring ${targetRing}`);
-                                                    if (!isFirestoreQuotaExceeded) {
-                                                      addDoc(collection(db, 'bout_transfers'), {
-                                                        fromRing: (item.data.originalRing || item.data.ring).toString(),
-                                                        toRing: targetRing.toString(),
-                                                        boutNumber: item.data.bout.toString().toUpperCase(),
-                                                        timestamp: serverTimestamp(),
-                                                        pinnedUntil: new Date(new Date().getTime() + 30 * 60 * 1000).toISOString(),
-                                                        isPinned: true,
-                                                        author: user?.username || 'Admin'
-                                                      }).catch(err => console.error("Auto transfer broadcast error:", err));
-                                                    }
                                                   }
                                                 }
                                               }}
@@ -4776,14 +4785,14 @@ export default function App() {
                       const userUpcomingBouts: { id: string; type: 'onDeck' | 'inTheHole' | 'normal'; data: MatchData }[] = [];
                       
                       rings.filter(r => r.ringNumber === Number(user?.assignedRing) && !r.isDeleted && r.ringNumber <= visibleRingsCount).forEach(ringObj => {
-                        if (ringObj.onDeck && (!ringObj.onDeck.eventId || ringObj.onDeck.eventId === currentEventId)) {
+                        if (ringObj.onDeck && ringObj.onDeck.eventId === currentEventId) {
                           userUpcomingBouts.push({
                             id: `ondeck-${ringObj.ringNumber}-${ringObj.onDeck.bout}`,
                             type: 'onDeck',
                             data: ringObj.onDeck
                           });
                         }
-                        if (ringObj.inTheHole && (!ringObj.inTheHole.eventId || ringObj.inTheHole.eventId === currentEventId)) {
+                        if (ringObj.inTheHole && ringObj.inTheHole.eventId === currentEventId) {
                           userUpcomingBouts.push({
                             id: `inhole-${ringObj.ringNumber}-${ringObj.inTheHole.bout}`,
                             type: 'inTheHole',
@@ -4882,17 +4891,6 @@ export default function App() {
                                                     } else {
                                                       setBoutQueue(prev => prev.map(q => q.id === item.id ? { ...q, data: { ...q.data, ring: targetRing, originalRing: q.data.originalRing || q.data.ring } } : q));
                                                       addToSyncLog("Transfer Bout Ring", "success", `Transferred Bout ${item.data.bout} from Ring ${item.data.ring} to Ring ${targetRing}`);
-                                                      if (!isFirestoreQuotaExceeded) {
-                                                        addDoc(collection(db, 'bout_transfers'), {
-                                                          fromRing: (item.data.originalRing || item.data.ring).toString(),
-                                                          toRing: targetRing.toString(),
-                                                          boutNumber: item.data.bout.toString().toUpperCase(),
-                                                          timestamp: serverTimestamp(),
-                                                          pinnedUntil: new Date(new Date().getTime() + 30 * 60 * 1000).toISOString(),
-                                                          isPinned: true,
-                                                          author: user?.username || 'Admin'
-                                                        }).catch(err => console.error("Auto transfer broadcast error:", err));
-                                                      }
                                                     }
                                                   }
                                                 }}
@@ -5023,6 +5021,8 @@ export default function App() {
             <EventReport
               currentEventId={currentEventId}
               events={events}
+              matchHistory={matchHistory}
+              backupData={backupData}
             />
           )}
 
@@ -7609,7 +7609,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
       {activeTransfersForRing.map(t => (
         <div 
           key={t.id} 
-          className="bg-yellow-500 text-slate-950 px-5 py-3 flex items-center justify-between gap-3 font-bold text-xs uppercase animate-pulse border-b border-yellow-400"
+          className="bg-yellow-500 text-slate-950 px-5 py-3 flex items-center justify-between gap-3 font-bold text-xs uppercase border-b border-yellow-400"
         >
           <span className="flex items-center gap-2">
             <Bell size={14} className="shrink-0 text-slate-950 animate-bounce" />
@@ -8539,9 +8539,10 @@ function StandbyView({
             standbyRaw.push({ id: `inthehole-${ring.ringNumber}`, data: ring.inTheHole });
           }
           ringQueueAll.forEach(q => {
+            const isAlreadyCurrent = ring.currentBout && isBoutMatch(q.data.bout, ring.currentBout.bout);
             const isAlreadyOnDeck = ring.onDeck && isBoutMatch(q.data.bout, ring.onDeck.bout);
             const isAlreadyInTheHole = ring.inTheHole && isBoutMatch(q.data.bout, ring.inTheHole.bout);
-            if (!isAlreadyOnDeck && !isAlreadyInTheHole) {
+            if (!isAlreadyCurrent && !isAlreadyOnDeck && !isAlreadyInTheHole) {
               standbyRaw.push(q);
             }
           });
@@ -8568,7 +8569,7 @@ function StandbyView({
                 {activeTransfersForRing.map(t => (
                   <div 
                     key={t.id} 
-                    className="bg-yellow-500 text-slate-950 font-black text-xs uppercase px-4 py-1.5 flex items-center gap-2 animate-pulse border-b border-yellow-400 shrink-0"
+                    className="bg-yellow-500 text-slate-950 font-black text-xs uppercase px-4 py-1.5 flex items-center gap-2 border-b border-yellow-400 shrink-0"
                   >
                     <Bell size={12} className="shrink-0 animate-bounce" />
                     <span>BOUT TRANSFER: Court {t.fromRing} ➡️ Court {t.toRing} - Bout {t.boutNumber}</span>
@@ -8900,9 +8901,10 @@ function SiteView({
             standbyRaw.push({ id: `inthehole-${ring.ringNumber}`, data: ring.inTheHole });
           }
           ringQueueAll.forEach(q => {
+            const isAlreadyCurrent = ring.currentBout && isBoutMatch(q.data.bout, ring.currentBout.bout);
             const isAlreadyOnDeck = ring.onDeck && isBoutMatch(q.data.bout, ring.onDeck.bout);
             const isAlreadyInTheHole = ring.inTheHole && isBoutMatch(q.data.bout, ring.inTheHole.bout);
-            if (!isAlreadyOnDeck && !isAlreadyInTheHole) {
+            if (!isAlreadyCurrent && !isAlreadyOnDeck && !isAlreadyInTheHole) {
               standbyRaw.push(q);
             }
           });
@@ -9639,9 +9641,10 @@ function OnsiteView({
             standbyRaw.push({ id: `inthehole-${ring.ringNumber}`, data: ring.inTheHole });
           }
           ringQueueAll.forEach(q => {
+            const isAlreadyCurrent = ring.currentBout && isBoutMatch(q.data.bout, ring.currentBout.bout);
             const isAlreadyOnDeck = ring.onDeck && isBoutMatch(q.data.bout, ring.onDeck.bout);
             const isAlreadyInTheHole = ring.inTheHole && isBoutMatch(q.data.bout, ring.inTheHole.bout);
-            if (!isAlreadyOnDeck && !isAlreadyInTheHole) {
+            if (!isAlreadyCurrent && !isAlreadyOnDeck && !isAlreadyInTheHole) {
               standbyRaw.push(q);
             }
           });
@@ -9991,9 +9994,10 @@ function PublicDashboardView({
                   standbyRaw.push({ id: `inthehole-${ring.ringNumber}`, data: ring.inTheHole });
                 }
                 ringQueueAllSorted.forEach(q => {
+                  const isAlreadyCurrent = ring.currentBout && isBoutMatch(q.data.bout, ring.currentBout.bout);
                   const isAlreadyOnDeck = ring.onDeck && isBoutMatch(q.data.bout, ring.onDeck.bout);
                   const isAlreadyInTheHole = ring.inTheHole && isBoutMatch(q.data.bout, ring.inTheHole.bout);
-                  if (!isAlreadyOnDeck && !isAlreadyInTheHole) {
+                  if (!isAlreadyCurrent && !isAlreadyOnDeck && !isAlreadyInTheHole) {
                     standbyRaw.push(q);
                   }
                 });
@@ -10169,7 +10173,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
         {activeTransfersForRing.map(t => (
           <div 
             key={t.id} 
-            className="bg-yellow-500 text-slate-950 border-2 border-yellow-400 rounded-xl p-2 md:p-3 flex flex-col items-center justify-center text-center gap-1 shadow-[0_4px_12px_rgba(234,179,8,0.15)] animate-pulse"
+            className="bg-yellow-500 text-slate-950 border-2 border-yellow-400 rounded-xl p-2 md:p-3 flex flex-col items-center justify-center text-center gap-1 shadow-[0_4px_12px_rgba(234,179,8,0.15)]"
           >
             <div className="flex items-center gap-1.5 justify-center">
               <Bell size={14} className="shrink-0 text-slate-950 animate-bounce" />
@@ -10376,13 +10380,6 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                         {formatCategoryName(bout?.data?.category)}
                       </span>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        {idx === 0 ? (
-                          <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded text-[8px] sm:text-[9px] font-black uppercase tracking-wider">BOUT 1 (ON DECK)</span>
-                        ) : idx === 1 ? (
-                          <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded text-[8px] sm:text-[9px] font-black uppercase tracking-wider">BOUT 2 (IN THE HOLE)</span>
-                        ) : (
-                          <span className="px-1.5 py-0.5 bg-slate-500/20 text-slate-300 border border-slate-500/30 rounded text-[8px] sm:text-[9px] font-black uppercase tracking-wider">BOUT {idx + 1}</span>
-                        )}
                         {isPoomsaeItem && (
                           <span className="text-[8px] sm:text-[9px] font-black text-blue-400 uppercase tracking-wider">Poomsae</span>
                         )}

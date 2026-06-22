@@ -7,6 +7,8 @@ import { getBoutNumber, isBoutMatch, cn } from '../lib/utils';
 interface EventReportProps {
   currentEventId: string | null;
   events: EventData[];
+  matchHistory?: MatchHistoryItem[];
+  backupData?: Record<string, { mappings: any[], matches: any[] }>;
 }
 
 interface RawMatch {
@@ -34,7 +36,7 @@ interface CategoryResult {
   bronzes: WinnerResult[];
 }
 
-export function EventReport({ currentEventId, events }: EventReportProps) {
+export function EventReport({ currentEventId, events, matchHistory = [], backupData = {} }: EventReportProps) {
   const [activeTab, setActiveTab] = useState<'winners' | 'by-rank' | 'summary'>('winners');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,96 +50,158 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
   const [includeAllEvents, setIncludeAllEvents] = useState(false);
 
   const fetchMatches = async () => {
-    // Determine the URL to parse: primarily winnerSheetUrl, fallback to sheetUrl if it matches docs format
-    const getValidUrl = (e: EventData) => {
-      const defaultUrl = 'https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/edit?usp=sharing';
-      if (e.winnerSheetUrl && e.winnerSheetUrl.includes('docs.google.com/spreadsheets')) return e.winnerSheetUrl;
-      if (e.sheetUrl && e.sheetUrl.includes('docs.google.com/spreadsheets')) return e.sheetUrl;
-      return defaultUrl;
-    };
-
-    const targetEvents = includeAllEvents 
-      ? events.filter(e => getValidUrl(e) !== null)
-      : events.filter(e => e.id === currentEventId && getValidUrl(e) !== null);
-
-    if (targetEvents.length === 0) {
-      if (!currentEventId) return; // Silent if just no event selected
-      setError("No valid 'Winner Report Sheet URL' found for the selected event(s). Please add it in Admin settings.");
-      setMatches([]);
-      return;
-    }
-    
     setIsLoading(true);
     setError(null);
     try {
       let combinedMatches: RawMatch[] = [];
 
-      for (const event of targetEvents) {
-        let activeUrl = getValidUrl(event)!;
-        if (!activeUrl.includes('/export?')) {
-          activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
-        }
-
-        const response = await fetch(activeUrl);
-        if (!response.ok) {
-           console.warn(`Failed to fetch data for event: ${event.name}`);
-           continue; // Skip if one fails, to at least get the others
-        }
-        const csvText = await response.text();
-        
-        await new Promise<void>((resolve) => {
-          Papa.parse(csvText, {
-            complete: (result) => {
-              const rows = result.data as string[][];
-              if (rows.length < 2) {
-                resolve();
-                return;
-              }
-              
-              for (let i = 1; i < rows.length; i++) {
-                const row = rows[i];
-                if (row.length >= 10 && row[2] && row[3]) { 
-                  const sheetEventName = row[1] || '';
-                  if (sheetEventName.trim().toLowerCase() !== event.name.trim().toLowerCase()) {
-                     continue; 
+      // 1. Try to load matches from local bracket record / backupData in the app first
+      if (backupData && Object.keys(backupData).length > 0) {
+        const targetIds = includeAllEvents 
+          ? events.map(e => e.id)
+          : (currentEventId ? [currentEventId] : []);
+          
+        targetIds.forEach(evId => {
+          const evName = events.find(e => e.id === evId)?.name || '';
+          Object.keys(backupData).forEach(key => {
+            if (key.startsWith(`${evId}_`)) {
+              const dataRing = backupData[key];
+              if (dataRing && Array.isArray(dataRing.matches)) {
+                dataRing.matches.forEach(m => {
+                  const hist = (matchHistory || []).find(h => 
+                    h.eventId === evId && 
+                    isBoutMatch(h.bout, m.bout)
+                  );
+                  const winnerName = hist ? hist.winner : '';
+                  
+                  const exists = combinedMatches.some(ex => 
+                    ex.category === m.category && 
+                    isBoutMatch(ex.matchNoStr, m.bout)
+                  );
+                  
+                  if (!exists) {
+                    combinedMatches.push({
+                      event: evName,
+                      category: m.category,
+                      matchNoStr: m.bout.toString(),
+                      matchNo: getBoutNumber(m.bout.toString()),
+                      blueName: m.blue_name,
+                      blueClub: m.blue_club,
+                      redName: m.red_name,
+                      redClub: m.red_club,
+                      winner: winnerName
+                    });
                   }
-
-                  const matchNoStr = row[3] || '';
-                  const winner = row[9] || '';
-                  const category = row[4] || '';
-                  const blueName = row[5] || '';
-                  const blueClub = row[6] || '';
-                  const redName = row[7] || '';
-                  const redClub = row[8] || '';
-
-                  combinedMatches.push({
-                    event: sheetEventName,
-                    category,
-                    matchNoStr,
-                    matchNo: getBoutNumber(matchNoStr),
-                    blueName: blueName.trim(),
-                    blueClub: blueClub.trim(),
-                    redName: redName.trim(),
-                    redClub: redClub.trim(),
-                    winner: winner.trim()
-                  });
-                }
+                });
               }
-              resolve();
-            },
-            error: (err) => {
-              console.warn(`Parse error on event ${event.name}: ${err.message}`);
-              resolve();
-            },
-            skipEmptyLines: true
+            }
           });
+        });
+      }
+
+      // 2. If no matches were loaded from internal bracket records, fall back to Google Sheets
+      if (combinedMatches.length === 0) {
+        const getValidUrl = (e: EventData) => {
+          const defaultUrl = 'https://docs.google.com/spreadsheets/d/14TrlxR_rk9S7WmdanXGLlE4Y-ry9TqY6_B6HYA0Uuus/edit?usp=sharing';
+          if (e.winnerSheetUrl && e.winnerSheetUrl.includes('docs.google.com/spreadsheets')) return e.winnerSheetUrl;
+          if (e.sheetUrl && e.sheetUrl.includes('docs.google.com/spreadsheets')) return e.sheetUrl;
+          return defaultUrl;
+        };
+
+        const targetEvents = includeAllEvents 
+          ? events.filter(e => getValidUrl(e) !== null)
+          : events.filter(e => e.id === currentEventId && getValidUrl(e) !== null);
+
+        if (targetEvents.length > 0) {
+          for (const event of targetEvents) {
+            let activeUrl = getValidUrl(event)!;
+            if (!activeUrl.includes('/export?')) {
+              activeUrl = activeUrl.replace(/\/edit.*$/, '') + '/export?format=csv';
+            }
+
+            const response = await fetch(activeUrl);
+            if (!response.ok) {
+               console.warn(`Failed to fetch data for event: ${event.name}`);
+               continue; // Skip if one fails, to at least get the others
+            }
+            const csvText = await response.text();
+            
+            await new Promise<void>((resolve) => {
+              Papa.parse(csvText, {
+                complete: (result) => {
+                  const rows = result.data as string[][];
+                  if (rows.length < 2) {
+                    resolve();
+                    return;
+                  }
+                  
+                  for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+                    if (row.length >= 10 && row[2] && row[3]) { 
+                      const sheetEventName = row[1] || '';
+                      if (sheetEventName.trim().toLowerCase() !== event.name.trim().toLowerCase()) {
+                         continue; 
+                      }
+
+                      const matchNoStr = row[3] || '';
+                      const winner = row[9] || '';
+                      const category = row[4] || '';
+                      const blueName = row[5] || '';
+                      const blueClub = row[6] || '';
+                      const redName = row[7] || '';
+                      const redClub = row[8] || '';
+
+                      // Override winner if completed in matchHistory local app state
+                      const hist = (matchHistory || []).find(h => 
+                        h.eventId === event.id && 
+                        isBoutMatch(h.bout, matchNoStr)
+                      );
+                      const winnerName = hist ? hist.winner : winner;
+
+                      combinedMatches.push({
+                        event: sheetEventName,
+                        category,
+                        matchNoStr,
+                        matchNo: getBoutNumber(matchNoStr),
+                        blueName: blueName.trim(),
+                        blueClub: blueClub.trim(),
+                        redName: redName.trim(),
+                        redClub: redClub.trim(),
+                        winner: winnerName.trim()
+                      });
+                    }
+                  }
+                  resolve();
+                },
+                error: (err) => {
+                  console.warn(`Parse error on event ${event.name}: ${err.message}`);
+                  resolve();
+                },
+                skipEmptyLines: true
+              });
+            });
+          }
+        }
+      } else {
+        // If loaded from backupData, make sure we run a real-time sweep over all matches 
+        // to retrieve any freshly loaded or updated winners from the matchHistory
+        combinedMatches = combinedMatches.map(m => {
+          const matchingEventId = events.find(e => e.name === m.event)?.id || currentEventId;
+          const hist = (matchHistory || []).find(h => 
+            h.eventId === matchingEventId && 
+            isBoutMatch(h.bout, m.matchNoStr)
+          );
+          return {
+            ...m,
+            winner: hist ? hist.winner : m.winner
+          };
         });
       }
 
       setMatches(combinedMatches);
       
       if (combinedMatches.length === 0) {
-          setError("No matches parsed successfully. Please check the sheet structures.");
+          setError("No matches parsed successfully. Please check the sheet structures or upload brackets using the AI Bracket Setup.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error occurred");
@@ -148,7 +212,7 @@ export function EventReport({ currentEventId, events }: EventReportProps) {
 
   useEffect(() => {
     fetchMatches();
-  }, [currentEventId, includeAllEvents]);
+  }, [currentEventId, includeAllEvents, matchHistory, backupData]);
 
   const categoryResults = useMemo(() => {
     // Helper to recursively unwrap "WINNER OF X" into the actual player name
