@@ -85,8 +85,15 @@ export function SearchWinner({ matchHistory, currentEventId, onRestoreMatch }: S
                     <Trophy size={32} />
                   </div>
                   <p className="text-[10px] font-black text-yellow-600 uppercase tracking-widest mb-1">Winner</p>
-                  <p className="text-3xl font-black text-slate-900 mb-2 uppercase">{result.winner}</p>
-                  <p className="text-lg font-bold text-yellow-200 uppercase">{result.winnerClub || 'UNKNOWN CLUB'}</p>
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 mb-2">
+                    <p className="text-3xl font-black text-slate-900 uppercase">{result.winner}</p>
+                    {result.winnerSide && (
+                      <span className={`px-3 py-1 text-xs font-black text-white uppercase tracking-widest rounded-lg ${result.winnerSide === 'Blue' ? 'bg-blue-600' : 'bg-red-600'}`}>
+                        {result.winnerSide}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-lg font-black text-black uppercase text-center">{result.winnerClub || 'UNKNOWN CLUB'}</p>
                 </div>
                 {onRestoreMatch && !showSuccess && (
                   <div className="pt-6 border-t border-slate-100">
