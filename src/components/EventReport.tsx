@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { EventData, MatchHistoryItem } from '../types';
-import { Download, RefreshCw, Trophy, Medal, Building2, Search } from 'lucide-react';
+import { Download, RefreshCw, Trophy, Medal, Building2, Search, Upload, Trash2, FileSpreadsheet, X, Plus } from 'lucide-react';
 import Papa from 'papaparse';
 import { getBoutNumber, isBoutMatch, cn } from '../lib/utils';
 
@@ -37,7 +37,7 @@ interface CategoryResult {
 }
 
 export function EventReport({ currentEventId, events, matchHistory = [], backupData = {} }: EventReportProps) {
-  const [activeTab, setActiveTab] = useState<'winners' | 'by-rank' | 'summary'>('winners');
+  const [activeTab, setActiveTab] = useState<'winners' | 'by-rank' | 'summary' | 'total-overall'>('winners');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [matches, setMatches] = useState<RawMatch[]>([]);
@@ -48,6 +48,227 @@ export function EventReport({ currentEventId, events, matchHistory = [], backupD
   
   // Feature: Option to combine multiple events
   const [includeAllEvents, setIncludeAllEvents] = useState(false);
+
+  // Total Overall States
+  interface UploadedFile {
+    name: string;
+    size: number;
+    rowCount: number;
+    data: Array<{
+      club: string;
+      gold: number;
+      silver: number;
+      bronze: number;
+    }>;
+  }
+
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [totalOverallSearch, setTotalOverallSearch] = useState('');
+  const [dragActive, setDragActive] = useState(false);
+
+  const parseFiles = (files: File[]) => {
+    const csvFiles = files.filter(f => f.name.toLowerCase().endsWith('.csv'));
+    if (csvFiles.length === 0) return;
+
+    csvFiles.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target?.result as string;
+        if (!text) return;
+
+        Papa.parse<string[]>(text, {
+          skipEmptyLines: 'greedy',
+          complete: (results) => {
+            if (results.data.length < 2) {
+              setError(`File ${file.name} is empty or has no data row.`);
+              return;
+            }
+
+            const headers = results.data[0].map(h => h.trim());
+            
+            // Look for columns containing keywords
+            const findColumnIdx = (candidates: string[]) => {
+              return headers.findIndex(h => {
+                const cleaned = h.toLowerCase().replace(/[^a-z0-9]/g, '');
+                return candidates.some(c => cleaned.includes(c) || c.includes(cleaned));
+              });
+            };
+
+            const clubIdx = findColumnIdx(['club', 'state', 'team']);
+            const goldIdx = findColumnIdx(['gold', '1st']);
+            const silverIdx = findColumnIdx(['silver', '2nd']);
+            const bronzeIdx = findColumnIdx(['bronze', '3rd']);
+
+            if (clubIdx === -1 || goldIdx === -1 || silverIdx === -1 || bronzeIdx === -1) {
+              setError(`Could not detect columns in ${file.name}. Expected headers like 'Club / State', 'Gold Medals', 'Silver Medals', 'Bronze Medals'. Detected headers: ${headers.join(', ')}`);
+              return;
+            }
+
+            const dataRows: Array<{ club: string; gold: number; silver: number; bronze: number }> = [];
+
+            for (let i = 1; i < results.data.length; i++) {
+              const row = results.data[i];
+              if (row.length <= Math.max(clubIdx, goldIdx, silverIdx, bronzeIdx)) continue;
+              
+              const clubName = row[clubIdx]?.trim();
+              if (!clubName) continue;
+
+              const goldVal = parseInt(row[goldIdx]?.replace(/,/g, '') || '0', 10) || 0;
+              const silverVal = parseInt(row[silverIdx]?.replace(/,/g, '') || '0', 10) || 0;
+              const bronzeVal = parseInt(row[bronzeIdx]?.replace(/,/g, '') || '0', 10) || 0;
+
+              dataRows.push({
+                club: clubName,
+                gold: goldVal,
+                silver: silverVal,
+                bronze: bronzeVal
+              });
+            }
+
+            setUploadedFiles(prev => {
+              const filtered = prev.filter(f => f.name !== file.name);
+              return [...filtered, {
+                name: file.name,
+                size: file.size,
+                rowCount: dataRows.length,
+                data: dataRows
+              }];
+            });
+            setError(null);
+          },
+          error: (err) => {
+            setError(`Error parsing ${file.name}: ${err.message}`);
+          }
+        });
+      };
+      reader.readAsText(file);
+    });
+  };
+
+  const handleCSVFilesSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      parseFiles(Array.from(e.target.files));
+    }
+  };
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      parseFiles(Array.from(e.dataTransfer.files));
+    }
+  };
+
+  const removeUploadedFile = (fileName: string) => {
+    setUploadedFiles(prev => prev.filter(f => f.name !== fileName));
+  };
+
+  const clearAllFiles = () => {
+    setUploadedFiles([]);
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  const compiledStandings = useMemo(() => {
+    const pointsTracker: Record<string, { gold: number, silver: number, bronze: number, points: number }> = {};
+    
+    uploadedFiles.forEach(file => {
+      file.data.forEach(row => {
+        const existingKey = Object.keys(pointsTracker).find(k => k.toLowerCase().trim() === row.club.toLowerCase().trim());
+        const key = existingKey || row.club.trim();
+        
+        if (!pointsTracker[key]) {
+          pointsTracker[key] = { gold: 0, silver: 0, bronze: 0, points: 0 };
+        }
+        
+        pointsTracker[key].gold += row.gold;
+        pointsTracker[key].silver += row.silver;
+        pointsTracker[key].bronze += row.bronze;
+      });
+    });
+
+    const list = Object.keys(pointsTracker).map(club => {
+      const data = pointsTracker[club];
+      const points = data.gold * 7 + data.silver * 3 + data.bronze * 1;
+      return {
+        club,
+        gold: data.gold,
+        silver: data.silver,
+        bronze: data.bronze,
+        points
+      };
+    });
+
+    list.sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (b.gold !== a.gold) return b.gold - a.gold;
+      if (b.silver !== a.silver) return b.silver - a.silver;
+      return b.bronze - a.bronze;
+    });
+
+    return list;
+  }, [uploadedFiles]);
+
+  const filteredCompiledStandings = useMemo(() => {
+    return compiledStandings.filter(item => 
+      item.club.toLowerCase().includes(totalOverallSearch.toLowerCase())
+    );
+  }, [compiledStandings, totalOverallSearch]);
+
+  const compiledSummary = useMemo(() => {
+    let golds = 0;
+    let silvers = 0;
+    let bronzes = 0;
+    compiledStandings.forEach(c => {
+      golds += c.gold;
+      silvers += c.silver;
+      bronzes += c.bronze;
+    });
+    return {
+      clubsCount: compiledStandings.length,
+      golds,
+      silvers,
+      bronzes
+    };
+  }, [compiledStandings]);
+
+  const downloadCompiledStandings = () => {
+    if (compiledStandings.length === 0) return;
+    const data = compiledStandings.map((c, i) => ({
+      'Rank': i + 1,
+      'Club / State': c.club,
+      'Gold Medals': c.gold,
+      'Silver Medals': c.silver,
+      'Bronze Medals': c.bronze,
+      'Total Points': c.points
+    }));
+    const csv = Papa.unparse(data);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `aggregated_overall_standings_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const fetchMatches = async () => {
     setIsLoading(true);
@@ -775,6 +996,18 @@ export function EventReport({ currentEventId, events, matchHistory = [], backupD
           Overall Standings (WT Calc)
           {activeTab === 'summary' && <div className="absolute -bottom-px left-0 right-0 h-px bg-white" />}
         </button>
+        <button
+          onClick={() => setActiveTab('total-overall')}
+          className={cn(
+            "px-6 py-3 font-bold text-sm tracking-wide rounded-t-xl transition-all relative",
+            activeTab === 'total-overall' 
+              ? "text-blue-700 bg-white border border-b-0 border-slate-200" 
+              : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+          )}
+        >
+          Total Overall
+          {activeTab === 'total-overall' && <div className="absolute -bottom-px left-0 right-0 h-px bg-white" />}
+        </button>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -1004,6 +1237,218 @@ export function EventReport({ currentEventId, events, matchHistory = [], backupD
             <p className="mt-8 text-sm text-slate-400 bg-slate-50 p-4 rounded-xl border border-slate-100 max-w-4xl">
               <strong>WT Calculation Rules Applied:</strong> Teams are ranked by Total Points (Gold: 7, Silver: 3, Bronze: 1). If there is a tie in points, the team with the most Gold medals wins, followed by Silver, then Bronze.
             </p>
+          </div>
+        )}
+
+        {activeTab === 'total-overall' && (
+          <div className="p-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">Total Overall Standing Compiler</h2>
+                <p className="text-sm text-slate-500 mt-1">
+                  Upload multiple medal standings CSV files with headers: <code className="bg-slate-100 px-1 py-0.5 rounded text-xs">Club / State</code>, <code className="bg-slate-100 px-1 py-0.5 rounded text-xs">Gold Medals</code>, <code className="bg-slate-100 px-1 py-0.5 rounded text-xs">Silver Medals</code>, <code className="bg-slate-100 px-1 py-0.5 rounded text-xs">Bronze Medals</code> to aggregate and compile team scores.
+                </p>
+              </div>
+              {uploadedFiles.length > 0 && (
+                <button
+                  onClick={clearAllFiles}
+                  className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-xl flex items-center gap-2 text-sm transition-all shadow-sm border border-red-200"
+                >
+                  <Trash2 size={16} />
+                  Clear All Files
+                </button>
+              )}
+            </div>
+
+            {/* DRAG AND DROP ZONE */}
+            <div
+              onDragEnter={handleDrag}
+              onDragOver={handleDrag}
+              onDragLeave={handleDrag}
+              onDrop={handleDrop}
+              className={cn(
+                "border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all min-h-[160px]",
+                dragActive 
+                  ? "border-blue-500 bg-blue-50/50" 
+                  : "border-slate-300 hover:border-slate-400 bg-slate-50/50"
+              )}
+              onClick={() => document.getElementById('csv-multi-upload')?.click()}
+            >
+              <input
+                id="csv-multi-upload"
+                type="file"
+                accept=".csv"
+                multiple
+                className="hidden"
+                onChange={handleCSVFilesSelect}
+              />
+              <Upload size={36} className="text-slate-400 mb-3 animate-bounce" />
+              <p className="text-sm font-bold text-slate-700">
+                Drag and drop your medal standing CSV files here, or <span className="text-blue-600 hover:underline">browse files</span>
+              </p>
+              <p className="text-xs text-slate-400 mt-1.5">
+                Supports multiple CSV files selection. Ensure headers are correctly present.
+              </p>
+            </div>
+
+            {/* LIST OF UPLOADED FILES */}
+            {uploadedFiles.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <FileSpreadsheet size={16} className="text-slate-500" />
+                  Uploaded CSV Files ({uploadedFiles.length})
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {uploadedFiles.map((file, idx) => (
+                    <div 
+                      key={idx} 
+                      className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex items-center justify-between shadow-sm hover:shadow transition-all"
+                    >
+                      <div className="min-w-0 pr-3">
+                        <p className="font-bold text-slate-800 text-sm truncate" title={file.name}>
+                          {file.name}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          {formatFileSize(file.size)} • <strong className="text-blue-600">{file.rowCount}</strong> rows compiled
+                        </p>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeUploadedFile(file.name);
+                        }}
+                        className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-100"
+                        title="Remove file"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* COMPILED SUMMARY CARDS */}
+            {compiledStandings.length > 0 && (
+              <div className="mt-8 grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5 shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-slate-500 font-medium">Clubs / States</span>
+                    <Building2 className="text-slate-400" size={18} />
+                  </div>
+                  <p className="text-3xl font-black text-slate-800">{compiledSummary.clubsCount}</p>
+                </div>
+                <div className="bg-yellow-50/50 border border-yellow-200/80 rounded-2xl p-5 shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-yellow-700 font-medium">Total Gold Medals</span>
+                    <Medal className="text-yellow-500" size={18} />
+                  </div>
+                  <p className="text-3xl font-black text-yellow-700">{compiledSummary.golds}</p>
+                </div>
+                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5 shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-slate-600 font-medium">Total Silver Medals</span>
+                    <Medal className="text-slate-400" size={18} />
+                  </div>
+                  <p className="text-3xl font-black text-slate-600">{compiledSummary.silvers}</p>
+                </div>
+                <div className="bg-amber-50/50 border border-amber-200/80 rounded-2xl p-5 shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-amber-800 font-medium">Total Bronze Medals</span>
+                    <Medal className="text-amber-600" size={18} />
+                  </div>
+                  <p className="text-3xl font-black text-amber-800">{compiledSummary.bronzes}</p>
+                </div>
+              </div>
+            )}
+
+            {/* COMPILED STANDINGS TABLE */}
+            {compiledStandings.length > 0 ? (
+              <div className="mt-8 flex flex-col items-center">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 w-full max-w-4xl">
+                  {/* SEARCH BAR */}
+                  <div className="relative w-full sm:max-w-xs">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                    <input
+                      type="text"
+                      placeholder="Search compiled clubs..."
+                      value={totalOverallSearch}
+                      onChange={(e) => setTotalOverallSearch(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    />
+                  </div>
+
+                  <button
+                    onClick={downloadCompiledStandings}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center gap-2 text-sm transition-all shadow-sm"
+                  >
+                    <Download size={16} />
+                    Download Compiled Standings
+                  </button>
+                </div>
+
+                <div className="w-full max-w-4xl border border-slate-200 rounded-xl overflow-hidden self-center">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-900 text-white">
+                        <th className="p-4 font-black tracking-widest text-sm uppercase">Rank</th>
+                        <th className="p-4 font-black tracking-widest text-sm uppercase">Club / State</th>
+                        <th className="p-4 font-black tracking-widest text-sm uppercase text-center text-yellow-400">Gold</th>
+                        <th className="p-4 font-black tracking-widest text-sm uppercase text-center text-slate-300">Silver</th>
+                        <th className="p-4 font-black tracking-widest text-sm uppercase text-center text-amber-600">Bronze</th>
+                        <th className="p-4 font-black tracking-widest text-sm uppercase text-center bg-blue-600">Total Points</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredCompiledStandings.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="p-8 text-center text-slate-500">
+                            No match found for "{totalOverallSearch}" in compiled standings.
+                          </td>
+                        </tr>
+                      ) : filteredCompiledStandings.map((c, i) => {
+                        // Find rank based on compiledStandings arrays index to handle correct indexing during filter
+                        const originalRank = compiledStandings.findIndex(item => item.club === c.club) + 1;
+                        return (
+                          <tr key={i} className="hover:bg-slate-50">
+                            <td className="p-4">
+                              <div className={cn(
+                                "w-8 h-8 rounded-full flex items-center justify-center font-black text-sm",
+                                originalRank === 1 ? "bg-yellow-400 text-yellow-900" :
+                                originalRank === 2 ? "bg-slate-300 text-slate-800" :
+                                originalRank === 3 ? "bg-amber-600 text-white" : "bg-slate-100 text-slate-600"
+                              )}>
+                                {originalRank}
+                              </div>
+                            </td>
+                            <td className="p-4 font-bold text-blue-900 text-lg flex items-center gap-3">
+                              <Building2 size={20} className="text-slate-400" />
+                              {c.club || 'Unknown Club'}
+                            </td>
+                            <td className="p-4 font-black text-center text-lg">{c.gold}</td>
+                            <td className="p-4 font-black text-center text-lg">{c.silver}</td>
+                            <td className="p-4 font-black text-center text-lg">{c.bronze}</td>
+                            <td className="p-4 font-black text-center text-xl text-blue-700 bg-blue-50/50">{c.points}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <p className="mt-8 text-sm text-slate-400 bg-slate-50 p-4 rounded-xl border border-slate-100 max-w-4xl w-full">
+                  <strong>Standard WT Points Model Applied:</strong> Compiled scores are calculated by summing medals across all uploaded CSV data inputs. WT Classification ranks teams by total aggregated points (Gold Medal counts for 7 points, Silver counts for 3 points, Bronze counts for 1 point). Ties are broken by Gold count, followed by Silver count, and then Bronze count.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 px-4 text-center mt-6 bg-slate-50 rounded-2xl border border-slate-200 border-dashed">
+                <FileSpreadsheet size={48} className="text-slate-300 stroke-[1.5] mb-3" />
+                <h4 className="text-slate-700 font-bold mb-1">No standings uploaded yet</h4>
+                <p className="text-sm text-slate-500 max-w-md">
+                  Upload one or more CSV files containing club medal positions to compile and calculate overall results.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
