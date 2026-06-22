@@ -1317,6 +1317,84 @@ export default function App() {
     }
   }, [events, currentEventId, setCurrentEventId, setGoogleSheetUrl]);
 
+  // Automatically sync mappings to backupData (Backup Mapping Recovery)
+  useEffect(() => {
+    if (!currentEventId) return;
+    
+    setBackupData(prev => {
+      // Create a shallow copy of prev to preserve ALL other event backups
+      const next = { ...prev };
+      
+      // Group mappings by ring for the current event
+      const mappingsByRing: Record<number, BoutMapping[]> = {};
+      
+      mappings.forEach(m => {
+        const getRingFromBoutStr = (bout: string) => {
+          const bStr = (bout || '').toString().trim();
+          const boutNum = parseInt(bStr.replace(/[^0-9]/g, ''));
+          if (!isNaN(boutNum) && boutNum >= 1000) {
+            return Math.floor(boutNum / 1000);
+          }
+          const prefix = bStr.charAt(0).toUpperCase();
+          if (prefix === 'A') return 1;
+          if (prefix === 'B') return 2;
+          if (prefix === 'C') return 3;
+          if (prefix === 'D') return 4;
+          if (prefix === 'E') return 5;
+          if (prefix === 'F') return 6;
+          if (prefix === 'G') return 7;
+          if (prefix === 'H') return 8;
+          return 1;
+        };
+
+        // Try to find the match in the queue or history to get the accurate ring number
+        const matchInQueue = boutQueue.find(q => 
+          isBoutMatch(q.data.bout, m.sourceBout) || isBoutMatch(q.data.bout, m.nextBout)
+        );
+        const matchInHistory = matchHistory.find(h => 
+          isBoutMatch(h.bout, m.sourceBout) || isBoutMatch(h.bout, m.nextBout)
+        );
+
+        let ringNum = 1;
+        if (matchInQueue) {
+          ringNum = matchInQueue.data.ring;
+        } else if (matchInHistory) {
+          ringNum = matchInHistory.ring;
+        } else {
+          ringNum = getRingFromBoutStr(m.sourceBout || m.nextBout || '');
+        }
+        
+        if (!mappingsByRing[ringNum]) {
+          mappingsByRing[ringNum] = [];
+        }
+        mappingsByRing[ringNum].push(m);
+      });
+
+      // Update backupData for each ring of the current event (rings 1 to 12)
+      let changed = false;
+      for (let r = 1; r <= 12; r++) {
+        const key = `${currentEventId}_${r}`;
+        const activeMappingsForRing = mappingsByRing[r] || [];
+        
+        const existingData = next[key] || { mappings: [], matches: [] };
+        
+        // Only update if mappings changed to prevent infinite loops
+        const existingMappingsSerialized = JSON.stringify(existingData.mappings || []);
+        const newMappingsSerialized = JSON.stringify(activeMappingsForRing);
+        
+        if (existingMappingsSerialized !== newMappingsSerialized) {
+          next[key] = {
+            ...existingData,
+            mappings: activeMappingsForRing
+          };
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [mappings, currentEventId, boutQueue, matchHistory, setBackupData]);
+
   // Persistence & Cross-tab Sync handled by useSyncedState
 
   const getRingName = (num: number) => {
@@ -1559,7 +1637,8 @@ export default function App() {
       });
       
       if (ringBouts.length === 0) {
-        alert(`No bouts found for Event "${currentEventName}" and Ring ${getRingName(Number(user.assignedRing))} in the sheet.`);
+        // Silently return or log
+        console.warn(`No bouts found for Event "${currentEventName}" and Ring ${getRingName(Number(user.assignedRing))} in the sheet.`);
         return;
       }
 
@@ -1597,12 +1676,12 @@ export default function App() {
       });
 
       if (newBouts.length === 0) {
-        alert(`No new bouts to import for Ring ${getRingName(Number(user.assignedRing))}. All bouts from sheet already exist in system.`);
+        console.warn(`No new bouts to import for Ring ${getRingName(Number(user.assignedRing))}. All bouts from sheet already exist in system.`);
         return;
       }
 
       setBoutQueue(prev => [...prev, ...newBouts]);
-      alert(`Successfully imported ${newBouts.length} new bouts for Ring ${getRingName(Number(user.assignedRing))}.`);
+      // Silently succeed
     } catch (error) {
       console.error("Error importing bouts:", error);
       alert("Error importing bouts. Please check console for details.");
@@ -1649,7 +1728,7 @@ export default function App() {
       });
       
       if (eventBouts.length === 0) {
-        alert(`No bouts found for Event "${currentEventName}" in the sheet.`);
+        console.warn(`No bouts found for Event "${currentEventName}" in the sheet.`);
         return;
       }
 
@@ -1695,12 +1774,12 @@ export default function App() {
       });
 
       if (newBouts.length === 0) {
-        alert(`No new bouts to import for Event "${currentEventName}". All bouts from sheet already exist in system.`);
+        console.warn(`No new bouts to import for Event "${currentEventName}". All bouts from sheet already exist in system.`);
         return;
       }
 
       setBoutQueue(prev => [...prev, ...newBouts]);
-      alert(`Successfully imported ${newBouts.length} new bouts for Event "${currentEventName}".`);
+      // Silently succeed
     } catch (error) {
       console.error("Error importing bouts:", error);
       alert("Error importing bouts. Please check console for details.");
@@ -1816,10 +1895,8 @@ export default function App() {
               console.log('Sync completed. Total synced:', syncCount);
               if (syncCount > 0) {
                 addToSyncLog('Bracket Sync', 'success', `Synced ${syncCount} results from sheet`);
-                alert(`Successfully synced ${syncCount} winners from the Google Sheet.`);
               } else {
                 addToSyncLog('Bracket Sync', 'success', 'No new results found in sheet');
-                alert("No new winners found in the Google Sheet. Make sure Column J has winner names.");
               }
               resolve();
             } catch (err) {
@@ -6417,16 +6494,7 @@ export default function App() {
         )}
       </nav>
 
-      {user?.role === 'admin' && (
-        <TournamentAssistant 
-          currentEventId={currentEventId}
-          events={events}
-          rings={rings.filter(r => !r.isDeleted && r.ringNumber <= visibleRingsCount)}
-          boutQueue={boutQueue}
-          athletes={athletes}
-          boutNumberingMode={boutNumberingMode}
-        />
-      )}
+      {/* Tournament Assistant AI disabled per user request */}
     </div>
   );
 }

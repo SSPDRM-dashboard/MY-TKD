@@ -1,0 +1,87 @@
+63:import { cn, normalizeBoutNumber, normalizeBoutWithRing, getBoutNumber, formatBoutNumber, isBoutMatch, parseRingNumber, extractWinnerOfBout, getEventSpreadsheetUrl, getEventWebAppUrl } from './lib/utils';
+766:      const isCompleted = completedHistory.some(h => isBoutMatch(h.bout, normalizedBout));
+824:            isBoutMatch(h.bout, blueBoutId) && 
+831:              isBoutMatch(h.bout, blueBoutId) && 
+838:              isBoutMatch(h.bout, blueBoutId) && 
+845:              isBoutMatch(h.bout, blueBoutId) && 
+860:            isBoutMatch(h.bout, redBoutId) && 
+867:              isBoutMatch(h.bout, redBoutId) && 
+874:              isBoutMatch(h.bout, redBoutId) && 
+881:              isBoutMatch(h.bout, redBoutId) && 
+894:          const matchesBout = isBoutMatch(sm.matchNo, bout.bout);
+1354:        const isCompleted = completedHistory.some(h => isBoutMatch(h.bout, normalizedBout));
+1996:            if (!suspended.some(b => isBoutMatch(b.bout, currentBout.bout))) {
+2085:            if (!suspended.some(b => isBoutMatch(b.bout, currentBout.bout))) {
+2371:          if (r.currentBout && isBoutMatch(r.currentBout.bout, matchNo)) {
+2375:          if (r.onDeck && isBoutMatch(r.onDeck.bout, matchNo)) {
+2379:          if (r.inTheHole && isBoutMatch(r.inTheHole.bout, matchNo)) {
+2396:        if (item.data.ring.toString() === ringNo && isBoutMatch(item.data.bout, matchNo)) {
+2434:        const boutsMatch = isBoutMatch(h.bout, mapping.sourceBout);
+2445:          const boutsMatch = isBoutMatch(h.bout, mapping.sourceBout);
+2482:            const queueMatch = boutQueue.find(b => isBoutMatch(b.data.bout, mapping.nextBout)) ||
+2483:                               rings.flatMap(r => [r.currentBout, r.onDeck, r.inTheHole]).find(b => b && isBoutMatch(b.bout, mapping.nextBout));
+2520:            isBoutMatch(h.bout, sourceBoutStr) && 
+2529:              isBoutMatch(h.bout, sourceBoutStr) && 
+2538:              isBoutMatch(h.bout, sourceBoutStr) && 
+2547:              isBoutMatch(h.bout, sourceBoutStr) && 
+2623:          if (bout && isBoutMatch(bout.bout, targetBoutStr)) {
+2668:        if (isBoutMatch(item.data.bout, targetBoutStr)) {
+2702:        isBoutMatch(h.bout, targetBoutStr) && 
+2891:      const isCompleted = currentCompletedHistory.some(h => isBoutMatch(h.bout, normalizedBout));
+2930:      const isCompleted = currentCompletedHistory.some(h => isBoutMatch(h.bout, normalizedBout));
+3008:          const found = backupData[key].matches.find((m: MatchData) => isBoutMatch(m.bout, matchToRestore.bout));
+3042:          if (slotBout && slotBout.bout && isBoutMatch(slotBout.bout, matchToRestore.bout)) {
+3074:        if (isBoutMatch(q.data.bout, matchToRestore.bout) && qRing === ringToUse) {
+3146:      const nextMatch = boutQueue.find(b => isBoutMatch(b.data.bout, m.nextBout)) ||
+3147:                        rings.flatMap(r => [r.currentBout, r.onDeck, r.inTheHole]).find(b => b && isBoutMatch(b.bout, m.nextBout));
+3154:    const compBoutHistObj = matchHistory.find(h => isBoutMatch(h.bout, completedBout) && h.eventId === currentEventId);
+3159:      const boutsMatch = isBoutMatch(m.sourceBout, completedBout);
+3175:        isBoutMatch(m.nextBout, nextBoutId) && 
+3198:          isBoutMatch(h.bout, otherMapping.sourceBout) && 
+3219:        isBoutMatch(q.data.bout, nextBoutId) && 
+3256:                isBoutMatch(boutInSlot.bout, nextBoutId) && 
+3291:          (r.currentBout && isBoutMatch(r.currentBout.bout, nextBoutId) && r.currentBout.eventId === currentEventId && normHelper(r.currentBout.category) === normHelper(targetCategory)) || 
+3292:          (r.onDeck && isBoutMatch(r.onDeck.bout, nextBoutId) && r.onDeck.eventId === currentEventId && normHelper(r.onDeck.category) === normHelper(targetCategory)) || 
+3293:          (r.inTheHole && isBoutMatch(r.inTheHole.bout, nextBoutId) && r.inTheHole.eventId === currentEventId && normHelper(r.inTheHole.category) === normHelper(targetCategory))
+3313:              isBoutMatch(q.data.bout, nextBoutId) && 
+3341:      const updated = prev.map(r => r.ringNumber === ringNumber && r.currentBout && isBoutMatch(r.currentBout.bout, boutNumber) ? { 
+3436:          if (!suspended.some(b => isBoutMatch(b.bout, currentBout.bout))) {
+3457:          const targetIndex = suspended.findIndex(b => isBoutMatch(b.bout, boutNumber));
+3466:            if (!nextSuspended.some(b => isBoutMatch(b.bout, activeBout.bout))) {
+3490:          const suspended = r.suspendedBouts ? r.suspendedBouts.filter(b => !isBoutMatch(b.bout, boutNumber)) : [];
+5841:              if (ring.currentBout && isBoutMatch(ring.currentBout.bout, normalized)) found = ring.currentBout;
+5842:              else if (ring.onDeck && isBoutMatch(ring.onDeck.bout, normalized)) found = ring.onDeck;
+5843:              else if (ring.inTheHole && isBoutMatch(ring.inTheHole.bout, normalized)) found = ring.inTheHole;
+5846:              const queued = boutQueue.find(q => q.data.ring === ringNumber && isBoutMatch(q.data.bout, normalized));
+5943:                if (r.currentBout && isBoutMatch(r.currentBout.bout, boutNumber)) exists = true;
+5944:                if (r.onDeck && isBoutMatch(r.onDeck.bout, boutNumber)) exists = true;
+5945:                if (r.inTheHole && isBoutMatch(r.inTheHole.bout, boutNumber)) exists = true;
+5949:              const inQ = boutQueue.some(q => q.data.ring === ringNumber && isBoutMatch(q.data.bout, boutNumber));
+6001:                  if (r.currentBout && isBoutMatch(r.currentBout.bout, boutNumber)) {
+6005:                  if (r.onDeck && isBoutMatch(r.onDeck.bout, boutNumber)) {
+6009:                  if (r.inTheHole && isBoutMatch(r.inTheHole.bout, boutNumber)) {
+6021:                if (q.data.ring === ringNumber && isBoutMatch(q.data.bout, boutNumber)) {
+6034:                if (targetRingObj.currentBout && isBoutMatch(targetRingObj.currentBout.bout, boutNumber)) foundMatch = targetRingObj.currentBout;
+6035:                else if (targetRingObj.onDeck && isBoutMatch(targetRingObj.onDeck.bout, boutNumber)) foundMatch = targetRingObj.onDeck;
+6036:                else if (targetRingObj.inTheHole && isBoutMatch(targetRingObj.inTheHole.bout, boutNumber)) foundMatch = targetRingObj.inTheHole;
+6039:                const qMatch = boutQueue.find(q => q.data.ring === ringNumber && isBoutMatch(q.data.bout, boutNumber));
+6069:                  if (ring.currentBout && isBoutMatch(ring.currentBout.bout, boutNumber)) oldMatch = ring.currentBout;
+6070:                  else if (ring.onDeck && isBoutMatch(ring.onDeck.bout, boutNumber)) oldMatch = ring.onDeck;
+6071:                  else if (ring.inTheHole && isBoutMatch(ring.inTheHole.bout, boutNumber)) oldMatch = ring.inTheHole;
+6074:                  const q = boutQueue.find(qi => qi.data.ring === ringNumber && isBoutMatch(qi.data.bout, boutNumber));
+6815:      if (ring.currentBout && isBoutMatch(ring.currentBout.bout, normalized) && (ring.currentBout.eventId === formData.eventId || !formData.eventId)) found = ring.currentBout;
+6816:      else if (ring.onDeck && isBoutMatch(ring.onDeck.bout, normalized) && (ring.onDeck.eventId === formData.eventId || !formData.eventId)) found = ring.onDeck;
+6817:      else if (ring.inTheHole && isBoutMatch(ring.inTheHole.bout, normalized) && (ring.inTheHole.eventId === formData.eventId || !formData.eventId)) found = ring.inTheHole;
+6820:      const queued = queue.find(q => q.data.ring === formData.ring && isBoutMatch(q.data.bout, normalized) && (q.data.eventId === formData.eventId || !formData.eventId));
+8668:            const isAlreadyCurrent = ring.currentBout && isBoutMatch(q.data.bout, ring.currentBout.bout);
+8669:            const isAlreadyOnDeck = ring.onDeck && isBoutMatch(q.data.bout, ring.onDeck.bout);
+8670:            const isAlreadyInTheHole = ring.inTheHole && isBoutMatch(q.data.bout, ring.inTheHole.bout);
+9030:            const isAlreadyCurrent = ring.currentBout && isBoutMatch(q.data.bout, ring.currentBout.bout);
+9031:            const isAlreadyOnDeck = ring.onDeck && isBoutMatch(q.data.bout, ring.onDeck.bout);
+9032:            const isAlreadyInTheHole = ring.inTheHole && isBoutMatch(q.data.bout, ring.inTheHole.bout);
+9770:            const isAlreadyCurrent = ring.currentBout && isBoutMatch(q.data.bout, ring.currentBout.bout);
+9771:            const isAlreadyOnDeck = ring.onDeck && isBoutMatch(q.data.bout, ring.onDeck.bout);
+9772:            const isAlreadyInTheHole = ring.inTheHole && isBoutMatch(q.data.bout, ring.inTheHole.bout);
+10162:                  const isAlreadyCurrent = ring.currentBout && isBoutMatch(q.data.bout, ring.currentBout.bout);
+10163:                  const isAlreadyOnDeck = ring.onDeck && isBoutMatch(q.data.bout, ring.onDeck.bout);
+10164:                  const isAlreadyInTheHole = ring.inTheHole && isBoutMatch(q.data.bout, ring.inTheHole.bout);

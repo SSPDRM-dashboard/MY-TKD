@@ -913,12 +913,7 @@ export function AIBracketSetup({
       });
       
       setBackupData(prev => {
-        const next: Record<string, any> = {};
-        Object.keys(prev || {}).forEach(k => {
-          if (k.startsWith(`${currentEventId}_`)) {
-            next[k] = prev[k];
-          }
-        });
+        const next = { ...(prev || {}) };
 
         const allRings = new Set([...Object.keys(mappingsByRing), ...Object.keys(matchesByRing)]);
         allRings.forEach(sRing => {
