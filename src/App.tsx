@@ -740,6 +740,8 @@ export default function App() {
     };
   }, [currentEventId]);
 
+
+
   // Automated queue pruning to prevent completed bouts from lingering in the queue
   useEffect(() => {
     if (!currentEventId || boutQueue.length === 0 || matchHistory.length === 0) return;
@@ -1217,6 +1219,7 @@ export default function App() {
   const [showEditBoutDetailsModal, setShowEditBoutDetailsModal] = useState(false);
   const [showAddRingModal, setShowAddRingModal] = useState(false);
   const [missingBoutPrompt, setMissingBoutPrompt] = useState<{ ringNumber: number; expectedBout: number; totalBouts: number } | null>(null);
+  const [finalBoutCheck, setFinalBoutCheck] = useState<{ ringNumber: number; remainingCount: number } | null>(null);
   const [ringNamingMode, setRingNamingMode] = useSyncedState<'number' | 'alphabet'>('tkd_ring_naming_mode', 'number');
   const [boutNumberingMode, setBoutNumberingMode] = useSyncedState<'numeric' | 'alphanumeric'>('tkd_bout_numbering_mode', 'alphanumeric');
   const [categories, setCategories] = useSyncedState<string[]>('tkd_categories', ["Junior Male -45kg", "Junior Female -42kg", "Senior Male -54kg", "INDIVIDUAL POOMSAE"]);
@@ -1266,7 +1269,6 @@ export default function App() {
   const [publicEventId, setPublicEventId] = useSyncedState<string>('tkd_public_event_id', 'active');
   const [visibleRingsCount, setVisibleRingsCount] = useSyncedState<number>('tkd_visible_rings_count', 12);
   const [slideInterval, setSlideInterval] = useSyncedState<number>('tkd_slide_interval', 15);
-  const [publicCourtsPerRow, setPublicCourtsPerRow] = useSyncedState<number>('tkd_public_courts_per_row_global', 4);
   const [backupData, setBackupData] = useLocalState<Record<string, { mappings: BoutMapping[], matches: MatchData[] }>>('tkd_backup_data_v3', {});
   const [backupToLoad, setBackupToLoad] = useState<{ mappings: Partial<BoutMapping>[], matches: MatchData[] } | null>(null);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
@@ -1316,84 +1318,6 @@ export default function App() {
       }
     }
   }, [events, currentEventId, setCurrentEventId, setGoogleSheetUrl]);
-
-  // Automatically sync mappings to backupData (Backup Mapping Recovery)
-  useEffect(() => {
-    if (!currentEventId) return;
-    
-    setBackupData(prev => {
-      // Create a shallow copy of prev to preserve ALL other event backups
-      const next = { ...prev };
-      
-      // Group mappings by ring for the current event
-      const mappingsByRing: Record<number, BoutMapping[]> = {};
-      
-      mappings.forEach(m => {
-        const getRingFromBoutStr = (bout: string) => {
-          const bStr = (bout || '').toString().trim();
-          const boutNum = parseInt(bStr.replace(/[^0-9]/g, ''));
-          if (!isNaN(boutNum) && boutNum >= 1000) {
-            return Math.floor(boutNum / 1000);
-          }
-          const prefix = bStr.charAt(0).toUpperCase();
-          if (prefix === 'A') return 1;
-          if (prefix === 'B') return 2;
-          if (prefix === 'C') return 3;
-          if (prefix === 'D') return 4;
-          if (prefix === 'E') return 5;
-          if (prefix === 'F') return 6;
-          if (prefix === 'G') return 7;
-          if (prefix === 'H') return 8;
-          return 1;
-        };
-
-        // Try to find the match in the queue or history to get the accurate ring number
-        const matchInQueue = boutQueue.find(q => 
-          isBoutMatch(q.data.bout, m.sourceBout) || isBoutMatch(q.data.bout, m.nextBout)
-        );
-        const matchInHistory = matchHistory.find(h => 
-          isBoutMatch(h.bout, m.sourceBout) || isBoutMatch(h.bout, m.nextBout)
-        );
-
-        let ringNum = 1;
-        if (matchInQueue) {
-          ringNum = matchInQueue.data.ring;
-        } else if (matchInHistory) {
-          ringNum = matchInHistory.ring;
-        } else {
-          ringNum = getRingFromBoutStr(m.sourceBout || m.nextBout || '');
-        }
-        
-        if (!mappingsByRing[ringNum]) {
-          mappingsByRing[ringNum] = [];
-        }
-        mappingsByRing[ringNum].push(m);
-      });
-
-      // Update backupData for each ring of the current event (rings 1 to 12)
-      let changed = false;
-      for (let r = 1; r <= 12; r++) {
-        const key = `${currentEventId}_${r}`;
-        const activeMappingsForRing = mappingsByRing[r] || [];
-        
-        const existingData = next[key] || { mappings: [], matches: [] };
-        
-        // Only update if mappings changed to prevent infinite loops
-        const existingMappingsSerialized = JSON.stringify(existingData.mappings || []);
-        const newMappingsSerialized = JSON.stringify(activeMappingsForRing);
-        
-        if (existingMappingsSerialized !== newMappingsSerialized) {
-          next[key] = {
-            ...existingData,
-            mappings: activeMappingsForRing
-          };
-          changed = true;
-        }
-      }
-
-      return changed ? next : prev;
-    });
-  }, [mappings, currentEventId, boutQueue, matchHistory, setBackupData]);
 
   // Persistence & Cross-tab Sync handled by useSyncedState
 
@@ -1637,8 +1561,7 @@ export default function App() {
       });
       
       if (ringBouts.length === 0) {
-        // Silently return or log
-        console.warn(`No bouts found for Event "${currentEventName}" and Ring ${getRingName(Number(user.assignedRing))} in the sheet.`);
+        alert(`No bouts found for Event "${currentEventName}" and Ring ${getRingName(Number(user.assignedRing))} in the sheet.`);
         return;
       }
 
@@ -1676,12 +1599,12 @@ export default function App() {
       });
 
       if (newBouts.length === 0) {
-        console.warn(`No new bouts to import for Ring ${getRingName(Number(user.assignedRing))}. All bouts from sheet already exist in system.`);
+        alert(`No new bouts to import for Ring ${getRingName(Number(user.assignedRing))}. All bouts from sheet already exist in system.`);
         return;
       }
 
       setBoutQueue(prev => [...prev, ...newBouts]);
-      // Silently succeed
+      alert(`Successfully imported ${newBouts.length} new bouts for Ring ${getRingName(Number(user.assignedRing))}.`);
     } catch (error) {
       console.error("Error importing bouts:", error);
       alert("Error importing bouts. Please check console for details.");
@@ -1728,7 +1651,7 @@ export default function App() {
       });
       
       if (eventBouts.length === 0) {
-        console.warn(`No bouts found for Event "${currentEventName}" in the sheet.`);
+        alert(`No bouts found for Event "${currentEventName}" in the sheet.`);
         return;
       }
 
@@ -1774,12 +1697,12 @@ export default function App() {
       });
 
       if (newBouts.length === 0) {
-        console.warn(`No new bouts to import for Event "${currentEventName}". All bouts from sheet already exist in system.`);
+        alert(`No new bouts to import for Event "${currentEventName}". All bouts from sheet already exist in system.`);
         return;
       }
 
       setBoutQueue(prev => [...prev, ...newBouts]);
-      // Silently succeed
+      alert(`Successfully imported ${newBouts.length} new bouts for Event "${currentEventName}".`);
     } catch (error) {
       console.error("Error importing bouts:", error);
       alert("Error importing bouts. Please check console for details.");
@@ -1868,10 +1791,6 @@ export default function App() {
                       category: category,
                       winner: winner,
                       winnerClub: winnerClub,
-                      blue_name: row[5]?.trim() || '',
-                      blue_club: row[6]?.trim() || '',
-                      red_name: row[7]?.trim() || '',
-                      red_club: row[8]?.trim() || '',
                       eventId: currentEventId,
                       ring: ringNo,
                       syncedAt: new Date().toISOString()
@@ -1895,8 +1814,10 @@ export default function App() {
               console.log('Sync completed. Total synced:', syncCount);
               if (syncCount > 0) {
                 addToSyncLog('Bracket Sync', 'success', `Synced ${syncCount} results from sheet`);
+                alert(`Successfully synced ${syncCount} winners from the Google Sheet.`);
               } else {
                 addToSyncLog('Bracket Sync', 'success', 'No new results found in sheet');
+                alert("No new winners found in the Google Sheet. Make sure Column J has winner names.");
               }
               resolve();
             } catch (err) {
@@ -2011,10 +1932,6 @@ export default function App() {
                         winnerClub: winnerClub,
                         ring: ringNo,
                         ...(winnerSide && { winnerSide }),
-                        blue_name: blueName,
-                        blue_club: blueClub,
-                        red_name: redName,
-                        red_club: redClub,
                         eventId: currentEventId,
                         syncedAt: serverTimestamp()
                       };
@@ -2904,10 +2821,6 @@ export default function App() {
         winner: winnerName || winner,
         winnerClub: winner === 'Blue' ? currentBout.blue_club : (winner === 'Red' ? currentBout.red_club : '-'),
         winnerSide: (winner === 'Blue' || winner === 'Red') ? (winner as 'Blue' | 'Red') : undefined,
-        blue_name: currentBout.blue_name,
-        blue_club: currentBout.blue_club,
-        red_name: currentBout.red_name,
-        red_club: currentBout.red_club,
         eventId: currentEventId,
         ring: ringNumber
       };
@@ -2951,10 +2864,6 @@ export default function App() {
           winner: winnerName || winner,
           winnerClub: winner === 'Blue' ? currentBout.blue_club : (winner === 'Red' ? currentBout.red_club : '-'),
           winnerSide: (winner === 'Blue' || winner === 'Red') ? (winner as 'Blue' | 'Red') : undefined,
-          blue_name: currentBout.blue_name,
-          blue_club: currentBout.blue_club,
-          red_name: currentBout.red_name,
-          red_club: currentBout.red_club,
           eventId: currentEventId,
           ring: ringNumber
         });
@@ -3008,6 +2917,12 @@ export default function App() {
       return !isCompleted;
     });
     
+    // Check if we need to prompt for final bouts
+    // If we have a next bout, and after pulling it, the queue for this ring will be < 3
+    if (nextBoutIndex !== -1 && !ring?.isFinalBouts && ringQueue.length < 4) {
+      setFinalBoutCheck({ ringNumber, remainingCount: ringQueue.length - 1 });
+    }
+
     // Auto-advance ring: Move onDeck to current, inTheHole to onDeck
     let pulledFromQueue = false;
     let nextItemToPull: {id: string, data: MatchData} | null = null;
@@ -3078,35 +2993,20 @@ export default function App() {
 
     const ringToUse = matchToRestore.ring || getRingFromBout(matchToRestore.bout) || 1;
 
-    let originalMatch: MatchData | undefined;
-    if (backupData) {
-      for (const key of Object.keys(backupData)) {
-        if (key.startsWith(`${currentEventId}_`)) {
-          const found = backupData[key].matches.find((m: MatchData) => isBoutMatch(m.bout, matchToRestore.bout));
-          if (found) {
-            originalMatch = found;
-            break;
-          }
-        }
-      }
-    }
-
     const newBoutId = `restored_${currentEventId}_${Date.now()}`;
     const restoredMatchData: MatchData = {
       ring: ringToUse,
       originalRing: ringToUse,
       bout: matchToRestore.bout,
-      category: matchToRestore.category || originalMatch?.category || '',
-      blue_name: originalMatch?.blue_name || matchToRestore.blue_name || '',
-      blue_club: originalMatch?.blue_club || matchToRestore.blue_club || '',
-      red_name: originalMatch?.red_name || matchToRestore.red_name || '',
-      red_club: originalMatch?.red_club || matchToRestore.red_club || '',
+      category: matchToRestore.category || '',
+      blue_name: '',
+      blue_club: '',
+      red_name: '',
+      red_club: '',
       points: {},
       eventId: currentEventId,
       allowCompleted: true,
-      privacy_mode: originalMatch?.privacy_mode || false,
-      blue_inspected: originalMatch?.blue_inspected,
-      red_inspected: originalMatch?.red_inspected,
+      privacy_mode: false
     };
 
     setRings(prevRings => {
@@ -3902,6 +3802,26 @@ export default function App() {
     }
   };
 
+  const handleUpdateActiveEventName = (newName: string) => {
+    if (currentEventId) {
+      const activeEvent = events.find(e => e.id === currentEventId);
+      if (activeEvent) {
+        handleUpdateEvent({ ...activeEvent, name: newName });
+      }
+    } else {
+      const newEventId = `event_${Date.now()}`;
+      const newEvent: EventData = {
+        id: newEventId,
+        name: newName,
+        eventDate: new Date().toISOString().split('T')[0],
+        sheetUrl: '',
+        ringQuantity: 4,
+        createdAt: new Date()
+      };
+      handleAddEvent(newEvent);
+    }
+  };
+
   const handleDeleteEvent = async (id: string) => {
     const updated = events.filter(e => e.id !== id);
     setEvents(updated);
@@ -3936,6 +3856,15 @@ export default function App() {
         await Promise.all(historyPromises);
       } catch (err) {
         console.error("Error cleaning up Firestore matchHistory for event:", id, err);
+      }
+
+      try {
+        const qBackup = query(collection(db, 'backup_data'), where('eventId', '==', id));
+        const backupSnapshot = await getDocs(qBackup);
+        const backupPromises = backupSnapshot.docs.map(docSnap => deleteDoc(docSnap.ref));
+        await Promise.all(backupPromises);
+      } catch (err) {
+        console.error("Error cleaning up Firestore backup_data for event:", id, err);
       }
     }
     
@@ -4082,8 +4011,9 @@ export default function App() {
         boutTransfers={boutTransfers}
         isAdmin={false}
         onDeleteTransfer={handleCancelTransferPin}
-        globalCourtsPerRow={publicCourtsPerRow}
-        onCourtsPerRowChange={setPublicCourtsPerRow}
+        currentEventId={effectivePublicEventId}
+        events={events}
+        onUpdateEventName={handleUpdateActiveEventName}
       />
     );
   }
@@ -4105,8 +4035,9 @@ export default function App() {
         boutTransfers={boutTransfers}
         isAdmin={user?.role === 'admin'}
         onDeleteTransfer={handleCancelTransferPin}
-        globalCourtsPerRow={publicCourtsPerRow}
-        onCourtsPerRowChange={setPublicCourtsPerRow}
+        currentEventId={effectivePublicEventId}
+        events={events}
+        onUpdateEventName={handleUpdateActiveEventName}
       />
     );
   }
@@ -4544,13 +4475,43 @@ export default function App() {
                             disabled={isSyncing}
                             onClick={async () => {
                               if (!currentEventId) return;
-                              const toLoad = backupData[groupKey] || { mappings: [], matches: [] };
-                              if (toLoad.mappings.length === 0) {
-                                alert("No backup mappings found for this ring.");
-                                return;
+                              setIsSyncing(true);
+                              try {
+                                const backupDoc = await getDoc(doc(db, 'backup_data', groupKey));
+                                if (backupDoc.exists()) {
+                                  const data = backupDoc.data();
+                                  const toLoad = {
+                                    mappings: data.mappings || [],
+                                    matches: data.matches || []
+                                  };
+                                  // Cache in local state to show indicator and avoid refetching
+                                  setBackupData(prev => ({
+                                    ...(prev || {}),
+                                    [groupKey]: toLoad
+                                  }));
+                                  setBackupToLoad(toLoad);
+                                  setActiveTab('ai-setup');
+                                } else {
+                                  const toLoad = backupData[groupKey] || { mappings: [], matches: [] };
+                                  if (toLoad.mappings.length === 0) {
+                                    alert("No backup mappings found for this ring on the cloud or locally.");
+                                    return;
+                                  }
+                                  setBackupToLoad(toLoad);
+                                  setActiveTab('ai-setup');
+                                }
+                              } catch (err) {
+                                console.error("Error fetching backup from Firestore:", err);
+                                const toLoad = backupData[groupKey] || { mappings: [], matches: [] };
+                                if (toLoad.mappings.length === 0) {
+                                  alert("No backup mappings found for this ring. Error: " + (err instanceof Error ? err.message : String(err)));
+                                  return;
+                                }
+                                setBackupToLoad(toLoad);
+                                setActiveTab('ai-setup');
+                              } finally {
+                                setIsSyncing(false);
                               }
-                              setBackupToLoad(toLoad);
-                              setActiveTab('ai-setup');
                             }}
                             className={cn(
                               "flex-1 min-w-[70px] h-12 flex flex-col items-center justify-center rounded-2xl border text-xs font-black transition-all duration-200 shadow-sm relative",
@@ -4681,38 +4642,24 @@ export default function App() {
                   {(() => {
                     const upcomingBouts: { id: string; type: 'onDeck' | 'inTheHole' | 'normal'; data: MatchData }[] = [];
                     
-                    const activeBoutsToExclude = new Set<string>();
-                    if (selectedRingObj) {
-                      if (selectedRingObj.currentBout) activeBoutsToExclude.add(String(selectedRingObj.currentBout.bout).trim().toLowerCase());
-                      if (selectedRingObj.onDeck && selectedRingObj.onDeck.eventId === currentEventId) {
-                        activeBoutsToExclude.add(String(selectedRingObj.onDeck.bout).trim().toLowerCase());
-                      }
-                      if (selectedRingObj.inTheHole && selectedRingObj.inTheHole.eventId === currentEventId) {
-                        activeBoutsToExclude.add(String(selectedRingObj.inTheHole.bout).trim().toLowerCase());
-                      }
-                    }
-                    
-                    const normalQueue = getFilteredQueue(activeDashboardSelectedRing).filter(item => {
-                      return !activeBoutsToExclude.has(String(item.data.bout).trim().toLowerCase());
-                    });
-                    
                     if (selectedRingObj) {
                       if (selectedRingObj.onDeck && selectedRingObj.onDeck.eventId === currentEventId) {
                         upcomingBouts.push({
-                          id: `ondeck-${selectedRingObj.ringNumber}`,
+                          id: `ondeck-${selectedRingObj.onDeck.bout}`,
                           type: 'onDeck',
                           data: selectedRingObj.onDeck
                         });
                       }
                       if (selectedRingObj.inTheHole && selectedRingObj.inTheHole.eventId === currentEventId) {
                         upcomingBouts.push({
-                          id: `inthehole-${selectedRingObj.ringNumber}`,
+                          id: `inhole-${selectedRingObj.inTheHole.bout}`,
                           type: 'inTheHole',
                           data: selectedRingObj.inTheHole
                         });
                       }
                     }
-
+                    
+                    const normalQueue = getFilteredQueue(activeDashboardSelectedRing);
                     normalQueue.forEach(item => {
                       upcomingBouts.push({
                         id: item.id,
@@ -4834,11 +4781,6 @@ export default function App() {
                                 })
                               )}
                             </div>
-                            <div className="flex justify-end p-3 border-t border-slate-200 bg-slate-50/50">
-                              <span className="text-sm font-bold text-slate-600">
-                                Balance Bout Remaining: {upcomingBouts.length}
-                              </span>
-                            </div>
                           </div>
                         </div>
                       </div>
@@ -4866,6 +4808,8 @@ export default function App() {
               slideInterval={slideInterval}
               boutTransfers={boutTransfers}
               onDeleteTransfer={handleCancelTransferPin}
+              events={events}
+              onUpdateEventName={handleUpdateActiveEventName}
             />
           )}
 
@@ -4886,6 +4830,8 @@ export default function App() {
               slideInterval={slideInterval}
               boutTransfers={boutTransfers}
               onDeleteTransfer={handleCancelTransferPin}
+              events={events}
+              onUpdateEventName={handleUpdateActiveEventName}
             />
           )}
 
@@ -4905,6 +4851,8 @@ export default function App() {
               slideInterval={slideInterval}
               boutTransfers={boutTransfers}
               onDeleteTransfer={handleCancelTransferPin}
+              events={events}
+              onUpdateEventName={handleUpdateActiveEventName}
             />
           )}
 
@@ -4924,6 +4872,8 @@ export default function App() {
               slideInterval={slideInterval}
               boutTransfers={boutTransfers}
               onDeleteTransfer={handleCancelTransferPin}
+              events={events}
+              onUpdateEventName={handleUpdateActiveEventName}
             />
           )}
 
@@ -5021,39 +4971,24 @@ export default function App() {
                     {(() => {
                       const userUpcomingBouts: { id: string; type: 'onDeck' | 'inTheHole' | 'normal'; data: MatchData }[] = [];
                       
-                      const activeBoutsToExclude = new Set<string>();
-                      currentRings.filter(r => r.ringNumber === Number(user?.assignedRing)).forEach(ringObj => {
-                        if (ringObj.currentBout) activeBoutsToExclude.add(String(ringObj.currentBout.bout).trim().toLowerCase());
-                        if (ringObj.onDeck && ringObj.onDeck.eventId === currentEventId) {
-                          activeBoutsToExclude.add(String(ringObj.onDeck.bout).trim().toLowerCase());
-                        }
-                        if (ringObj.inTheHole && ringObj.inTheHole.eventId === currentEventId) {
-                          activeBoutsToExclude.add(String(ringObj.inTheHole.bout).trim().toLowerCase());
-                        }
-                      });
-
-                      const normalQueue = getFilteredQueue().filter(item => {
-                        return !activeBoutsToExclude.has(String(item.data.bout).trim().toLowerCase());
-                      });
-
                       currentRings.filter(r => r.ringNumber === Number(user?.assignedRing)).forEach(ringObj => {
                         if (ringObj.onDeck && ringObj.onDeck.eventId === currentEventId) {
                           userUpcomingBouts.push({
-                            id: `ondeck-${ringObj.ringNumber}`,
+                            id: `ondeck-${ringObj.ringNumber}-${ringObj.onDeck.bout}`,
                             type: 'onDeck',
                             data: ringObj.onDeck
                           });
                         }
                         if (ringObj.inTheHole && ringObj.inTheHole.eventId === currentEventId) {
                           userUpcomingBouts.push({
-                            id: `inthehole-${ringObj.ringNumber}`,
+                            id: `inhole-${ringObj.ringNumber}-${ringObj.inTheHole.bout}`,
                             type: 'inTheHole',
                             data: ringObj.inTheHole
                           });
                         }
                       });
 
-                      normalQueue.forEach(item => {
+                      getFilteredQueue().forEach(item => {
                         userUpcomingBouts.push({
                           id: item.id,
                           type: 'normal',
@@ -5182,11 +5117,6 @@ export default function App() {
                                     </div>
                                   ))
                                 )}
-                              </div>
-                              <div className="flex justify-end p-3 border-t border-slate-200 bg-slate-50/50">
-                                <span className="text-sm font-bold text-slate-600">
-                                  Balance Bout Remaining: {userUpcomingBouts.length}
-                                </span>
                               </div>
                             </div>
                           </div>
@@ -5559,23 +5489,6 @@ export default function App() {
                     </div>
                     <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
-                        <p className="text-sm font-bold text-slate-700 font-sans">Public View Courts per Row</p>
-                        <p className="text-[10px] text-slate-500 font-sans">How many courts to display per row on laptops/desktops in public view</p>
-                      </div>
-                      <select
-                        value={publicCourtsPerRow}
-                        onChange={(e) => setPublicCourtsPerRow(Number(e.target.value))}
-                        className="px-4 py-2 bg-white rounded-xl text-[10px] md:text-xs font-black text-slate-600 border border-slate-200 focus:ring-2 focus:ring-red-500 outline-none w-full sm:w-auto min-w-[200px] cursor-pointer"
-                      >
-                        {[1, 2, 3, 4, 5, 6, 8].map((num) => (
-                          <option key={num} value={num}>
-                            {num} {num === 1 ? 'Court' : 'Courts'} per row
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div>
                         <p className="text-sm font-bold text-slate-700 font-sans">Slide Change Interval</p>
                         <p className="text-[10px] text-slate-500 font-sans">How many seconds before auto-sliding in Standby/Points/Onsite views</p>
                       </div>
@@ -5902,6 +5815,26 @@ export default function App() {
         />
       )}
 
+      {finalBoutCheck && (
+        <FinalBoutCheckModal 
+          ringNumber={finalBoutCheck.ringNumber}
+          remainingCount={finalBoutCheck.remainingCount}
+          onConfirmFinal={() => {
+            setRings(prev => {
+              const updated = prev.map(r => r.ringNumber === finalBoutCheck.ringNumber ? { ...r, isFinalBouts: true } : r);
+              localStorage.setItem('tkd_rings', JSON.stringify(updated));
+              return updated;
+            });
+            setFinalBoutCheck(null);
+          }}
+          onAddBout={() => {
+            setNewBoutInitialRing(finalBoutCheck.ringNumber);
+            setFinalBoutCheck(null);
+            setShowNewBoutModal(true);
+          }}
+        />
+      )}
+
       {showEditResultModal && (
         <EditResultModal
           onClose={() => setShowEditResultModal(false)}
@@ -6166,10 +6099,6 @@ export default function App() {
                       winner: newWinName, 
                       winnerClub: newWinClub,
                       winnerSide: side,
-                      blue_name: updates.blue_name || oldMatch.blue_name,
-                      blue_club: updates.blue_club || oldMatch.blue_club,
-                      red_name: updates.red_name || oldMatch.red_name,
-                      red_club: updates.red_club || oldMatch.red_club,
                       ring: ringNumber
                     };
                     setMatchHistory(prev => prev.map(h => h.id === histId ? updatedHistItem : h));
@@ -6494,7 +6423,18 @@ export default function App() {
         )}
       </nav>
 
-      {/* Tournament Assistant AI disabled per user request */}
+      {/* 
+      {user?.role === 'admin' && (
+        <TournamentAssistant 
+          currentEventId={currentEventId}
+          events={events}
+          rings={rings.filter(r => !r.isDeleted && r.ringNumber <= visibleRingsCount)}
+          boutQueue={boutQueue}
+          athletes={athletes}
+          boutNumberingMode={boutNumberingMode}
+        />
+      )}
+      */}
     </div>
   );
 }
@@ -7022,6 +6962,61 @@ function EditResultModal({ onClose, onSubmit, rings, queue, user, boutNumberingM
   );
 }
 
+interface FinalBoutCheckModalProps {
+  ringNumber: number;
+  remainingCount: number;
+  onConfirmFinal: () => void;
+  onAddBout: () => void;
+}
+
+function FinalBoutCheckModal({ ringNumber, remainingCount, onConfirmFinal, onAddBout }: FinalBoutCheckModalProps) {
+  return (
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
+      >
+        <div className="p-6 bg-red-600 text-white flex items-center gap-4">
+          <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
+            <AlertTriangle size={24} />
+          </div>
+          <div>
+            <h2 className="text-xl font-black tracking-tight">Upcoming Bouts Alert</h2>
+            <p className="text-xs text-red-100 font-bold uppercase tracking-widest">Ring {ringNumber}</p>
+          </div>
+        </div>
+        
+        <div className="p-8 space-y-6">
+          <div className="space-y-2 text-center">
+            <p className="text-slate-600 font-medium">
+              There are only <span className="text-red-600 font-black">{remainingCount}</span> upcoming bouts remaining for this ring.
+            </p>
+            <p className="text-sm text-slate-500">
+              A minimum of 3 standby bouts is required unless these are the final bouts of the session.
+            </p>
+          </div>
+          
+          <div className="flex flex-col gap-3">
+            <button 
+              onClick={onConfirmFinal}
+              className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+            >
+              Yes, these are final bouts
+            </button>
+            <button 
+              onClick={onAddBout}
+              className="w-full py-4 bg-white text-slate-900 border-2 border-slate-200 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
+            >
+              No, add more bouts
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 interface NewBoutModalProps {
   onClose: () => void;
   onSubmit: (ringNumber: number, data: MatchData) => void;
@@ -7432,7 +7427,9 @@ interface AddRingModalProps {
 }
 
 function AddRingModal({ onClose, onAdd, existingRings, namingMode }: AddRingModalProps) {
-  const availableRings = Array.from({ length: 20 }, (_, i) => i + 1).filter(r => !existingRings.includes(r));
+  const availableRings = React.useMemo(() => {
+    return Array.from({ length: 20 }, (_, i) => i + 1).filter(r => !existingRings.includes(r));
+  }, [existingRings]);
   const [selectedRing, setSelectedRing] = useState<number>(availableRings[0] || 1);
 
   useEffect(() => {
@@ -8515,6 +8512,62 @@ function AthleteRow({ name, ic, club, category, status }: AthleteRowProps) {
   );
 }
 
+interface EventNameGreenBoxProps {
+  currentEventId: string | null;
+  events: EventData[];
+  isAdmin: boolean;
+  onUpdateEventName: (name: string) => void;
+}
+
+function EventNameGreenBox({ currentEventId, events, isAdmin, onUpdateEventName }: EventNameGreenBoxProps) {
+  const activeEvent = events.find(e => e.id === currentEventId);
+  const [localName, setLocalName] = useState(activeEvent?.name || '');
+
+  useEffect(() => {
+    setLocalName(activeEvent?.name || '');
+  }, [activeEvent?.name]);
+
+  const handleSave = () => {
+    const trimmed = localName.trim();
+    if (trimmed && trimmed !== activeEvent?.name) {
+      onUpdateEventName(trimmed);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
+    }
+  };
+
+  if (!isAdmin) {
+    if (!activeEvent) return null;
+    return (
+      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl py-1.5 px-4 shadow-[0_0_15px_rgba(16,185,129,0.15)] flex items-center justify-center gap-2 max-w-xs sm:max-w-md mx-auto">
+        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shrink-0" />
+        <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-emerald-400 font-mono truncate">
+          {activeEvent.name}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-emerald-500/10 border-2 border-emerald-500/30 rounded-2xl py-1 px-3 shadow-[0_0_15px_rgba(16,185,129,0.15)] flex items-center gap-2 w-48 sm:w-64 md:w-80 mx-auto">
+      <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shrink-0" />
+      <input
+        type="text"
+        value={localName}
+        onChange={(e) => setLocalName(e.target.value)}
+        onBlur={handleSave}
+        onKeyDown={handleKeyDown}
+        className="bg-transparent text-emerald-400 placeholder-emerald-600/50 text-[10px] sm:text-xs font-black uppercase tracking-widest outline-none border-none focus:ring-0 w-full text-center p-0 font-mono"
+        placeholder={activeEvent ? "EDIT EVENT NAME..." : "ENTER EVENT NAME TO CREATE..."}
+      />
+    </div>
+  );
+}
+
 interface PublicRingCardProps {
   key?: React.Key;
   ring: RingStatus;
@@ -8544,7 +8597,9 @@ function StandbyView({
   onUpdateInspection, 
   slideInterval = 15,
   boutTransfers = [],
-  onDeleteTransfer = () => {}
+  onDeleteTransfer = () => {},
+  events = [],
+  onUpdateEventName = () => {}
 }: { 
   rings: RingStatus[], 
   boutQueue: {id: string, data: MatchData}[], 
@@ -8560,7 +8615,9 @@ function StandbyView({
   onUpdateInspection?: (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean) => void, 
   slideInterval?: number,
   boutTransfers?: BoutTransferBroadcast[],
-  onDeleteTransfer?: (id: string) => void
+  onDeleteTransfer?: (id: string) => void,
+  events?: EventData[],
+  onUpdateEventName?: (name: string) => void
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
@@ -8626,7 +8683,7 @@ function StandbyView({
         onDelete={onDeleteTransfer} 
       />
       {/* Header */}
-      <div className="flex items-center justify-between px-8 py-4 bg-[#1a2235]/50 border-b border-white/10 backdrop-blur-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between px-8 py-4 bg-[#1a2235]/50 border-b border-white/10 backdrop-blur-sm gap-4">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-900/20">
             <Trophy size={24} className="text-white" />
@@ -8636,7 +8693,15 @@ function StandbyView({
             <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Tournament Standby Monitoring</p>
           </div>
         </div>
-        <div className="flex items-center gap-6">
+        <div className="flex-1 max-w-md mx-auto w-full">
+          <EventNameGreenBox 
+            currentEventId={currentEventId}
+            events={events}
+            isAdmin={isAdminOnly}
+            onUpdateEventName={onUpdateEventName}
+          />
+        </div>
+        <div className="flex items-center gap-6 justify-end">
           {totalPages > 1 && (
             <div className="flex items-center gap-2 bg-[#0d1526] border border-white/10 px-3 py-1.5 rounded-2xl">
               <button
@@ -8788,12 +8853,12 @@ function StandbyView({
                           "flex-1 bg-blue-600/90 flex flex-col justify-center px-4 relative",
                           !isPoomsaeModeCurrent && "border-b border-white/10"
                         )}>
-                          <p className="text-[15px] font-bold text-yellow-400 uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
+                          <p className="text-[15px] font-bold text-white uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
                           <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.blue_name || "") : "---"}</h4>
                         </div>
                         {!isPoomsaeModeCurrent && (
                           <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
-                            <p className="text-[15px] font-bold text-yellow-400 uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
+                            <p className="text-[15px] font-bold text-white uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
                             <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.red_name || "") : "---"}</h4>
                           </div>
                         )}
@@ -8827,7 +8892,7 @@ function StandbyView({
                         isPoomsaeItem ? "col-span-9" : "col-span-5 border-r border-white/10",
                         isRingInactive ? "bg-slate-800" : "bg-blue-600/80"
                       )}>
-                        <span className="text-[13px] font-bold text-yellow-400 uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.blue_club || "")}</span>
+                        <span className="text-[13px] font-bold text-white uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.blue_club || "")}</span>
                         <span className={cn(
                           "text-[16px] font-black uppercase leading-tight break-words whitespace-normal w-full mt-0.5",
                           isRingInactive ? "text-slate-400" : "text-white"
@@ -8862,7 +8927,7 @@ function StandbyView({
                           "col-span-4 flex flex-col justify-center px-3 relative",
                           isRingInactive ? "bg-slate-800" : "bg-red-600/80"
                         )}>
-                          <span className="text-[13px] font-bold text-yellow-400 uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.red_club || "")}</span>
+                          <span className="text-[13px] font-bold text-white uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.red_club || "")}</span>
                           <span className={cn(
                             "text-[16px] font-black uppercase leading-tight break-words whitespace-normal w-full mt-0.5",
                             isRingInactive ? "text-slate-400" : "text-white"
@@ -8921,7 +8986,9 @@ function SiteView({
   onUpdateInspection, 
   slideInterval = 15,
   boutTransfers = [],
-  onDeleteTransfer = () => {}
+  onDeleteTransfer = () => {},
+  events = [],
+  onUpdateEventName = () => {}
 }: { 
   rings: RingStatus[], 
   boutQueue: {id: string, data: MatchData}[], 
@@ -8937,7 +9004,9 @@ function SiteView({
   onUpdateInspection?: (ringNo: string, matchNo: string, color: 'blue' | 'red', inspected: boolean) => void, 
   slideInterval?: number,
   boutTransfers?: BoutTransferBroadcast[],
-  onDeleteTransfer?: (id: string) => void
+  onDeleteTransfer?: (id: string) => void,
+  events?: EventData[],
+  onUpdateEventName?: (name: string) => void
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
@@ -9003,7 +9072,7 @@ function SiteView({
         onDelete={onDeleteTransfer} 
       />
       {/* Header */}
-      <div className="flex items-center justify-between px-8 py-4 bg-[#1a2235]/50 border-b border-white/10 backdrop-blur-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between px-8 py-4 bg-[#1a2235]/50 border-b border-white/10 backdrop-blur-sm gap-4">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-900/20">
             <Trophy size={24} className="text-white" />
@@ -9013,7 +9082,15 @@ function SiteView({
             <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Tournament Site Monitoring</p>
           </div>
         </div>
-        <div className="flex items-center gap-6">
+        <div className="flex-1 max-w-md mx-auto w-full">
+          <EventNameGreenBox 
+            currentEventId={currentEventId}
+            events={events}
+            isAdmin={isAdminOnly}
+            onUpdateEventName={onUpdateEventName}
+          />
+        </div>
+        <div className="flex items-center gap-6 justify-end">
           {totalPages > 1 && (
             <div className="flex items-center gap-2 bg-[#0d1526] border border-white/10 px-3 py-1.5 rounded-2xl">
               <button
@@ -9141,12 +9218,12 @@ function SiteView({
                           "flex-1 bg-blue-600/90 flex flex-col justify-center px-4 relative",
                           !isPoomsaeModeCurrent && "border-b border-white/10"
                         )}>
-                          <p className="text-[15px] font-bold text-yellow-400 uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
+                          <p className="text-[15px] font-bold text-white uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
                           <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.blue_name || "") : "---"}</h4>
                         </div>
                         {!isPoomsaeModeCurrent && (
                           <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
-                            <p className="text-[15px] font-bold text-yellow-400 uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
+                            <p className="text-[15px] font-bold text-white uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
                             <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.red_name || "") : "---"}</h4>
                           </div>
                         )}
@@ -9180,7 +9257,7 @@ function SiteView({
                         isPoomsaeItem ? "col-span-9" : "col-span-5 border-r border-white/10",
                         isRingInactive ? "bg-slate-800" : "bg-blue-600/80"
                       )}>
-                        <span className="text-[13px] font-bold text-yellow-400 uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.blue_club || "")}</span>
+                        <span className="text-[13px] font-bold text-white uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.blue_club || "")}</span>
                         <span className={cn(
                           "text-[16px] font-black uppercase leading-tight break-words whitespace-normal w-full mt-0.5",
                           isRingInactive ? "text-slate-400" : "text-white"
@@ -9191,7 +9268,7 @@ function SiteView({
                           "col-span-4 flex flex-col justify-center px-3 relative",
                           isRingInactive ? "bg-slate-800" : "bg-red-600/80"
                         )}>
-                          <span className="text-[13px] font-bold text-yellow-400 uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.red_club || "")}</span>
+                          <span className="text-[13px] font-bold text-white uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.red_club || "")}</span>
                           <span className={cn(
                             "text-[16px] font-black uppercase leading-tight break-words whitespace-normal w-full mt-0.5",
                             isRingInactive ? "text-slate-400" : "text-white"
@@ -9225,7 +9302,9 @@ function PointsView({
   isAdminOnly = false,
   slideInterval = 15,
   boutTransfers = [],
-  onDeleteTransfer = () => {}
+  onDeleteTransfer = () => {},
+  events = [],
+  onUpdateEventName = () => {}
 }: { 
   rings: RingStatus[], 
   boutQueue: {id: string, data: MatchData}[], 
@@ -9240,7 +9319,9 @@ function PointsView({
   isAdminOnly?: boolean,
   slideInterval?: number,
   boutTransfers?: BoutTransferBroadcast[],
-  onDeleteTransfer?: (id: string) => void
+  onDeleteTransfer?: (id: string) => void,
+  events?: EventData[],
+  onUpdateEventName?: (name: string) => void
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
@@ -9306,7 +9387,7 @@ function PointsView({
         onDelete={onDeleteTransfer} 
       />
       {/* Header */}
-      <div className="flex items-center justify-between px-8 py-4 bg-[#1a2235]/50 border-b border-white/10 backdrop-blur-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between px-8 py-4 bg-[#1a2235]/50 border-b border-white/10 backdrop-blur-sm gap-4">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-900/20">
             <Trophy size={24} className="text-white" />
@@ -9316,7 +9397,15 @@ function PointsView({
             <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Tournament Points Monitoring</p>
           </div>
         </div>
-        <div className="flex items-center gap-6">
+        <div className="flex-1 max-w-md mx-auto w-full">
+          <EventNameGreenBox 
+            currentEventId={currentEventId}
+            events={events}
+            isAdmin={isAdminOnly}
+            onUpdateEventName={onUpdateEventName}
+          />
+        </div>
+        <div className="flex items-center gap-6 justify-end">
           {totalPages > 1 && (
             <div className="flex items-center gap-2 bg-[#0d1526] border border-white/10 px-3 py-1.5 rounded-2xl">
               <button
@@ -9430,12 +9519,12 @@ function PointsView({
                             "flex-1 bg-blue-600/90 flex flex-col justify-center px-4 relative",
                             !isPoomsaeModeCurrent && "border-b border-white/10"
                           )}>
-                            <p className="text-[15px] font-bold text-yellow-400 uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
+                            <p className="text-[15px] font-bold text-white uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
                             <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.blue_name || "") : "---"}</h4>
                           </div>
                           {!isPoomsaeModeCurrent && (
                             <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
-                              <p className="text-[15px] font-bold text-yellow-400 uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
+                              <p className="text-[15px] font-bold text-white uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
                               <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.red_name || "") : "---"}</h4>
                             </div>
                           )}
@@ -9566,7 +9655,7 @@ function PointsView({
                         isPoomsaeItem ? "col-span-9" : "col-span-5 border-r border-white/10",
                         isRingInactive ? "bg-slate-800" : "bg-blue-600/80"
                       )}>
-                        <span className="text-[13px] font-bold text-yellow-400 uppercase leading-none">{cleanPlaceholder(b?.data.blue_club || "")}</span>
+                        <span className="text-[13px] font-bold text-white uppercase leading-none">{cleanPlaceholder(b?.data.blue_club || "")}</span>
                         <span className={cn(
                           "text-[16px] font-black uppercase truncate leading-tight",
                           isRingInactive ? "text-slate-400" : "text-white"
@@ -9578,7 +9667,7 @@ function PointsView({
                           "col-span-4 flex flex-col justify-center px-3 relative",
                           isRingInactive ? "bg-slate-800" : "bg-red-600/80"
                         )}>
-                          <span className="text-[13px] font-bold text-yellow-400 uppercase leading-none">{cleanPlaceholder(b?.data.red_club || "")}</span>
+                          <span className="text-[13px] font-bold text-white uppercase leading-none">{cleanPlaceholder(b?.data.red_club || "")}</span>
                           <span className={cn(
                             "text-[16px] font-black uppercase truncate leading-tight",
                             isRingInactive ? "text-slate-400" : "text-white"
@@ -9615,7 +9704,9 @@ function OnsiteView({
   isAdminOnly = false,
   slideInterval = 15,
   boutTransfers = [],
-  onDeleteTransfer = () => {}
+  onDeleteTransfer = () => {},
+  events = [],
+  onUpdateEventName = () => {}
 }: { 
   rings: RingStatus[], 
   boutQueue: {id: string, data: MatchData}[], 
@@ -9630,7 +9721,9 @@ function OnsiteView({
   isAdminOnly?: boolean,
   slideInterval?: number,
   boutTransfers?: BoutTransferBroadcast[],
-  onDeleteTransfer?: (id: string) => void
+  onDeleteTransfer?: (id: string) => void,
+  events?: EventData[],
+  onUpdateEventName?: (name: string) => void
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
@@ -9710,7 +9803,7 @@ function OnsiteView({
         onDelete={onDeleteTransfer} 
       />
       {!isFullscreen && (
-        <div className="flex items-center justify-between px-4 flex-shrink-0">
+        <div className="flex flex-col md:flex-row md:items-center justify-between px-4 flex-shrink-0 gap-4">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-900/20">
               <Trophy size={24} className="text-white" />
@@ -9720,7 +9813,15 @@ function OnsiteView({
               <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Multi-Court Monitoring System</p>
             </div>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex-1 max-w-md mx-auto w-full">
+            <EventNameGreenBox 
+              currentEventId={currentEventId}
+              events={events}
+              isAdmin={isAdminOnly}
+              onUpdateEventName={onUpdateEventName}
+            />
+          </div>
+          <div className="flex items-center gap-6 justify-end">
             {totalPages > 1 && (
               <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-2xl">
                 <button
@@ -10042,8 +10143,9 @@ function PublicDashboardView({
   boutTransfers = [],
   isAdmin = false,
   onDeleteTransfer = () => {},
-  globalCourtsPerRow,
-  onCourtsPerRowChange
+  currentEventId = null,
+  events = [],
+  onUpdateEventName = () => {}
 }: { 
   rings: RingStatus[], 
   boutQueue: {id: string, data: MatchData}[], 
@@ -10060,19 +10162,17 @@ function PublicDashboardView({
   boutTransfers?: BoutTransferBroadcast[],
   isAdmin?: boolean,
   onDeleteTransfer?: (id: string) => void,
-  globalCourtsPerRow?: number,
-  onCourtsPerRowChange?: (val: number) => void
+  currentEventId?: string | null,
+  events?: EventData[],
+  onUpdateEventName?: (name: string) => void
 }) {
   const [logoClicks, setLogoClicks] = React.useState(0);
   const clickTimer = React.useRef<NodeJS.Timeout | null>(null);
   const [isQuotaExceeded, setIsQuotaExceeded] = React.useState(false);
   const [courtsPerRow, setCourtsPerRow] = React.useState<number>(() => {
-    return globalCourtsPerRow || 4;
+    const saved = localStorage.getItem('tkd_public_courts_per_row');
+    return saved ? parseInt(saved, 10) : 4;
   });
-
-  React.useEffect(() => {
-    setCourtsPerRow(globalCourtsPerRow || 4);
-  }, [globalCourtsPerRow]);
 
   React.useEffect(() => {
     const handleQuotaExceeded = () => {
@@ -10142,9 +10242,9 @@ function PublicDashboardView({
       )}
 
       {/* Public Header */}
-      <header className="p-4 sm:p-5 bg-slate-800 border-b border-slate-700 flex items-center justify-between sticky top-0 z-50 transition-all">
+      <header className="p-4 sm:p-5 bg-slate-800 border-b border-slate-700 flex flex-col sm:flex-row items-center justify-between sticky top-0 z-50 transition-all gap-4">
         <div 
-          className="flex items-center gap-2.5 cursor-pointer select-none"
+          className="flex items-center gap-2.5 cursor-pointer select-none shrink-0"
           onClick={handleLogoClick}
         >
           <div className="w-8 h-8 sm:w-10 sm:h-10 bg-red-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-red-900/20">
@@ -10156,7 +10256,16 @@ function PublicDashboardView({
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex-1 max-w-md mx-auto w-full">
+          <EventNameGreenBox 
+            currentEventId={currentEventId}
+            events={events}
+            isAdmin={isAdmin}
+            onUpdateEventName={onUpdateEventName}
+          />
+        </div>
+
+        <div className="flex items-center gap-4 shrink-0 justify-end">
           {isAdmin && (
             <div className="hidden sm:flex items-center gap-2 bg-slate-900/50 text-white rounded-xl border border-slate-700 px-3 py-1.5">
               <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest select-none">Grid:</span>
@@ -10165,7 +10274,7 @@ function PublicDashboardView({
                 onChange={(e) => {
                   const val = parseInt(e.target.value, 10);
                   setCourtsPerRow(val);
-                  if (onCourtsPerRowChange) onCourtsPerRowChange(val);
+                  localStorage.setItem('tkd_public_courts_per_row', val.toString());
                 }}
                 className="bg-transparent text-white text-xs font-black outline-none border-none focus:ring-0 cursor-pointer"
               >
@@ -10173,14 +10282,6 @@ function PublicDashboardView({
                   <option key={n} value={n} className="bg-slate-800 text-white">{n} Courts / Row</option>
                 ))}
               </select>
-            </div>
-          )}
-          {selectedEventName && (
-            <div className="bg-red-600/10 border border-red-500/25 px-3 py-1.5 rounded-xl flex items-center gap-2">
-              <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-              <span className="text-[10px] sm:text-xs font-black tracking-widest uppercase text-red-500 font-mono">
-                {selectedEventName}
-              </span>
             </div>
           )}
         </div>
@@ -10636,7 +10737,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                         {!isRingInactive && <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-blue-900/10 to-transparent pointer-events-none" />}
                         <p className={cn(
                           "text-[9px] sm:text-[11px] font-bold uppercase leading-normal sm:leading-tight mb-0.5 break-words whitespace-normal",
-                          isRingInactive ? "text-slate-400" : "text-yellow-400"
+                          isRingInactive ? "text-slate-400" : "text-white"
                         )}>
                           {bout ? cleanPlaceholder(bout.data.blue_club) : ""}
                         </p>
@@ -10657,7 +10758,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                           {!isRingInactive && <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-r from-red-900/10 to-transparent pointer-events-none" />}
                           <p className={cn(
                             "text-[9px] sm:text-[11px] font-bold uppercase leading-normal sm:leading-tight mb-0.5 break-words whitespace-normal",
-                            isRingInactive ? "text-slate-400" : "text-yellow-400"
+                            isRingInactive ? "text-slate-400" : "text-white"
                           )}>
                             {bout ? cleanPlaceholder(bout.data.red_club) : ""}
                           </p>

@@ -328,11 +328,7 @@ export function BoutChart({ mappings, boutQueue, matchHistory, boutNumberingMode
                                       Bout {formatBoutNumber(nodeRing, node.id, boutNumberingMode)}
                                    </span>
                                 )}
-                                {winner && (
-                                   <span className={`font-bold ${winner === 'Blue' ? 'text-blue-600' : (winner === 'Red' ? 'text-red-600' : 'text-green-600')}`}>
-                                      Win: {winner}
-                                   </span>
-                                )}
+                                {winner && <span className="text-green-600">Completed</span>}
                              </div>
                              <div className="flex-1 flex flex-col justify-center">
                                 <div className={`flex justify-between items-center px-2 py-1 pl-2 border-l-4 border-blue-500 ${winner === 'Blue' ? 'font-bold bg-blue-50 text-blue-700' : 'text-slate-700'}`}>

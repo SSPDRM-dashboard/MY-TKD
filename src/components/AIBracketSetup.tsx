@@ -27,6 +27,19 @@ import { db } from '../firebase';
 import { syncToGoogleSheets } from '../services/googleSheets';
 import Papa from 'papaparse';
 
+function sanitizeForFirestore(obj: any): any {
+  if (obj === undefined || obj === null) return null;
+  if (Array.isArray(obj)) return obj.map(sanitizeForFirestore);
+  if (typeof obj === 'object') {
+    const sanitized: any = {};
+    Object.keys(obj).forEach(key => {
+      sanitized[key] = sanitizeForFirestore(obj[key]);
+    });
+    return sanitized;
+  }
+  return obj;
+}
+
 function cleanAndParseJSON(rawText: string | undefined): any {
   if (!rawText) {
     throw new Error("No response content was received from the AI.");
@@ -913,7 +926,12 @@ export function AIBracketSetup({
       });
       
       setBackupData(prev => {
-        const next = { ...(prev || {}) };
+        const next: Record<string, any> = {};
+        Object.keys(prev || {}).forEach(k => {
+          if (k.startsWith(`${currentEventId}_`)) {
+            next[k] = prev[k];
+          }
+        });
 
         const allRings = new Set([...Object.keys(mappingsByRing), ...Object.keys(matchesByRing)]);
         allRings.forEach(sRing => {
@@ -925,6 +943,22 @@ export function AIBracketSetup({
         });
         return next;
       });
+
+      // Also persist backup data per ring to Firestore backup_data collection
+      if (!isFirestoreQuotaExceeded) {
+        const allRings = new Set([...Object.keys(mappingsByRing), ...Object.keys(matchesByRing)]);
+        const backupPromises = Array.from(allRings).map(sRing => {
+          const key = `${currentEventId}_${sRing}`;
+          return setDoc(doc(db, 'backup_data', key), {
+            eventId: currentEventId,
+            ringNum: Number(sRing),
+            mappings: sanitizeForFirestore(mappingsByRing[sRing] || []),
+            matches: sanitizeForFirestore(matchesByRing[sRing] || []),
+            updatedAt: serverTimestamp()
+          }).catch(err => console.error(`Error saving backup_data for key ${key}:`, err));
+        });
+        await Promise.all(backupPromises);
+      }
 
       // 1. Save Mappings to Firestore (event_logic) with uppercase category matching
       const mappingPromises = previewData.mappings.map(m => {
