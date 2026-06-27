@@ -39,7 +39,9 @@ import {
   PieChart,
   Layers,
   RotateCcw,
-  Pause
+  Pause,
+  Upload,
+  Image
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -579,6 +581,19 @@ import { EditBoutDetailsModal } from './components/EditBoutDetailsModal';
 export default function App() {
   const [events, setEvents] = useSyncedState<EventData[]>('tkd_events_v3', []);
   const [currentEventId, setCurrentEventId] = useSyncedState<string | null>('tkd_current_event_v3', null);
+  const [displayEventName, setDisplayEventName] = useSyncedState<string>('tkd_display_event_name', '');
+
+  const lastEventIdRef = useRef<string | null>(currentEventId);
+
+  useEffect(() => {
+    if (currentEventId && currentEventId !== lastEventIdRef.current) {
+      const activeEvent = events.find(e => e.id === currentEventId);
+      if (activeEvent) {
+        setDisplayEventName(activeEvent.name);
+      }
+    }
+    lastEventIdRef.current = currentEventId;
+  }, [currentEventId, events, setDisplayEventName]);
 
   const [user, setUser] = useState<UserAccount | null>(() => {
     const saved = localStorage.getItem('tkd_user');
@@ -3766,28 +3781,24 @@ export default function App() {
       localStorage.setItem('tkd_sheet_url', newEvent.sheetUrl);
     }
 
-    // Safely auto-generate rings up to ringQuantity if they don't exist
-    // Ensure we preserve existing rings and their active matches rather than wiping them!
-    const existingRings = [...rings];
+    // Safely auto-generate rings up to ringQuantity with clean active/upcoming matches
     const neededRingsCount = newEvent.ringQuantity || 1;
-    let nextRings = [...existingRings];
-    
-    const maxExistingRingNum = rings.reduce((max, r) => r.ringNumber > max ? r.ringNumber : max, 0);
-    if (maxExistingRingNum < neededRingsCount) {
-      const added: RingStatus[] = [];
-      for (let i = maxExistingRingNum + 1; i <= neededRingsCount; i++) {
-        added.push({
-          ringNumber: i,
-          currentBout: null,
-          onDeck: null,
-          inTheHole: null
-        });
-      }
-      nextRings = [...nextRings, ...added];
+    const nextRings: RingStatus[] = [];
+    for (let i = 1; i <= neededRingsCount; i++) {
+      nextRings.push({
+        ringNumber: i,
+        currentBout: null,
+        onDeck: null,
+        inTheHole: null
+      });
     }
     
     setRings(nextRings);
     localStorage.setItem('tkd_rings', JSON.stringify(nextRings));
+
+    // Clear the upcoming standby/bout queue for the new event
+    setBoutQueue([]);
+    localStorage.setItem('tkd_bout_queue', '[]');
   };
 
   const handleUpdateEvent = (updatedEvent: EventData) => {
@@ -4014,6 +4025,8 @@ export default function App() {
         currentEventId={effectivePublicEventId}
         events={events}
         onUpdateEventName={handleUpdateActiveEventName}
+        displayEventName={displayEventName}
+        onUpdateDisplayEventName={setDisplayEventName}
       />
     );
   }
@@ -4038,6 +4051,8 @@ export default function App() {
         currentEventId={effectivePublicEventId}
         events={events}
         onUpdateEventName={handleUpdateActiveEventName}
+        displayEventName={displayEventName}
+        onUpdateDisplayEventName={setDisplayEventName}
       />
     );
   }
@@ -4810,6 +4825,8 @@ export default function App() {
               onDeleteTransfer={handleCancelTransferPin}
               events={events}
               onUpdateEventName={handleUpdateActiveEventName}
+              displayEventName={displayEventName}
+              onUpdateDisplayEventName={setDisplayEventName}
             />
           )}
 
@@ -4832,6 +4849,8 @@ export default function App() {
               onDeleteTransfer={handleCancelTransferPin}
               events={events}
               onUpdateEventName={handleUpdateActiveEventName}
+              displayEventName={displayEventName}
+              onUpdateDisplayEventName={setDisplayEventName}
             />
           )}
 
@@ -4853,6 +4872,8 @@ export default function App() {
               onDeleteTransfer={handleCancelTransferPin}
               events={events}
               onUpdateEventName={handleUpdateActiveEventName}
+              displayEventName={displayEventName}
+              onUpdateDisplayEventName={setDisplayEventName}
             />
           )}
 
@@ -4874,6 +4895,8 @@ export default function App() {
               onDeleteTransfer={handleCancelTransferPin}
               events={events}
               onUpdateEventName={handleUpdateActiveEventName}
+              displayEventName={displayEventName}
+              onUpdateDisplayEventName={setDisplayEventName}
             />
           )}
 
@@ -8512,25 +8535,224 @@ function AthleteRow({ name, ic, club, category, status }: AthleteRowProps) {
   );
 }
 
+interface SponsorFooterBoxProps {
+  isAdmin: boolean;
+}
+
+function SponsorFooterBox({ isAdmin }: SponsorFooterBoxProps) {
+  const [sponsorText, setSponsorText] = useSyncedState<string>('tkd_sponsor_text', '');
+  const [sponsorLogo, setSponsorLogo] = useSyncedState<string>('tkd_sponsor_logo', '');
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (file: File) => {
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target?.result) {
+          setSponsorLogo(e.target.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFile(e.target.files[0]);
+    }
+  };
+
+  // If both are empty and we are not admin, render a minimal beautiful empty black bar
+  if (!isAdmin) {
+    return (
+      <div className="w-full bg-black text-white px-8 py-8 rounded-[2rem] flex flex-col md:flex-row items-center justify-center gap-8 min-h-[120px] shadow-2xl mt-12 border border-slate-900 overflow-hidden">
+        {sponsorLogo && (
+          <img 
+            src={sponsorLogo} 
+            alt="Logo" 
+            className="max-h-24 max-w-[280px] object-contain select-none"
+            referrerPolicy="no-referrer"
+          />
+        )}
+        {sponsorText && (
+          <span className="text-lg sm:text-xl md:text-2xl font-black uppercase tracking-[0.2em] text-white text-center leading-relaxed max-w-4xl break-words">
+            {sponsorText}
+          </span>
+        )}
+        {!sponsorLogo && !sponsorText && (
+          <div className="text-slate-700/40 text-xs font-black uppercase tracking-widest font-mono">
+            LIVE MONITORING SPONSOR ZONE
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 space-y-6 shadow-2xl mt-12 text-left">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <h4 className="text-sm font-black text-white uppercase tracking-[0.2em] flex items-center gap-2">
+            <Settings size={16} className="text-red-500" />
+            Bottom Box Management (Admin Only)
+          </h4>
+          <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider mt-1">
+            Configure typing message and upload sponsor/event logo. Spectators will see a clean black background view.
+          </p>
+        </div>
+        {(sponsorLogo || sponsorText) && (
+          <button
+            onClick={() => {
+              if (window.confirm("Are you sure you want to clear both logo and text?")) {
+                setSponsorText('');
+                setSponsorLogo('');
+              }
+            }}
+            className="px-3 py-1.5 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-red-500/20"
+          >
+            Clear All
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Input Controls */}
+        <div className="space-y-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              Typing Message Text
+            </label>
+            <input
+              type="text"
+              value={sponsorText}
+              onChange={(e) => setSponsorText(e.target.value)}
+              placeholder="TYPE EVENT SPONSOR, INSTRUCTIONS, OR BRANDING HERE..."
+              className="bg-slate-950 border border-slate-800 focus:border-red-500 rounded-2xl px-5 py-3 text-sm text-white placeholder-slate-600 outline-none transition-colors w-full uppercase font-black tracking-wider"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              Upload Logo (Click or Drag &amp; Drop)
+            </label>
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={cn(
+                "border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all bg-slate-950/40",
+                isDragging ? "border-red-500 bg-red-500/5" : "border-slate-800 hover:border-slate-700",
+                sponsorLogo ? "border-green-500/40" : ""
+              )}
+            >
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept="image/*"
+                className="hidden"
+              />
+              {sponsorLogo ? (
+                <div className="flex flex-col items-center gap-2">
+                  <Image size={28} className="text-green-500" />
+                  <span className="text-[11px] font-black text-green-500 uppercase tracking-widest">Logo Uploaded Successfully</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSponsorLogo('');
+                    }}
+                    className="mt-1 px-3 py-1 bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all"
+                  >
+                    Remove Logo
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center text-center gap-2">
+                  <Upload size={28} className="text-slate-500 hover:text-slate-400" />
+                  <span className="text-[11px] font-black text-slate-300 uppercase tracking-widest">Select Image File</span>
+                  <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Drag &amp; drop file here, or click to browse</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Real-time Live Preview */}
+        <div className="flex flex-col gap-1.5 justify-between">
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              Live Preview (What Others See)
+            </label>
+            <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">
+              Rendered on a high-contrast black background
+            </p>
+          </div>
+          <div className="w-full bg-black text-white px-6 py-6 rounded-2xl flex flex-col sm:flex-row items-center justify-center gap-6 min-h-[140px] shadow-inner border border-slate-950 overflow-hidden relative">
+            {sponsorLogo && (
+              <img 
+                src={sponsorLogo} 
+                alt="Logo Preview" 
+                className="max-h-20 max-w-[200px] object-contain select-none"
+                referrerPolicy="no-referrer"
+              />
+            )}
+            {sponsorText ? (
+              <span className="text-sm sm:text-base md:text-lg font-black uppercase tracking-[0.2em] text-white text-center leading-relaxed break-words max-w-md">
+                {sponsorText}
+              </span>
+            ) : (
+              !sponsorLogo && (
+                <span className="text-xs font-black uppercase tracking-[0.25em] text-slate-700/80 font-mono">
+                  [No Message or Logo Configured]
+                </span>
+              )
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface EventNameGreenBoxProps {
   currentEventId: string | null;
   events: EventData[];
   isAdmin: boolean;
-  onUpdateEventName: (name: string) => void;
+  displayEventName: string;
+  onUpdateDisplayEventName: (name: string) => void;
 }
 
-function EventNameGreenBox({ currentEventId, events, isAdmin, onUpdateEventName }: EventNameGreenBoxProps) {
+function EventNameGreenBox({ currentEventId, events, isAdmin, displayEventName, onUpdateDisplayEventName }: EventNameGreenBoxProps) {
   const activeEvent = events.find(e => e.id === currentEventId);
-  const [localName, setLocalName] = useState(activeEvent?.name || '');
+  const [localName, setLocalName] = useState(displayEventName || activeEvent?.name || '');
 
   useEffect(() => {
-    setLocalName(activeEvent?.name || '');
-  }, [activeEvent?.name]);
+    setLocalName(displayEventName || activeEvent?.name || '');
+  }, [displayEventName, activeEvent?.name]);
 
   const handleSave = () => {
     const trimmed = localName.trim();
-    if (trimmed && trimmed !== activeEvent?.name) {
-      onUpdateEventName(trimmed);
+    if (trimmed && trimmed !== displayEventName) {
+      onUpdateDisplayEventName(trimmed);
     }
   };
 
@@ -8540,13 +8762,15 @@ function EventNameGreenBox({ currentEventId, events, isAdmin, onUpdateEventName 
     }
   };
 
+  const displayText = displayEventName || activeEvent?.name || '';
+
   if (!isAdmin) {
-    if (!activeEvent) return null;
+    if (!displayText) return null;
     return (
       <div className="bg-[#091b15]/60 border border-emerald-500/40 rounded-full h-[54px] px-8 shadow-[0_0_20px_rgba(16,185,129,0.2)] flex items-center justify-center gap-3 w-full mx-auto transition-all duration-300">
         <div className="w-2 h-2 bg-emerald-400 rounded-full shrink-0 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
         <span className="text-sm sm:text-base md:text-lg lg:text-xl font-black uppercase tracking-[0.25em] text-emerald-400 font-sans truncate text-center leading-none">
-          {activeEvent.name}
+          {displayText}
         </span>
       </div>
     );
@@ -8562,7 +8786,7 @@ function EventNameGreenBox({ currentEventId, events, isAdmin, onUpdateEventName 
         onBlur={handleSave}
         onKeyDown={handleKeyDown}
         className="bg-transparent text-emerald-400 placeholder-emerald-600/40 text-sm sm:text-base md:text-lg lg:text-xl font-black uppercase tracking-[0.25em] outline-none border-none focus:ring-0 w-full text-center p-0 font-sans leading-none"
-        placeholder={activeEvent ? "EDIT EVENT NAME..." : "ENTER EVENT NAME TO CREATE..."}
+        placeholder={activeEvent ? "EDIT DISPLAY TITLE..." : "ENTER EVENT NAME TO CREATE..."}
       />
     </div>
   );
@@ -8599,7 +8823,9 @@ function StandbyView({
   boutTransfers = [],
   onDeleteTransfer = () => {},
   events = [],
-  onUpdateEventName = () => {}
+  onUpdateEventName = () => {},
+  displayEventName = '',
+  onUpdateDisplayEventName = () => {}
 }: { 
   rings: RingStatus[], 
   boutQueue: {id: string, data: MatchData}[], 
@@ -8617,7 +8843,9 @@ function StandbyView({
   boutTransfers?: BoutTransferBroadcast[],
   onDeleteTransfer?: (id: string) => void,
   events?: EventData[],
-  onUpdateEventName?: (name: string) => void
+  onUpdateEventName?: (name: string) => void,
+  displayEventName?: string,
+  onUpdateDisplayEventName?: (name: string) => void
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
@@ -8698,7 +8926,8 @@ function StandbyView({
             currentEventId={currentEventId}
             events={events}
             isAdmin={isAdminOnly}
-            onUpdateEventName={onUpdateEventName}
+            displayEventName={displayEventName}
+            onUpdateDisplayEventName={onUpdateDisplayEventName}
           />
         </div>
         <div className="flex items-center gap-6 justify-end">
@@ -8966,6 +9195,7 @@ function StandbyView({
           );
         })}
       </div>
+      <SponsorFooterBox isAdmin={isAdminOnly} />
       <AnnouncementPopup announcement={activeAnnouncement || null} onClose={onAnnouncementClose || (() => {})} size={isFullscreen ? 'large' : 'normal'} />
     </div>
   );
@@ -8988,7 +9218,9 @@ function SiteView({
   boutTransfers = [],
   onDeleteTransfer = () => {},
   events = [],
-  onUpdateEventName = () => {}
+  onUpdateEventName = () => {},
+  displayEventName = '',
+  onUpdateDisplayEventName = () => {}
 }: { 
   rings: RingStatus[], 
   boutQueue: {id: string, data: MatchData}[], 
@@ -9006,7 +9238,9 @@ function SiteView({
   boutTransfers?: BoutTransferBroadcast[],
   onDeleteTransfer?: (id: string) => void,
   events?: EventData[],
-  onUpdateEventName?: (name: string) => void
+  onUpdateEventName?: (name: string) => void,
+  displayEventName?: string,
+  onUpdateDisplayEventName?: (name: string) => void
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
@@ -9087,7 +9321,8 @@ function SiteView({
             currentEventId={currentEventId}
             events={events}
             isAdmin={isAdminOnly}
-            onUpdateEventName={onUpdateEventName}
+            displayEventName={displayEventName}
+            onUpdateDisplayEventName={onUpdateDisplayEventName}
           />
         </div>
         <div className="flex items-center gap-6 justify-end">
@@ -9283,6 +9518,7 @@ function SiteView({
           );
         })}
       </div>
+      <SponsorFooterBox isAdmin={isAdminOnly} />
       <AnnouncementPopup announcement={activeAnnouncement || null} onClose={onAnnouncementClose || (() => {})} size={isFullscreen ? 'large' : 'normal'} />
     </div>
   );
@@ -9304,7 +9540,9 @@ function PointsView({
   boutTransfers = [],
   onDeleteTransfer = () => {},
   events = [],
-  onUpdateEventName = () => {}
+  onUpdateEventName = () => {},
+  displayEventName = '',
+  onUpdateDisplayEventName = () => {}
 }: { 
   rings: RingStatus[], 
   boutQueue: {id: string, data: MatchData}[], 
@@ -9321,7 +9559,9 @@ function PointsView({
   boutTransfers?: BoutTransferBroadcast[],
   onDeleteTransfer?: (id: string) => void,
   events?: EventData[],
-  onUpdateEventName?: (name: string) => void
+  onUpdateEventName?: (name: string) => void,
+  displayEventName?: string,
+  onUpdateDisplayEventName?: (name: string) => void
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
@@ -9402,7 +9642,8 @@ function PointsView({
             currentEventId={currentEventId}
             events={events}
             isAdmin={isAdminOnly}
-            onUpdateEventName={onUpdateEventName}
+            displayEventName={displayEventName}
+            onUpdateDisplayEventName={onUpdateDisplayEventName}
           />
         </div>
         <div className="flex items-center gap-6 justify-end">
@@ -9683,6 +9924,7 @@ function PointsView({
           );
         })}
       </div>
+      <SponsorFooterBox isAdmin={isAdminOnly} />
       <AnnouncementPopup announcement={activeAnnouncement || null} onClose={onAnnouncementClose || (() => {})} size={isFullscreen ? 'large' : 'normal'} />
     </div>
   );
@@ -9706,7 +9948,9 @@ function OnsiteView({
   boutTransfers = [],
   onDeleteTransfer = () => {},
   events = [],
-  onUpdateEventName = () => {}
+  onUpdateEventName = () => {},
+  displayEventName = '',
+  onUpdateDisplayEventName = () => {}
 }: { 
   rings: RingStatus[], 
   boutQueue: {id: string, data: MatchData}[], 
@@ -9723,7 +9967,9 @@ function OnsiteView({
   boutTransfers?: BoutTransferBroadcast[],
   onDeleteTransfer?: (id: string) => void,
   events?: EventData[],
-  onUpdateEventName?: (name: string) => void
+  onUpdateEventName?: (name: string) => void,
+  displayEventName?: string,
+  onUpdateDisplayEventName?: (name: string) => void
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
@@ -9818,7 +10064,8 @@ function OnsiteView({
               currentEventId={currentEventId}
               events={events}
               isAdmin={isAdminOnly}
-              onUpdateEventName={onUpdateEventName}
+              displayEventName={displayEventName}
+              onUpdateDisplayEventName={onUpdateDisplayEventName}
             />
           </div>
           <div className="flex items-center gap-6 justify-end">
@@ -10105,6 +10352,7 @@ function OnsiteView({
           );
         })}
       </div>
+      <SponsorFooterBox isAdmin={isAdminOnly} />
 
       {isFullscreen && totalPages > 1 && (
         <div className="flex justify-center gap-3 py-4 flex-shrink-0">
@@ -10145,7 +10393,9 @@ function PublicDashboardView({
   onDeleteTransfer = () => {},
   currentEventId = null,
   events = [],
-  onUpdateEventName = () => {}
+  onUpdateEventName = () => {},
+  displayEventName = '',
+  onUpdateDisplayEventName = () => {}
 }: { 
   rings: RingStatus[], 
   boutQueue: {id: string, data: MatchData}[], 
@@ -10164,7 +10414,9 @@ function PublicDashboardView({
   onDeleteTransfer?: (id: string) => void,
   currentEventId?: string | null,
   events?: EventData[],
-  onUpdateEventName?: (name: string) => void
+  onUpdateEventName?: (name: string) => void,
+  displayEventName?: string,
+  onUpdateDisplayEventName?: (name: string) => void
 }) {
   const [logoClicks, setLogoClicks] = React.useState(0);
   const clickTimer = React.useRef<NodeJS.Timeout | null>(null);
@@ -10261,7 +10513,8 @@ function PublicDashboardView({
             currentEventId={currentEventId}
             events={events}
             isAdmin={isAdmin}
-            onUpdateEventName={onUpdateEventName}
+            displayEventName={displayEventName}
+            onUpdateDisplayEventName={onUpdateDisplayEventName}
           />
         </div>
 
