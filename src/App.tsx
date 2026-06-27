@@ -1278,6 +1278,7 @@ export default function App() {
   const [ringControlLayout, setRingControlLayout] = useSyncedState<'winner' | 'point'>('tkd_ring_control_layout', 'winner');
   const [publicViewLayout, setPublicViewLayout] = useSyncedState<'standard' | 'point'>('tkd_public_view_layout', 'standard');
   const [showPublicStandbyQueue, setShowPublicStandbyQueue] = useSyncedState<boolean>('tkd_show_public_standby_queue', true);
+  const [showSponsorFooter, setShowSponsorFooter] = useSyncedState<boolean>('tkd_show_sponsor_footer', true);
   const [showInspectionPopupSetting, setShowInspectionPopupSetting] = useSyncedState<boolean>('tkd_show_inspection_popup_setting', true);
   const [confirmResultSubmission, setConfirmResultSubmission] = useSyncedState<boolean>('tkd_confirm_result_submission', false);
   const [pendingWinnerSelection, setPendingWinnerSelection] = useState<{ ringNumber: number; boutNumber: string | number; winner: string } | null>(null);
@@ -5607,6 +5608,32 @@ export default function App() {
                     </div>
                     <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
                       <div>
+                        <p className="text-sm font-bold text-slate-700">Bottom Box (Sponsor Zone)</p>
+                        <p className="text-[10px] text-slate-500">Show or hide the bottom sponsor and message box in public views</p>
+                      </div>
+                      <div className="flex bg-slate-200 p-1 rounded-lg">
+                        <button 
+                          onClick={() => setShowSponsorFooter(true)}
+                          className={cn(
+                            "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                            showSponsorFooter ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                          )}
+                        >
+                          Show
+                        </button>
+                        <button 
+                          onClick={() => setShowSponsorFooter(false)}
+                          className={cn(
+                            "px-3 py-1 text-[10px] font-bold rounded-md transition-all",
+                            !showSponsorFooter ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                          )}
+                        >
+                          Hide
+                        </button>
+                      </div>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                      <div>
                         <p className="text-sm font-bold text-slate-700">Ring View Inspection Warning</p>
                         <p className="text-[10px] text-slate-500">Show pop-up warning in ring controls if competitor has not passed inspection</p>
                       </div>
@@ -5705,6 +5732,8 @@ export default function App() {
                   icon={<Bell className="text-green-600" />}
                 />
               </div>
+
+              <SponsorFooterBox isAdmin={true} />
             </div>
           )}
         </div>
@@ -8543,6 +8572,7 @@ function SponsorFooterBox({ isAdmin }: SponsorFooterBoxProps) {
   const [sponsorText, setSponsorText] = useSyncedState<string>('tkd_sponsor_text', '');
   const [sponsorLogo, setSponsorLogo] = useSyncedState<string>('tkd_sponsor_logo', '');
   const [sponsorLogos, setSponsorLogos] = useSyncedState<string[]>('tkd_sponsor_logos_list', []);
+  const [showSponsorFooter] = useSyncedState<boolean>('tkd_show_sponsor_footer', true);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -8611,16 +8641,19 @@ function SponsorFooterBox({ isAdmin }: SponsorFooterBoxProps) {
   };
 
   if (!isAdmin) {
+    if (!showSponsorFooter) {
+      return null;
+    }
     return (
-      <div className="w-full bg-black text-white px-8 py-8 rounded-[2rem] flex flex-col md:flex-row items-center justify-between gap-8 min-h-[120px] shadow-2xl mt-12 border border-slate-900 overflow-hidden">
+      <div className="w-full bg-black text-white px-8 py-8 rounded-[2rem] flex flex-col md:flex-row items-center justify-center md:justify-start gap-8 min-h-[120px] shadow-2xl mt-12 border border-slate-900 overflow-hidden">
         {sponsorText ? (
-          <div className="flex-1 text-center md:text-left min-w-0 pr-4">
+          <div className="text-center md:text-left min-w-0">
             <span className="text-lg sm:text-xl md:text-2xl font-black uppercase tracking-[0.2em] text-white leading-relaxed break-words">
               {sponsorText}
             </span>
           </div>
         ) : (
-          <div className="flex-1 text-center md:text-left">
+          <div className="text-center md:text-left">
             <span className="text-xs font-black uppercase tracking-[0.25em] text-slate-700/80 font-mono">
               OFFICIAL SPONSORS &amp; PARTNERS
             </span>
@@ -8628,17 +8661,20 @@ function SponsorFooterBox({ isAdmin }: SponsorFooterBoxProps) {
         )}
         
         {allLogos.length > 0 && (
-          <div className="flex flex-wrap items-center justify-center md:justify-end gap-6 shrink-0">
-            {allLogos.map((logo, index) => (
-              <img 
-                key={index}
-                src={logo} 
-                alt={`Sponsor Logo ${index + 1}`} 
-                className="max-h-16 max-w-[180px] object-contain select-none transition-transform hover:scale-105 duration-300"
-                referrerPolicy="no-referrer"
-              />
-            ))}
-          </div>
+          <>
+            <div className="hidden md:block h-8 w-[1px] bg-white/20 shrink-0" />
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-6 shrink-0">
+              {allLogos.map((logo, index) => (
+                <img 
+                  key={index}
+                  src={logo} 
+                  alt={`Sponsor Logo ${index + 1}`} 
+                  className="max-h-16 max-w-[180px] object-contain select-none transition-transform hover:scale-105 duration-300"
+                  referrerPolicy="no-referrer"
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
     );
@@ -8743,18 +8779,18 @@ function SponsorFooterBox({ isAdmin }: SponsorFooterBoxProps) {
               Live Preview (What Others See)
             </label>
             <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">
-              Rendered with message on the left and all logos aligned on the right on high-contrast black background
+              Rendered with logos aligned next to the message on high-contrast black background
             </p>
           </div>
-          <div className="w-full bg-black text-white px-6 py-6 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-6 min-h-[140px] shadow-inner border border-slate-950 overflow-hidden">
+          <div className="w-full bg-black text-white px-6 py-6 rounded-2xl flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-6 min-h-[140px] shadow-inner border border-slate-950 overflow-hidden">
             {sponsorText ? (
-              <div className="flex-1 text-center sm:text-left min-w-0 pr-2">
+              <div className="text-center sm:text-left min-w-0">
                 <span className="text-sm sm:text-base md:text-lg font-black uppercase tracking-[0.2em] text-white leading-relaxed break-words">
                   {sponsorText}
                 </span>
               </div>
             ) : (
-              <div className="flex-1 text-center sm:text-left">
+              <div className="text-center sm:text-left">
                 <span className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-700/80 font-mono">
                   OFFICIAL SPONSORS &amp; PARTNERS
                 </span>
@@ -8762,17 +8798,20 @@ function SponsorFooterBox({ isAdmin }: SponsorFooterBoxProps) {
             )}
             
             {allLogos.length > 0 && (
-              <div className="flex flex-wrap items-center justify-center sm:justify-end gap-4 shrink-0 max-w-[240px]">
-                {allLogos.map((logo, index) => (
-                  <img 
-                    key={index}
-                    src={logo} 
-                    alt={`Logo Preview ${index + 1}`} 
-                    className="max-h-12 max-w-[100px] object-contain select-none"
-                    referrerPolicy="no-referrer"
-                  />
-                ))}
-              </div>
+              <>
+                <div className="hidden sm:block h-6 w-[1px] bg-white/20 shrink-0" />
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 shrink-0 max-w-[240px]">
+                  {allLogos.map((logo, index) => (
+                    <img 
+                      key={index}
+                      src={logo} 
+                      alt={`Logo Preview ${index + 1}`} 
+                      className="max-h-12 max-w-[100px] object-contain select-none"
+                      referrerPolicy="no-referrer"
+                    />
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -9243,7 +9282,7 @@ function StandbyView({
           );
         })}
       </div>
-      <SponsorFooterBox isAdmin={isAdminOnly} />
+      <SponsorFooterBox isAdmin={false} />
       <AnnouncementPopup announcement={activeAnnouncement || null} onClose={onAnnouncementClose || (() => {})} size={isFullscreen ? 'large' : 'normal'} />
     </div>
   );
@@ -9501,12 +9540,12 @@ function SiteView({
                           "flex-1 bg-blue-600/90 flex flex-col justify-center px-4 relative",
                           !isPoomsaeModeCurrent && "border-b border-white/10"
                         )}>
-                          <p className="text-[15px] font-bold text-white uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
+                          <p className="text-[15px] font-bold text-[#ffd700] uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
                           <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.blue_name || "") : "---"}</h4>
                         </div>
                         {!isPoomsaeModeCurrent && (
                           <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
-                            <p className="text-[15px] font-bold text-white uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
+                            <p className="text-[15px] font-bold text-[#ffd700] uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
                             <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.red_name || "") : "---"}</h4>
                           </div>
                         )}
@@ -9540,7 +9579,7 @@ function SiteView({
                         isPoomsaeItem ? "col-span-9" : "col-span-5 border-r border-white/10",
                         isRingInactive ? "bg-slate-800" : "bg-blue-600/80"
                       )}>
-                        <span className="text-[13px] font-bold text-white uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.blue_club || "")}</span>
+                        <span className="text-[13px] font-bold text-[#ffd700] uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.blue_club || "")}</span>
                         <span className={cn(
                           "text-[16px] font-black uppercase leading-tight break-words whitespace-normal w-full mt-0.5",
                           isRingInactive ? "text-slate-400" : "text-white"
@@ -9551,7 +9590,7 @@ function SiteView({
                           "col-span-4 flex flex-col justify-center px-3 relative",
                           isRingInactive ? "bg-slate-800" : "bg-red-600/80"
                         )}>
-                          <span className="text-[13px] font-bold text-white uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.red_club || "")}</span>
+                          <span className="text-[13px] font-bold text-[#ffd700] uppercase leading-tight break-words whitespace-normal w-full">{cleanPlaceholder(b?.data.red_club || "")}</span>
                           <span className={cn(
                             "text-[16px] font-black uppercase leading-tight break-words whitespace-normal w-full mt-0.5",
                             isRingInactive ? "text-slate-400" : "text-white"
@@ -9566,7 +9605,7 @@ function SiteView({
           );
         })}
       </div>
-      <SponsorFooterBox isAdmin={isAdminOnly} />
+      <SponsorFooterBox isAdmin={false} />
       <AnnouncementPopup announcement={activeAnnouncement || null} onClose={onAnnouncementClose || (() => {})} size={isFullscreen ? 'large' : 'normal'} />
     </div>
   );
@@ -9972,7 +10011,7 @@ function PointsView({
           );
         })}
       </div>
-      <SponsorFooterBox isAdmin={isAdminOnly} />
+      <SponsorFooterBox isAdmin={false} />
       <AnnouncementPopup announcement={activeAnnouncement || null} onClose={onAnnouncementClose || (() => {})} size={isFullscreen ? 'large' : 'normal'} />
     </div>
   );
@@ -10400,7 +10439,7 @@ function OnsiteView({
           );
         })}
       </div>
-      <SponsorFooterBox isAdmin={isAdminOnly} />
+      <SponsorFooterBox isAdmin={false} />
 
       {isFullscreen && totalPages > 1 && (
         <div className="flex justify-center gap-3 py-4 flex-shrink-0">
@@ -10666,6 +10705,10 @@ function PublicDashboardView({
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="max-w-[1600px] mx-auto w-full px-3 sm:px-6 md:px-8">
+        <SponsorFooterBox isAdmin={false} />
       </div>
 
       <footer className="p-6 bg-slate-800 border-t border-slate-700 mt-8 text-center space-y-4">
