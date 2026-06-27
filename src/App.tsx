@@ -8543,9 +8543,9 @@ function EventNameGreenBox({ currentEventId, events, isAdmin, onUpdateEventName 
   if (!isAdmin) {
     if (!activeEvent) return null;
     return (
-      <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-full py-2.5 px-8 shadow-[0_0_20px_rgba(16,185,129,0.2)] flex items-center justify-center gap-3 w-full mx-auto transition-all duration-300">
+      <div className="bg-[#091b15]/60 border border-emerald-500/40 rounded-full h-[54px] px-8 shadow-[0_0_20px_rgba(16,185,129,0.2)] flex items-center justify-center gap-3 w-full mx-auto transition-all duration-300">
         <div className="w-2 h-2 bg-emerald-400 rounded-full shrink-0 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
-        <span className="text-xs sm:text-sm md:text-base font-black uppercase tracking-[0.25em] text-emerald-400 font-sans truncate text-center">
+        <span className="text-sm sm:text-base md:text-lg lg:text-xl font-black uppercase tracking-[0.25em] text-emerald-400 font-sans truncate text-center leading-none">
           {activeEvent.name}
         </span>
       </div>
@@ -8553,7 +8553,7 @@ function EventNameGreenBox({ currentEventId, events, isAdmin, onUpdateEventName 
   }
 
   return (
-    <div className="bg-emerald-950/40 border border-emerald-500/50 rounded-full py-2 px-8 shadow-[0_0_20px_rgba(16,185,129,0.25)] flex items-center gap-3 w-full mx-auto transition-all duration-300 focus-within:border-emerald-400">
+    <div className="bg-[#091b15]/60 border border-emerald-500/50 rounded-full h-[54px] px-8 shadow-[0_0_20px_rgba(16,185,129,0.25)] flex items-center gap-3 w-full mx-auto transition-all duration-300 focus-within:border-emerald-400">
       <div className="w-2 h-2 bg-emerald-400 rounded-full shrink-0 shadow-[0_0_10px_rgba(52,211,153,0.9)] animate-pulse" />
       <input
         type="text"
@@ -8561,7 +8561,7 @@ function EventNameGreenBox({ currentEventId, events, isAdmin, onUpdateEventName 
         onChange={(e) => setLocalName(e.target.value)}
         onBlur={handleSave}
         onKeyDown={handleKeyDown}
-        className="bg-transparent text-emerald-400 placeholder-emerald-600/40 text-xs sm:text-sm md:text-base font-black uppercase tracking-[0.25em] outline-none border-none focus:ring-0 w-full text-center p-0 font-sans"
+        className="bg-transparent text-emerald-400 placeholder-emerald-600/40 text-sm sm:text-base md:text-lg lg:text-xl font-black uppercase tracking-[0.25em] outline-none border-none focus:ring-0 w-full text-center p-0 font-sans leading-none"
         placeholder={activeEvent ? "EDIT EVENT NAME..." : "ENTER EVENT NAME TO CREATE..."}
       />
     </div>
@@ -8683,7 +8683,7 @@ function StandbyView({
         onDelete={onDeleteTransfer} 
       />
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between px-8 py-4 bg-[#1a2235]/50 border-b border-white/10 backdrop-blur-sm gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between px-8 py-2 md:py-2.5 bg-[#1a2235]/50 border-b border-white/10 backdrop-blur-sm gap-4">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-900/20">
             <Trophy size={24} className="text-white" />
@@ -8693,7 +8693,7 @@ function StandbyView({
             <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Tournament Standby Monitoring</p>
           </div>
         </div>
-        <div className="flex-1 max-w-xl lg:max-w-2xl xl:max-w-3xl mx-auto w-full">
+        <div className="flex-1 md:max-w-[38%] mx-auto w-full">
           <EventNameGreenBox 
             currentEventId={currentEventId}
             events={events}
@@ -9072,7 +9072,7 @@ function SiteView({
         onDelete={onDeleteTransfer} 
       />
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between px-8 py-4 bg-[#1a2235]/50 border-b border-white/10 backdrop-blur-sm gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between px-8 py-2 md:py-2.5 bg-[#1a2235]/50 border-b border-white/10 backdrop-blur-sm gap-4">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-900/20">
             <Trophy size={24} className="text-white" />
@@ -9082,7 +9082,7 @@ function SiteView({
             <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Tournament Site Monitoring</p>
           </div>
         </div>
-        <div className="flex-1 max-w-xl lg:max-w-2xl xl:max-w-3xl mx-auto w-full">
+        <div className="flex-1 md:max-w-[38%] mx-auto w-full">
           <EventNameGreenBox 
             currentEventId={currentEventId}
             events={events}
@@ -9387,7 +9387,7 @@ function PointsView({
         onDelete={onDeleteTransfer} 
       />
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between px-8 py-4 bg-[#1a2235]/50 border-b border-white/10 backdrop-blur-sm gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between px-8 py-2 md:py-2.5 bg-[#1a2235]/50 border-b border-white/10 backdrop-blur-sm gap-4">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-900/20">
             <Trophy size={24} className="text-white" />
@@ -9397,7 +9397,7 @@ function PointsView({
             <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Tournament Points Monitoring</p>
           </div>
         </div>
-        <div className="flex-1 max-w-xl lg:max-w-2xl xl:max-w-3xl mx-auto w-full">
+        <div className="flex-1 md:max-w-[38%] mx-auto w-full">
           <EventNameGreenBox 
             currentEventId={currentEventId}
             events={events}
@@ -9803,7 +9803,7 @@ function OnsiteView({
         onDelete={onDeleteTransfer} 
       />
       {!isFullscreen && (
-        <div className="flex flex-col md:flex-row md:items-center justify-between px-4 flex-shrink-0 gap-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between px-4 py-1.5 md:py-2 flex-shrink-0 gap-4">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-900/20">
               <Trophy size={24} className="text-white" />
@@ -9813,7 +9813,7 @@ function OnsiteView({
               <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Multi-Court Monitoring System</p>
             </div>
           </div>
-          <div className="flex-1 max-w-xl lg:max-w-2xl xl:max-w-3xl mx-auto w-full">
+          <div className="flex-1 md:max-w-[38%] mx-auto w-full">
             <EventNameGreenBox 
               currentEventId={currentEventId}
               events={events}
@@ -10242,7 +10242,7 @@ function PublicDashboardView({
       )}
 
       {/* Public Header */}
-      <header className="p-4 sm:p-5 bg-slate-800 border-b border-slate-700 flex flex-col sm:flex-row items-center justify-between sticky top-0 z-50 transition-all gap-4">
+      <header className="px-4 py-2 sm:px-5 sm:py-2 bg-slate-800 border-b border-slate-700 flex flex-col sm:flex-row items-center justify-between sticky top-0 z-50 transition-all gap-4">
         <div 
           className="flex items-center gap-2.5 cursor-pointer select-none shrink-0"
           onClick={handleLogoClick}
@@ -10256,7 +10256,7 @@ function PublicDashboardView({
           </div>
         </div>
 
-        <div className="flex-1 max-w-xl lg:max-w-2xl xl:max-w-3xl mx-auto w-full">
+        <div className="flex-1 md:max-w-[38%] mx-auto w-full">
           <EventNameGreenBox 
             currentEventId={currentEventId}
             events={events}
