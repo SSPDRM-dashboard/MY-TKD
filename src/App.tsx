@@ -8542,15 +8542,23 @@ interface SponsorFooterBoxProps {
 function SponsorFooterBox({ isAdmin }: SponsorFooterBoxProps) {
   const [sponsorText, setSponsorText] = useSyncedState<string>('tkd_sponsor_text', '');
   const [sponsorLogo, setSponsorLogo] = useSyncedState<string>('tkd_sponsor_logo', '');
+  const [sponsorLogos, setSponsorLogos] = useSyncedState<string[]>('tkd_sponsor_logos_list', []);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const allLogos = [...(sponsorLogo ? [sponsorLogo] : []), ...sponsorLogos];
 
   const handleFile = (file: File) => {
     if (file && file.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = (e) => {
         if (e.target?.result) {
-          setSponsorLogo(e.target.result as string);
+          const newLogoData = e.target.result as string;
+          if (!sponsorLogo) {
+            setSponsorLogo(newLogoData);
+          } else {
+            setSponsorLogos([...sponsorLogos, newLogoData]);
+          }
         }
       };
       reader.readAsDataURL(file);
@@ -8580,26 +8588,56 @@ function SponsorFooterBox({ isAdmin }: SponsorFooterBoxProps) {
     }
   };
 
-  // If both are empty and we are not admin, render a minimal beautiful empty black bar
+  const handleRemoveLogo = (indexToRemove: number) => {
+    if (indexToRemove === 0) {
+      if (sponsorLogos.length > 0) {
+        setSponsorLogo(sponsorLogos[0]);
+        setSponsorLogos(sponsorLogos.slice(1));
+      } else {
+        setSponsorLogo('');
+      }
+    } else {
+      const actualIndex = indexToRemove - 1;
+      setSponsorLogos(sponsorLogos.filter((_, idx) => idx !== actualIndex));
+    }
+  };
+
+  const handleClearAll = () => {
+    if (window.confirm("Are you sure you want to clear the message and all logos?")) {
+      setSponsorText('');
+      setSponsorLogo('');
+      setSponsorLogos([]);
+    }
+  };
+
   if (!isAdmin) {
     return (
-      <div className="w-full bg-black text-white px-8 py-8 rounded-[2rem] flex flex-col md:flex-row items-center justify-center gap-8 min-h-[120px] shadow-2xl mt-12 border border-slate-900 overflow-hidden">
-        {sponsorLogo && (
-          <img 
-            src={sponsorLogo} 
-            alt="Logo" 
-            className="max-h-24 max-w-[280px] object-contain select-none"
-            referrerPolicy="no-referrer"
-          />
+      <div className="w-full bg-black text-white px-8 py-8 rounded-[2rem] flex flex-col md:flex-row items-center justify-between gap-8 min-h-[120px] shadow-2xl mt-12 border border-slate-900 overflow-hidden">
+        {sponsorText ? (
+          <div className="flex-1 text-center md:text-left min-w-0 pr-4">
+            <span className="text-lg sm:text-xl md:text-2xl font-black uppercase tracking-[0.2em] text-white leading-relaxed break-words">
+              {sponsorText}
+            </span>
+          </div>
+        ) : (
+          <div className="flex-1 text-center md:text-left">
+            <span className="text-xs font-black uppercase tracking-[0.25em] text-slate-700/80 font-mono">
+              OFFICIAL SPONSORS &amp; PARTNERS
+            </span>
+          </div>
         )}
-        {sponsorText && (
-          <span className="text-lg sm:text-xl md:text-2xl font-black uppercase tracking-[0.2em] text-white text-center leading-relaxed max-w-4xl break-words">
-            {sponsorText}
-          </span>
-        )}
-        {!sponsorLogo && !sponsorText && (
-          <div className="text-slate-700/40 text-xs font-black uppercase tracking-widest font-mono">
-            LIVE MONITORING SPONSOR ZONE
+        
+        {allLogos.length > 0 && (
+          <div className="flex flex-wrap items-center justify-center md:justify-end gap-6 shrink-0">
+            {allLogos.map((logo, index) => (
+              <img 
+                key={index}
+                src={logo} 
+                alt={`Sponsor Logo ${index + 1}`} 
+                className="max-h-16 max-w-[180px] object-contain select-none transition-transform hover:scale-105 duration-300"
+                referrerPolicy="no-referrer"
+              />
+            ))}
           </div>
         )}
       </div>
@@ -8615,17 +8653,12 @@ function SponsorFooterBox({ isAdmin }: SponsorFooterBoxProps) {
             Bottom Box Management (Admin Only)
           </h4>
           <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider mt-1">
-            Configure typing message and upload sponsor/event logo. Spectators will see a clean black background view.
+            Configure typing message and upload multiple sponsor/event logos. Spectators will see a clean black background view.
           </p>
         </div>
-        {(sponsorLogo || sponsorText) && (
+        {(allLogos.length > 0 || sponsorText) && (
           <button
-            onClick={() => {
-              if (window.confirm("Are you sure you want to clear both logo and text?")) {
-                setSponsorText('');
-                setSponsorLogo('');
-              }
-            }}
+            onClick={handleClearAll}
             className="px-3 py-1.5 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-red-500/20"
           >
             Clear All
@@ -8634,7 +8667,6 @@ function SponsorFooterBox({ isAdmin }: SponsorFooterBoxProps) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Input Controls */}
         <div className="space-y-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -8651,7 +8683,7 @@ function SponsorFooterBox({ isAdmin }: SponsorFooterBoxProps) {
 
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              Upload Logo (Click or Drag &amp; Drop)
+              Add Partner/Sponsor Logo (Click or Drag &amp; Drop to Add More)
             </label>
             <div
               onDragOver={handleDragOver}
@@ -8659,9 +8691,8 @@ function SponsorFooterBox({ isAdmin }: SponsorFooterBoxProps) {
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
               className={cn(
-                "border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all bg-slate-950/40",
-                isDragging ? "border-red-500 bg-red-500/5" : "border-slate-800 hover:border-slate-700",
-                sponsorLogo ? "border-green-500/40" : ""
+                "border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all bg-slate-950/40 border-slate-800 hover:border-slate-700",
+                isDragging && "border-red-500 bg-red-500/5"
               )}
             >
               <input
@@ -8671,60 +8702,77 @@ function SponsorFooterBox({ isAdmin }: SponsorFooterBoxProps) {
                 accept="image/*"
                 className="hidden"
               />
-              {sponsorLogo ? (
-                <div className="flex flex-col items-center gap-2">
-                  <Image size={28} className="text-green-500" />
-                  <span className="text-[11px] font-black text-green-500 uppercase tracking-widest">Logo Uploaded Successfully</span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSponsorLogo('');
-                    }}
-                    className="mt-1 px-3 py-1 bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all"
-                  >
-                    Remove Logo
-                  </button>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center text-center gap-2">
-                  <Upload size={28} className="text-slate-500 hover:text-slate-400" />
-                  <span className="text-[11px] font-black text-slate-300 uppercase tracking-widest">Select Image File</span>
-                  <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Drag &amp; drop file here, or click to browse</span>
-                </div>
-              )}
+              <div className="flex flex-col items-center text-center gap-2">
+                <Upload size={28} className="text-slate-500 hover:text-slate-400 animate-pulse" />
+                <span className="text-[11px] font-black text-slate-300 uppercase tracking-widest">Select Image File</span>
+                <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Drag &amp; drop file here, or click to browse</span>
+              </div>
             </div>
           </div>
+
+          {allLogos.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                Manage Uploaded Logos ({allLogos.length})
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {allLogos.map((logo, index) => (
+                  <div key={index} className="bg-slate-950 border border-slate-800 rounded-xl p-2 flex flex-col items-center gap-2 relative group overflow-hidden">
+                    <img 
+                      src={logo} 
+                      alt={`Thumb ${index + 1}`} 
+                      className="h-12 w-full object-contain select-none" 
+                      referrerPolicy="no-referrer"
+                    />
+                    <button
+                      onClick={() => handleRemoveLogo(index)}
+                      className="px-2 py-1 bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white rounded text-[9px] font-black uppercase tracking-widest transition-all w-full text-center"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Real-time Live Preview */}
-        <div className="flex flex-col gap-1.5 justify-between">
+        <div className="flex flex-col gap-3">
           <div>
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
               Live Preview (What Others See)
             </label>
             <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">
-              Rendered on a high-contrast black background
+              Rendered with message on the left and all logos aligned on the right on high-contrast black background
             </p>
           </div>
-          <div className="w-full bg-black text-white px-6 py-6 rounded-2xl flex flex-col sm:flex-row items-center justify-center gap-6 min-h-[140px] shadow-inner border border-slate-950 overflow-hidden relative">
-            {sponsorLogo && (
-              <img 
-                src={sponsorLogo} 
-                alt="Logo Preview" 
-                className="max-h-20 max-w-[200px] object-contain select-none"
-                referrerPolicy="no-referrer"
-              />
-            )}
+          <div className="w-full bg-black text-white px-6 py-6 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-6 min-h-[140px] shadow-inner border border-slate-950 overflow-hidden">
             {sponsorText ? (
-              <span className="text-sm sm:text-base md:text-lg font-black uppercase tracking-[0.2em] text-white text-center leading-relaxed break-words max-w-md">
-                {sponsorText}
-              </span>
-            ) : (
-              !sponsorLogo && (
-                <span className="text-xs font-black uppercase tracking-[0.25em] text-slate-700/80 font-mono">
-                  [No Message or Logo Configured]
+              <div className="flex-1 text-center sm:text-left min-w-0 pr-2">
+                <span className="text-sm sm:text-base md:text-lg font-black uppercase tracking-[0.2em] text-white leading-relaxed break-words">
+                  {sponsorText}
                 </span>
-              )
+              </div>
+            ) : (
+              <div className="flex-1 text-center sm:text-left">
+                <span className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-700/80 font-mono">
+                  OFFICIAL SPONSORS &amp; PARTNERS
+                </span>
+              </div>
+            )}
+            
+            {allLogos.length > 0 && (
+              <div className="flex flex-wrap items-center justify-center sm:justify-end gap-4 shrink-0 max-w-[240px]">
+                {allLogos.map((logo, index) => (
+                  <img 
+                    key={index}
+                    src={logo} 
+                    alt={`Logo Preview ${index + 1}`} 
+                    className="max-h-12 max-w-[100px] object-contain select-none"
+                    referrerPolicy="no-referrer"
+                  />
+                ))}
+              </div>
             )}
           </div>
         </div>
