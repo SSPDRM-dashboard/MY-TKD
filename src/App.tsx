@@ -8693,7 +8693,7 @@ function StandbyView({
             <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Tournament Standby Monitoring</p>
           </div>
         </div>
-        <div className="flex-1 md:max-w-[38%] mx-auto w-full">
+        <div className="flex-1 md:max-w-[50%] mx-auto w-full">
           <EventNameGreenBox 
             currentEventId={currentEventId}
             events={events}
@@ -9082,7 +9082,7 @@ function SiteView({
             <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Tournament Site Monitoring</p>
           </div>
         </div>
-        <div className="flex-1 md:max-w-[38%] mx-auto w-full">
+        <div className="flex-1 md:max-w-[50%] mx-auto w-full">
           <EventNameGreenBox 
             currentEventId={currentEventId}
             events={events}
@@ -9397,7 +9397,7 @@ function PointsView({
             <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Tournament Points Monitoring</p>
           </div>
         </div>
-        <div className="flex-1 md:max-w-[38%] mx-auto w-full">
+        <div className="flex-1 md:max-w-[50%] mx-auto w-full">
           <EventNameGreenBox 
             currentEventId={currentEventId}
             events={events}
@@ -9813,7 +9813,7 @@ function OnsiteView({
               <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Multi-Court Monitoring System</p>
             </div>
           </div>
-          <div className="flex-1 md:max-w-[38%] mx-auto w-full">
+          <div className="flex-1 md:max-w-[50%] mx-auto w-full">
             <EventNameGreenBox 
               currentEventId={currentEventId}
               events={events}
@@ -10256,7 +10256,7 @@ function PublicDashboardView({
           </div>
         </div>
 
-        <div className="flex-1 md:max-w-[38%] mx-auto w-full">
+        <div className="flex-1 md:max-w-[50%] mx-auto w-full">
           <EventNameGreenBox 
             currentEventId={currentEventId}
             events={events}
