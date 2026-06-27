@@ -8543,9 +8543,9 @@ function EventNameGreenBox({ currentEventId, events, isAdmin, onUpdateEventName 
   if (!isAdmin) {
     if (!activeEvent) return null;
     return (
-      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl py-1.5 px-4 shadow-[0_0_15px_rgba(16,185,129,0.15)] flex items-center justify-center gap-2 max-w-xs sm:max-w-md mx-auto">
-        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shrink-0" />
-        <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-emerald-400 font-mono truncate">
+      <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-full py-2.5 px-8 shadow-[0_0_20px_rgba(16,185,129,0.2)] flex items-center justify-center gap-3 w-full mx-auto transition-all duration-300">
+        <div className="w-2 h-2 bg-emerald-400 rounded-full shrink-0 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
+        <span className="text-xs sm:text-sm md:text-base font-black uppercase tracking-[0.25em] text-emerald-400 font-sans truncate text-center">
           {activeEvent.name}
         </span>
       </div>
@@ -8553,15 +8553,15 @@ function EventNameGreenBox({ currentEventId, events, isAdmin, onUpdateEventName 
   }
 
   return (
-    <div className="bg-emerald-500/10 border-2 border-emerald-500/30 rounded-2xl py-1 px-3 shadow-[0_0_15px_rgba(16,185,129,0.15)] flex items-center gap-2 w-48 sm:w-64 md:w-80 mx-auto">
-      <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shrink-0" />
+    <div className="bg-emerald-950/40 border border-emerald-500/50 rounded-full py-2 px-8 shadow-[0_0_20px_rgba(16,185,129,0.25)] flex items-center gap-3 w-full mx-auto transition-all duration-300 focus-within:border-emerald-400">
+      <div className="w-2 h-2 bg-emerald-400 rounded-full shrink-0 shadow-[0_0_10px_rgba(52,211,153,0.9)] animate-pulse" />
       <input
         type="text"
         value={localName}
         onChange={(e) => setLocalName(e.target.value)}
         onBlur={handleSave}
         onKeyDown={handleKeyDown}
-        className="bg-transparent text-emerald-400 placeholder-emerald-600/50 text-[10px] sm:text-xs font-black uppercase tracking-widest outline-none border-none focus:ring-0 w-full text-center p-0 font-mono"
+        className="bg-transparent text-emerald-400 placeholder-emerald-600/40 text-xs sm:text-sm md:text-base font-black uppercase tracking-[0.25em] outline-none border-none focus:ring-0 w-full text-center p-0 font-sans"
         placeholder={activeEvent ? "EDIT EVENT NAME..." : "ENTER EVENT NAME TO CREATE..."}
       />
     </div>
@@ -8693,7 +8693,7 @@ function StandbyView({
             <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Tournament Standby Monitoring</p>
           </div>
         </div>
-        <div className="flex-1 max-w-md mx-auto w-full">
+        <div className="flex-1 max-w-xl lg:max-w-2xl xl:max-w-3xl mx-auto w-full">
           <EventNameGreenBox 
             currentEventId={currentEventId}
             events={events}
@@ -9082,7 +9082,7 @@ function SiteView({
             <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Tournament Site Monitoring</p>
           </div>
         </div>
-        <div className="flex-1 max-w-md mx-auto w-full">
+        <div className="flex-1 max-w-xl lg:max-w-2xl xl:max-w-3xl mx-auto w-full">
           <EventNameGreenBox 
             currentEventId={currentEventId}
             events={events}
@@ -9397,7 +9397,7 @@ function PointsView({
             <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Tournament Points Monitoring</p>
           </div>
         </div>
-        <div className="flex-1 max-w-md mx-auto w-full">
+        <div className="flex-1 max-w-xl lg:max-w-2xl xl:max-w-3xl mx-auto w-full">
           <EventNameGreenBox 
             currentEventId={currentEventId}
             events={events}
@@ -9813,7 +9813,7 @@ function OnsiteView({
               <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mt-1">Live Multi-Court Monitoring System</p>
             </div>
           </div>
-          <div className="flex-1 max-w-md mx-auto w-full">
+          <div className="flex-1 max-w-xl lg:max-w-2xl xl:max-w-3xl mx-auto w-full">
             <EventNameGreenBox 
               currentEventId={currentEventId}
               events={events}
@@ -10256,7 +10256,7 @@ function PublicDashboardView({
           </div>
         </div>
 
-        <div className="flex-1 max-w-md mx-auto w-full">
+        <div className="flex-1 max-w-xl lg:max-w-2xl xl:max-w-3xl mx-auto w-full">
           <EventNameGreenBox 
             currentEventId={currentEventId}
             events={events}
