@@ -9847,12 +9847,12 @@ function PointsView({
                             "flex-1 bg-blue-600/90 flex flex-col justify-center px-4 relative",
                             !isPoomsaeModeCurrent && "border-b border-white/10"
                           )}>
-                            <p className="text-[15px] font-bold text-white uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
+                            <p className="text-[15px] font-bold text-[#ffd700] uppercase leading-none mb-1">{current ? cleanPlaceholder(current.blue_club || "") : "---"}</p>
                             <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.blue_name || "") : "---"}</h4>
                           </div>
                           {!isPoomsaeModeCurrent && (
                             <div className="flex-1 bg-red-600/90 flex flex-col justify-center px-4 relative">
-                              <p className="text-[15px] font-bold text-white uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
+                              <p className="text-[15px] font-bold text-[#ffd700] uppercase leading-none mb-1">{current ? cleanPlaceholder(current.red_club || "") : "---"}</p>
                               <h4 className="text-[30px] font-black text-white uppercase leading-none truncate">{current ? cleanPlaceholder(current.red_name || "") : "---"}</h4>
                             </div>
                           )}
@@ -9983,7 +9983,7 @@ function PointsView({
                         isPoomsaeItem ? "col-span-9" : "col-span-5 border-r border-white/10",
                         isRingInactive ? "bg-slate-800" : "bg-blue-600/80"
                       )}>
-                        <span className="text-[13px] font-bold text-white uppercase leading-none">{cleanPlaceholder(b?.data.blue_club || "")}</span>
+                        <span className="text-[13px] font-bold text-[#ffd700] uppercase leading-none">{cleanPlaceholder(b?.data.blue_club || "")}</span>
                         <span className={cn(
                           "text-[16px] font-black uppercase truncate leading-tight",
                           isRingInactive ? "text-slate-400" : "text-white"
@@ -9995,7 +9995,7 @@ function PointsView({
                           "col-span-4 flex flex-col justify-center px-3 relative",
                           isRingInactive ? "bg-slate-800" : "bg-red-600/80"
                         )}>
-                          <span className="text-[13px] font-bold text-white uppercase leading-none">{cleanPlaceholder(b?.data.red_club || "")}</span>
+                          <span className="text-[13px] font-bold text-[#ffd700] uppercase leading-none">{cleanPlaceholder(b?.data.red_club || "")}</span>
                           <span className={cn(
                             "text-[16px] font-black uppercase truncate leading-tight",
                             isRingInactive ? "text-slate-400" : "text-white"
