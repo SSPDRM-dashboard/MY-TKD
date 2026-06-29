@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, Trophy, RotateCcw, AlertTriangle } from 'lucide-react';
-import { MatchHistoryItem } from '../types';
+import { MatchHistoryItem, MatchData, BoutMapping } from '../types';
 import { isBoutMatch } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -8,9 +8,11 @@ interface SearchWinnerProps {
   matchHistory: MatchHistoryItem[];
   currentEventId: string | null;
   onRestoreMatch?: (match: MatchHistoryItem) => void;
+  boutQueue?: { id: string; data: MatchData }[];
+  backupData?: Record<string, { mappings: BoutMapping[], matches: MatchData[] }>;
 }
 
-export function SearchWinner({ matchHistory, currentEventId, onRestoreMatch }: SearchWinnerProps) {
+export function SearchWinner({ matchHistory, currentEventId, onRestoreMatch, boutQueue = [], backupData = {} }: SearchWinnerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [result, setResult] = useState<MatchHistoryItem | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
@@ -112,19 +114,60 @@ export function SearchWinner({ matchHistory, currentEventId, onRestoreMatch }: S
                   {result.winnerClub && result.winnerClub !== '-' && (
                     <p className="text-sm font-bold text-slate-500 uppercase">{result.winnerClub}</p>
                   )}
+                  {result.winType && (
+                    <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg text-xs font-bold uppercase tracking-wider">
+                      <span className="opacity-75">Win Method:</span>
+                      <span className="font-black">
+                        {result.winType === 'PTF' && 'Final Score (PTF)'}
+                        {result.winType === 'RSC' && 'Referee Stops Contest (RSC)'}
+                        {result.winType === 'WDR' && 'Withdrawal (WDR)'}
+                        {result.winType === 'DSQ' && 'Disqualification (DSQ)'}
+                        {result.winType === 'DQB' && 'Disqualification (DQB)'}
+                        {!['PTF', 'RSC', 'WDR', 'DSQ', 'DQB'].includes(result.winType) && result.winType}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 
                 <div className="pt-6 pb-2 border-t border-slate-100 grid grid-cols-2 gap-4">
-                  <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 flex flex-col">
-                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Blue Corner</span>
-                    <span className="text-sm font-bold text-slate-800 uppercase">{result.blue_name || '---'}</span>
-                    <span className="text-xs font-medium text-slate-500 uppercase mt-auto">{result.blue_club || '---'}</span>
-                  </div>
-                  <div className="bg-red-50/50 p-4 rounded-xl border border-red-100 flex flex-col">
-                    <span className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-1">Red Corner</span>
-                    <span className="text-sm font-bold text-slate-800 uppercase">{result.red_name || '---'}</span>
-                    <span className="text-xs font-medium text-slate-500 uppercase mt-auto">{result.red_club || '---'}</span>
-                  </div>
+                  {(() => {
+                    let fallbackMatch = boutQueue.find(q => isBoutMatch(q.data.bout, result.bout))?.data;
+                    
+                    if (!fallbackMatch) {
+                      // Try to find in backup data if not in active queue
+                      if (currentEventId) {
+                        for (const key of Object.keys(backupData)) {
+                          if (key.startsWith(currentEventId + '_')) {
+                            const found = backupData[key]?.matches?.find(m => isBoutMatch(m.bout, result.bout));
+                            if (found) {
+                              fallbackMatch = found;
+                              break;
+                            }
+                          }
+                        }
+                      }
+                    }
+
+                    const fallbackBlueName = fallbackMatch?.blue_name || '';
+                    const fallbackBlueClub = fallbackMatch?.blue_club || '';
+                    const fallbackRedName = fallbackMatch?.red_name || '';
+                    const fallbackRedClub = fallbackMatch?.red_club || '';
+
+                    return (
+                      <>
+                        <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 flex flex-col">
+                          <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Blue Corner</span>
+                          <span className="text-sm font-bold text-slate-800 uppercase">{result.blue_name || fallbackBlueName || (result.winnerSide === 'Blue' ? result.winner : '---')}</span>
+                          <span className="text-xs font-medium text-slate-500 uppercase mt-auto">{result.blue_club || fallbackBlueClub || (result.winnerSide === 'Blue' ? result.winnerClub || '---' : '---')}</span>
+                        </div>
+                        <div className="bg-red-50/50 p-4 rounded-xl border border-red-100 flex flex-col">
+                          <span className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-1">Red Corner</span>
+                          <span className="text-sm font-bold text-slate-800 uppercase">{result.red_name || fallbackRedName || (result.winnerSide === 'Red' ? result.winner : '---')}</span>
+                          <span className="text-xs font-medium text-slate-500 uppercase mt-auto">{result.red_club || fallbackRedClub || (result.winnerSide === 'Red' ? result.winnerClub || '---' : '---')}</span>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
                 {onRestoreMatch && !showSuccess && (
                   <div className="pt-6 border-t border-slate-100">

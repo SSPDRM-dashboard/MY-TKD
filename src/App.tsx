@@ -9,7 +9,6 @@ import {
   ShieldOff, 
   Plus, 
   ChevronLeft,
-  ChevronRight,
   Search,
   CheckCircle2,
   Check,
@@ -41,7 +40,9 @@ import {
   RotateCcw,
   Pause,
   Upload,
-  Image
+  Image,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -1330,7 +1331,7 @@ export default function App() {
   const [showSponsorFooter, setShowSponsorFooter] = useSyncedState<boolean>('tkd_show_sponsor_footer', true);
   const [showInspectionPopupSetting, setShowInspectionPopupSetting] = useSyncedState<boolean>('tkd_show_inspection_popup_setting', true);
   const [confirmResultSubmission, setConfirmResultSubmission] = useSyncedState<boolean>('tkd_confirm_result_submission', false);
-  const [pendingWinnerSelection, setPendingWinnerSelection] = useState<{ ringNumber: number; boutNumber: string | number; winner: string } | null>(null);
+  const [pendingWinnerSelection, setPendingWinnerSelection] = useState<{ ringNumber: number; boutNumber: string | number; winner: string; winType?: string } | null>(null);
   const [publicEventId, setPublicEventId] = useSyncedState<string>('tkd_public_event_id', 'active');
   const [visibleRingsCount, setVisibleRingsCount] = useSyncedState<number>('tkd_visible_rings_count', 12);
   const [slideInterval, setSlideInterval] = useSyncedState<number>('tkd_slide_interval', 15);
@@ -2837,15 +2838,15 @@ export default function App() {
 
   // Auto-pull logic removed as per user request (manual pull only)
   
-  const handleWinnerSelect = async (ringNumber: number, boutNumber: string | number, winner: string) => {
+  const handleWinnerSelect = async (ringNumber: number, boutNumber: string | number, winner: string, winType?: string) => {
     if (confirmResultSubmission) {
-      setPendingWinnerSelection({ ringNumber, boutNumber, winner });
+      setPendingWinnerSelection({ ringNumber, boutNumber, winner, winType });
     } else {
-      executeWinnerSelect(ringNumber, boutNumber, winner);
+      executeWinnerSelect(ringNumber, boutNumber, winner, winType);
     }
   };
 
-  const executeWinnerSelect = async (ringNumber: number, boutNumber: string | number, winner: string) => {
+  const executeWinnerSelect = async (ringNumber: number, boutNumber: string | number, winner: string, winType?: string) => {
     const userRole = sessionStorage.getItem('user_role');
     const assignedRing = sessionStorage.getItem('assigned_ring');
     const targetRingLetter = String.fromCharCode(64 + ringNumber);
@@ -2915,7 +2916,8 @@ export default function App() {
         red_name: currentBout.red_name || '',
         red_club: currentBout.red_club || '',
         eventId: currentEventId,
-        ring: ringNumber
+        ring: ringNumber,
+        winType: winType || 'PTF'
       };
       
       setMatchHistory(prev => {
@@ -4177,30 +4179,36 @@ export default function App() {
                 active={activeTab === 'dashboard'} 
                 onClick={() => setActiveTab('dashboard')} 
               />
-              <NavItem 
-                icon={<Monitor size={20} />} 
-                label="Onsite View" 
-                active={activeTab === 'general'} 
-                onClick={() => setActiveTab('general')} 
-              />
-              <NavItem 
-                icon={<LayoutDashboard size={20} />} 
-                label="Standby View" 
-                active={activeTab === 'standby'} 
-                onClick={() => setActiveTab('standby')} 
-              />
-              <NavItem 
-                icon={<LayoutDashboard size={20} />} 
-                label="Site VIew" 
-                active={activeTab === 'site_view'} 
-                onClick={() => setActiveTab('site_view')} 
-              />
-              <NavItem 
-                icon={<LayoutDashboard size={20} />} 
-                label="Point View" 
-                active={activeTab === 'points'} 
-                onClick={() => setActiveTab('points')} 
-              />
+              <NavGroup
+                icon={<Monitor size={20} />}
+                label="Views"
+                isActive={['general', 'standby', 'site_view', 'points'].includes(activeTab)}
+              >
+                <NavItem 
+                  icon={<Monitor size={18} />} 
+                  label="Onsite View" 
+                  active={activeTab === 'general'} 
+                  onClick={() => setActiveTab('general')} 
+                />
+                <NavItem 
+                  icon={<LayoutDashboard size={18} />} 
+                  label="Standby View" 
+                  active={activeTab === 'standby'} 
+                  onClick={() => setActiveTab('standby')} 
+                />
+                <NavItem 
+                  icon={<LayoutDashboard size={18} />} 
+                  label="Site View" 
+                  active={activeTab === 'site_view'} 
+                  onClick={() => setActiveTab('site_view')} 
+                />
+                <NavItem 
+                  icon={<LayoutDashboard size={18} />} 
+                  label="Point View" 
+                  active={activeTab === 'points'} 
+                  onClick={() => setActiveTab('points')} 
+                />
+              </NavGroup>
               <NavItem 
                 icon={<LayoutDashboard size={20} />} 
                 label="Live Controller" 
@@ -4252,51 +4260,63 @@ export default function App() {
           )}
           {user?.role === 'viewer' && (
             <>
-              <NavItem 
-                icon={<Monitor size={20} />} 
-                label="Onsite View" 
-                active={activeTab === 'general'} 
-                onClick={() => setActiveTab('general')} 
-              />
-              <NavItem 
-                icon={<LayoutDashboard size={20} />} 
-                label="Standby View" 
-                active={activeTab === 'standby'} 
-                onClick={() => setActiveTab('standby')} 
-              />
-              <NavItem 
-                icon={<LayoutDashboard size={20} />} 
-                label="Site VIew" 
-                active={activeTab === 'site_view'} 
-                onClick={() => setActiveTab('site_view')} 
-              />
-              <NavItem 
-                icon={<LayoutDashboard size={20} />} 
-                label="Point View" 
-                active={activeTab === 'points'} 
-                onClick={() => setActiveTab('points')} 
-              />
-              <NavItem 
-                icon={<QrCode size={20} />} 
-                label="Public View" 
-                onClick={() => setIsPublicView(true)} 
-              />
+              <NavGroup
+                icon={<Monitor size={20} />}
+                label="Views"
+                isActive={['general', 'standby', 'site_view', 'points'].includes(activeTab)}
+              >
+                <NavItem 
+                  icon={<Monitor size={18} />} 
+                  label="Onsite View" 
+                  active={activeTab === 'general'} 
+                  onClick={() => setActiveTab('general')} 
+                />
+                <NavItem 
+                  icon={<LayoutDashboard size={18} />} 
+                  label="Standby View" 
+                  active={activeTab === 'standby'} 
+                  onClick={() => setActiveTab('standby')} 
+                />
+                <NavItem 
+                  icon={<LayoutDashboard size={18} />} 
+                  label="Site View" 
+                  active={activeTab === 'site_view'} 
+                  onClick={() => setActiveTab('site_view')} 
+                />
+                <NavItem 
+                  icon={<LayoutDashboard size={18} />} 
+                  label="Point View" 
+                  active={activeTab === 'points'} 
+                  onClick={() => setActiveTab('points')} 
+                />
+                <NavItem 
+                  icon={<QrCode size={18} />} 
+                  label="Public View" 
+                  onClick={() => setIsPublicView(true)} 
+                />
+              </NavGroup>
             </>
           )}
           {user?.role === 'ta' && (
             <>
-              <NavItem 
-                icon={<LayoutDashboard size={20} />} 
-                label="Standby View" 
-                active={activeTab === 'standby'} 
-                onClick={() => setActiveTab('standby')} 
-              />
-              <NavItem 
-                icon={<LayoutDashboard size={20} />} 
-                label="Site VIew" 
-                active={activeTab === 'site_view'} 
-                onClick={() => setActiveTab('site_view')} 
-              />
+              <NavGroup
+                icon={<Monitor size={20} />}
+                label="Views"
+                isActive={['standby', 'site_view'].includes(activeTab)}
+              >
+                <NavItem 
+                  icon={<LayoutDashboard size={18} />} 
+                  label="Standby View" 
+                  active={activeTab === 'standby'} 
+                  onClick={() => setActiveTab('standby')} 
+                />
+                <NavItem 
+                  icon={<LayoutDashboard size={18} />} 
+                  label="Site View" 
+                  active={activeTab === 'site_view'} 
+                  onClick={() => setActiveTab('site_view')} 
+                />
+              </NavGroup>
               <NavItem 
                 icon={<LayoutDashboard size={20} />} 
                 label="TA Sheet" 
@@ -4714,7 +4734,7 @@ export default function App() {
                         onUpdateTotalBouts={(total) => handleUpdateTotalBouts(selectedRingObj.ringNumber, total)}
                         onStart={() => startRing(selectedRingObj.ringNumber)}
                         onDelete={user?.role === 'admin' ? () => deleteRing(selectedRingObj.ringNumber) : undefined}
-                        onWinnerSelect={(winner) => handleWinnerSelect(selectedRingObj.ringNumber, selectedRingObj.currentBout?.bout || 0, winner)}
+                        onWinnerSelect={(winner, winType) => handleWinnerSelect(selectedRingObj.ringNumber, selectedRingObj.currentBout?.bout || 0, winner, winType)}
                         currentEventId={currentEventId}
                         onForceSync={handleForceSync}
                         isAutoPull={autoPullRings[selectedRingObj.ringNumber] || false}
@@ -5022,7 +5042,7 @@ export default function App() {
                       onUpdateTotalBouts={(total) => handleUpdateTotalBouts(ring.ringNumber, total)}
                       onStart={() => startRing(ring.ringNumber)}
                       onDelete={() => deleteRing(ring.ringNumber)}
-                      onWinnerSelect={(winner) => handleWinnerSelect(ring.ringNumber, ring.currentBout?.bout || 0, winner)}
+                      onWinnerSelect={(winner, winType) => handleWinnerSelect(ring.ringNumber, ring.currentBout?.bout || 0, winner, winType)}
                       currentEventId={currentEventId}
                       onForceSync={handleForceSync}
                       isAutoPull={autoPullRings[ring.ringNumber] || false}
@@ -5053,7 +5073,7 @@ export default function App() {
                           onPointsUpdate={(points) => handlePointsUpdateApp(ring.ringNumber, ring.currentBout?.bout || '', points)}
                           onUpdateTotalBouts={(total) => handleUpdateTotalBouts(ring.ringNumber, total)}
                           onStart={() => startRing(ring.ringNumber)}
-                          onWinnerSelect={(winner) => handleWinnerSelect(ring.ringNumber, ring.currentBout?.bout || 0, winner)}
+                          onWinnerSelect={(winner, winType) => handleWinnerSelect(ring.ringNumber, ring.currentBout?.bout || 0, winner, winType)}
                           currentEventId={currentEventId}
                           onForceSync={handleForceSync}
                           isAutoPull={autoPullRings[ring.ringNumber] || false}
@@ -5303,6 +5323,8 @@ export default function App() {
               matchHistory={matchHistory}
               currentEventId={currentEventId}
               onRestoreMatch={handleRestoreMatch}
+              boutQueue={boutQueue}
+              backupData={backupData}
             />
           )}
 
@@ -5818,7 +5840,7 @@ export default function App() {
       </main>
 
       {pendingWinnerSelection && (() => {
-        const { ringNumber, boutNumber, winner } = pendingWinnerSelection;
+        const { ringNumber, boutNumber, winner, winType } = pendingWinnerSelection;
         const ring = rings.find(r => r.ringNumber === ringNumber);
         const currentBout = ring?.currentBout;
         
@@ -5911,7 +5933,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => {
-                    executeWinnerSelect(ringNumber, boutNumber, winner);
+                    executeWinnerSelect(ringNumber, boutNumber, winner, winType);
                     setPendingWinnerSelection(null);
                   }}
                   className={`flex-1 px-4 py-2.5 text-white rounded-xl font-bold text-sm shadow-sm transition-colors ${btnColorClass}`}
@@ -6886,6 +6908,38 @@ function MissingBoutModal({ prompt, onClose, onSubmitReason, onSubmitManual, cat
   );
 }
 
+function NavGroup({ icon, label, children, isActive = false }: { icon: React.ReactNode, label: string, children: React.ReactNode, isActive?: boolean }) {
+  const [isOpen, setIsOpen] = useState(isActive);
+  
+  // Update state if isActive changes from outside
+  useEffect(() => {
+    if (isActive) setIsOpen(true);
+  }, [isActive]);
+
+  return (
+    <div className="space-y-1">
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className={cn(
+          "w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all duration-200",
+          isOpen ? "bg-slate-100/50 text-slate-800" : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
+        )}
+      >
+        <div className="flex items-center gap-3">
+          {icon}
+          {label}
+        </div>
+        <ChevronDown size={16} className={cn("transition-transform duration-200", isOpen && "rotate-180")} />
+      </button>
+      {isOpen && (
+        <div className="pl-4 space-y-1">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NavItem({ icon, label, active, onClick, badge }: { icon: React.ReactNode, label: string, active?: boolean, onClick: () => void, badge?: React.ReactNode }) {
   return (
     <button 
@@ -6937,7 +6991,7 @@ interface RingCardProps {
   onUpdateTotalBouts?: (total: number) => void;
   onStart?: () => void;
   onDelete?: () => void;
-  onWinnerSelect?: (winner: string) => void;
+  onWinnerSelect?: (winner: string, winType?: string) => void;
   isAutoPull?: boolean;
   onToggleAutoPull?: () => void;
   user?: UserAccount | null;
@@ -7705,6 +7759,13 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
     r2Winner: '' as 'Blue' | 'Red' | '',
     r3Winner: '' as 'Blue' | 'Red' | ''
   });
+  const [selectedWinType, setSelectedWinType] = useState<string>('PTF');
+  
+  // Reset selected win type to PTF when bout changes
+  useEffect(() => {
+    setSelectedWinType('PTF');
+  }, [ring.currentBout?.bout]);
+
   const pointsDebounceRef = React.useRef<NodeJS.Timeout>();
 
   // Use an effect to sync prop changes to local points ONLY if they differ, or upon mount/new bout
@@ -8051,7 +8112,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                     layout === 'point' ? (
                       <>
                         <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Round Points & Winners</p>
-                        <div className="grid grid-cols-4 gap-2 mb-4 items-center">
+                        <div className="grid grid-cols-4 gap-x-12 gap-y-6 mb-4 items-center">
                           <div className="flex items-center justify-center font-bold text-slate-400"></div>
                           <div className="text-center text-[10px] font-black uppercase text-slate-500">R1</div>
                           <div className="text-center text-[10px] font-black uppercase text-slate-500">R2</div>
@@ -8061,7 +8122,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                           <input 
                             type="number" 
                             className={cn(
-                              "w-12 h-12 text-center border-2 border-[#00a2e8] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8] mx-auto flex items-center justify-center rounded-full", 
+                              "w-full h-12 text-center border-2 border-[#00a2e8] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8] mx-auto flex items-center justify-center rounded-lg", 
                               (points.r1Winner === 'Blue' || (points.r1Winner === '' && points.r1Blue !== '' && points.r1Red !== '' && parseInt(points.r1Blue) > parseInt(points.r1Red))) 
                                 ? "bg-[#00a2e8] text-white scale-110 shadow-md ring-4 ring-blue-300 border-transparent" 
                                 : "bg-white text-slate-800"
@@ -8089,7 +8150,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                           <input 
                             type="number" 
                             className={cn(
-                              "w-12 h-12 text-center border-2 border-[#00a2e8] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8] mx-auto flex items-center justify-center rounded-full", 
+                              "w-full h-12 text-center border-2 border-[#00a2e8] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8] mx-auto flex items-center justify-center rounded-lg", 
                               (points.r2Winner === 'Blue' || (points.r2Winner === '' && points.r2Blue !== '' && points.r2Red !== '' && parseInt(points.r2Blue) > parseInt(points.r2Red))) 
                                 ? "bg-[#00a2e8] text-white scale-110 shadow-md ring-4 ring-blue-300 border-transparent" 
                                 : "bg-white text-slate-800"
@@ -8117,7 +8178,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                           <input 
                             type="number" 
                             className={cn(
-                              "w-12 h-12 text-center border-2 border-[#00a2e8] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8] mx-auto flex items-center justify-center rounded-full", 
+                              "w-full h-12 text-center border-2 border-[#00a2e8] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#00a2e8] mx-auto flex items-center justify-center rounded-lg", 
                               (points.r3Winner === 'Blue' || (points.r3Winner === '' && points.r3Blue !== '' && points.r3Red !== '' && parseInt(points.r3Blue) > parseInt(points.r3Red))) 
                                 ? "bg-[#00a2e8] text-white scale-110 shadow-md ring-4 ring-blue-300 border-transparent" 
                                 : "bg-white text-slate-800"
@@ -8147,7 +8208,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                           <input 
                             type="number" 
                             className={cn(
-                              "w-12 h-12 text-center border-2 border-[#ed1c24] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24] mx-auto flex items-center justify-center rounded-full", 
+                              "w-full h-12 text-center border-2 border-[#ed1c24] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24] mx-auto flex items-center justify-center rounded-lg", 
                               (points.r1Winner === 'Red' || (points.r1Winner === '' && points.r1Red !== '' && points.r1Blue !== '' && parseInt(points.r1Red) > parseInt(points.r1Blue))) 
                                 ? "bg-[#ed1c24] text-white scale-110 shadow-md ring-4 ring-red-300 border-transparent" 
                                 : "bg-white text-slate-800"
@@ -8175,7 +8236,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                           <input 
                             type="number" 
                             className={cn(
-                              "w-12 h-12 text-center border-2 border-[#ed1c24] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24] mx-auto flex items-center justify-center rounded-full", 
+                              "w-full h-12 text-center border-2 border-[#ed1c24] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24] mx-auto flex items-center justify-center rounded-lg", 
                               (points.r2Winner === 'Red' || (points.r2Winner === '' && points.r2Red !== '' && points.r2Blue !== '' && parseInt(points.r2Red) > parseInt(points.r2Blue))) 
                                 ? "bg-[#ed1c24] text-white scale-110 shadow-md ring-4 ring-red-300 border-transparent" 
                                 : "bg-white text-slate-800"
@@ -8203,7 +8264,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                           <input 
                             type="number" 
                             className={cn(
-                              "w-12 h-12 text-center border-2 border-[#ed1c24] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24] mx-auto flex items-center justify-center rounded-full", 
+                              "w-full h-12 text-center border-2 border-[#ed1c24] transition-all font-black text-lg focus:outline-none focus:ring-2 focus:ring-[#ed1c24] mx-auto flex items-center justify-center rounded-lg", 
                               (points.r3Winner === 'Red' || (points.r3Winner === '' && points.r3Red !== '' && points.r3Blue !== '' && parseInt(points.r3Red) > parseInt(points.r3Blue))) 
                                 ? "bg-[#ed1c24] text-white scale-110 shadow-md ring-4 ring-red-300 border-transparent" 
                                 : "bg-white text-slate-800"
@@ -8241,7 +8302,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                                 handlePointsUpdate();
                               }}
                               className={cn(
-                                "h-7 w-7 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
+                                "h-7 flex-1 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
                                 points.r1Winner === 'Blue'
                                   ? "bg-[#00a2e8] text-white shadow-md shadow-blue-500/20 ring-2 ring-blue-300"
                                   : "bg-slate-50 text-slate-500 hover:bg-blue-50 hover:text-[#00a2e8] border border-slate-200"
@@ -8258,7 +8319,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                                 handlePointsUpdate();
                               }}
                               className={cn(
-                                "h-7 w-7 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
+                                "h-7 flex-1 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
                                 points.r1Winner === 'Red'
                                   ? "bg-[#ed1c24] text-white shadow-md shadow-red-500/20 ring-2 ring-red-300"
                                   : "bg-slate-50 text-slate-500 hover:bg-red-50 hover:text-[#ed1c24] border border-slate-200"
@@ -8278,7 +8339,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                                 handlePointsUpdate();
                               }}
                               className={cn(
-                                "h-7 w-7 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
+                                "h-7 flex-1 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
                                 points.r2Winner === 'Blue'
                                   ? "bg-[#00a2e8] text-white shadow-md shadow-blue-500/20 ring-2 ring-blue-300"
                                   : "bg-slate-50 text-slate-500 hover:bg-blue-50 hover:text-[#00a2e8] border border-slate-200"
@@ -8295,7 +8356,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                                 handlePointsUpdate();
                               }}
                               className={cn(
-                                "h-7 w-7 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
+                                "h-7 flex-1 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
                                 points.r2Winner === 'Red'
                                   ? "bg-[#ed1c24] text-white shadow-md shadow-red-500/20 ring-2 ring-red-300"
                                   : "bg-slate-50 text-slate-500 hover:bg-red-50 hover:text-[#ed1c24] border border-slate-200"
@@ -8315,7 +8376,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                                 handlePointsUpdate();
                               }}
                               className={cn(
-                                "h-7 w-7 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
+                                "h-7 flex-1 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
                                 points.r3Winner === 'Blue'
                                   ? "bg-[#00a2e8] text-white shadow-md shadow-blue-500/20 ring-2 ring-blue-300"
                                   : "bg-slate-50 text-slate-500 hover:bg-blue-50 hover:text-[#00a2e8] border border-slate-200"
@@ -8332,7 +8393,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                                 handlePointsUpdate();
                               }}
                               className={cn(
-                                "h-7 w-7 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
+                                "h-7 flex-1 text-[10px] font-black rounded-lg transition-all flex items-center justify-center",
                                 points.r3Winner === 'Red'
                                   ? "bg-[#ed1c24] text-white shadow-md shadow-red-500/20 ring-2 ring-red-300"
                                   : "bg-slate-50 text-slate-500 hover:bg-red-50 hover:text-[#ed1c24] border border-slate-200"
@@ -8343,9 +8404,38 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                             </button>
                           </div>
                         </div>
+                        {!isPoomsaeMode && (
+                          <div className="mt-4 mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                            <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2.5">Select Win Method</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {[
+                                { code: 'PTF', label: 'Win by Final Score (PTF)' },
+                                { code: 'RSC', label: 'Win by Referee Stops Contest (RSC)' },
+                                { code: 'WDR', label: 'Win by Withdrawal (WDR)' },
+                                { code: 'DSQ', label: 'Win by Disqualification (DSQ)' },
+                                { code: 'DQB', label: 'Win by Disqualification for unsportsmanlike behavior (DQB)' }
+                              ].map((item) => (
+                                <button
+                                  key={item.code}
+                                  type="button"
+                                  onClick={() => setSelectedWinType(item.code)}
+                                  className={cn(
+                                    "py-2 px-2.5 font-bold rounded-lg transition-all text-left flex items-center justify-between border text-[11px] leading-tight",
+                                    selectedWinType === item.code
+                                      ? "bg-slate-900 border-slate-900 text-white shadow-sm"
+                                      : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                                  )}
+                                >
+                                  <span>{item.label}</span>
+                                  {selectedWinType === item.code && <span className="w-1.5 h-1.5 rounded-full bg-lime-500 shrink-0 ml-1" />}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         <div className="flex gap-4">
                           <button 
-                            onClick={() => onWinnerSelect('Blue')}
+                            onClick={() => onWinnerSelect('Blue', selectedWinType)}
                             disabled={isRedMatchWinner}
                             className={cn(
                               "flex-[1] py-3 bg-[#00a2e8] text-white rounded-xl font-black text-sm uppercase transition-all shadow-md px-2 break-words text-center",
@@ -8357,7 +8447,7 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                             Mark {cleanPlaceholder(current.blue_name) || 'Blue'} Win
                           </button>
                           <button 
-                            onClick={() => onWinnerSelect('Red')}
+                            onClick={() => onWinnerSelect('Red', selectedWinType)}
                             disabled={isBlueMatchWinner}
                             className={cn(
                               "flex-[1] py-3 bg-[#ed1c24] text-white rounded-xl font-black text-sm uppercase transition-all shadow-md px-2 break-words text-center",
@@ -8373,15 +8463,44 @@ function RingCard({ ring, namingMode, categories, clubs, queueCount = 0, onUpdat
                     ) : (
                       <>
                         <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Select Winner</p>
+                        {!isPoomsaeMode && (
+                          <div className="mt-2 mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                            <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2.5">Select Win Method</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {[
+                                { code: 'PTF', label: 'Win by Final Score (PTF)' },
+                                { code: 'RSC', label: 'Win by Referee Stops Contest (RSC)' },
+                                { code: 'WDR', label: 'Win by Withdrawal (WDR)' },
+                                { code: 'DSQ', label: 'Win by Disqualification (DSQ)' },
+                                { code: 'DQB', label: 'Win by Disqualification for unsportsmanlike behavior (DQB)' }
+                              ].map((item) => (
+                                <button
+                                  key={item.code}
+                                  type="button"
+                                  onClick={() => setSelectedWinType(item.code)}
+                                  className={cn(
+                                    "py-2 px-2.5 font-bold rounded-lg transition-all text-left flex items-center justify-between border text-[11px] leading-tight",
+                                    selectedWinType === item.code
+                                      ? "bg-slate-900 border-slate-900 text-white shadow-sm"
+                                      : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                                  )}
+                                >
+                                  <span>{item.label}</span>
+                                  {selectedWinType === item.code && <span className="w-1.5 h-1.5 rounded-full bg-lime-500 shrink-0 ml-1" />}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         <div className="flex gap-4 mb-4">
                           <button 
-                            onClick={() => onWinnerSelect('Blue')}
+                            onClick={() => onWinnerSelect('Blue', selectedWinType)}
                             className="flex-[1.2] min-h-[4.5rem] sm:min-h-[6rem] py-3 sm:py-4 bg-blue-50 text-[#00a2e8] hover:bg-[#00a2e8] hover:text-white rounded-[1.5rem] font-black text-sm sm:text-lg md:text-[20px] uppercase transition-all border-2 border-blue-200 hover:border-[#00a2e8] active:scale-95 px-2 sm:px-4 break-words whitespace-normal flex items-center justify-center text-center leading-tight shadow-sm hover:shadow-xl hover:shadow-blue-200/50"
                           >
                             <span>{cleanPlaceholder(current.blue_name) || 'Blue'} Wins</span>
                           </button>
                           <button 
-                            onClick={() => onWinnerSelect('Red')}
+                            onClick={() => onWinnerSelect('Red', selectedWinType)}
                             className="flex-[1.2] min-h-[4.5rem] sm:min-h-[6rem] py-3 sm:py-4 bg-red-50 text-[#ed1c24] hover:bg-[#ed1c24] hover:text-white rounded-[1.5rem] font-black text-sm sm:text-lg md:text-[20px] uppercase transition-all border-2 border-red-200 hover:border-[#ed1c24] active:scale-95 px-2 sm:px-4 break-words whitespace-normal flex items-center justify-center text-center leading-tight shadow-sm hover:shadow-xl hover:shadow-red-200/50"
                           >
                             <span>{cleanPlaceholder(current.red_name) || 'Red'} Wins</span>
@@ -9955,8 +10074,20 @@ function PointsView({
                   <div className="col-span-2 bg-lime-500 text-slate-950 text-[16px] font-black px-3 py-1 rounded flex items-center justify-center mr-4">
                     Ring {ringName}
                   </div>
-                  <div className="col-span-10 text-white text-[18px] font-bold flex items-center">
-                    {cleanPlaceholder(current?.category || "")}
+                  <div className="col-span-10 grid grid-cols-12 items-center">
+                    <div className={cn(
+                      "text-white text-[18px] font-bold flex items-center truncate",
+                      isPoomsaeModeCurrent ? "col-span-12" : "col-span-6"
+                    )}>
+                      {cleanPlaceholder(current?.category || "")}
+                    </div>
+                    {!isPoomsaeModeCurrent && (
+                      <div className="col-span-6 grid grid-cols-3 text-white text-center opacity-60 text-[18px] font-bold italic tracking-widest uppercase">
+                        <div>R1</div>
+                        <div>R2</div>
+                        <div>R3</div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 {/* Content */}
@@ -10016,32 +10147,26 @@ function PointsView({
                                 <div className="flex-1 grid grid-cols-3 divide-x divide-white/10">
                                   <div className="flex items-center justify-center">
                                     <span className={cn(
-                                      "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all",
-                                      r1Win === 'Blue' 
-                                        ? "text-[#00a2e8] rounded-full border-4 border-[#00a2e8] bg-[#00a2e8]/15 shadow-[0_0_12px_rgba(0,162,232,0.5)] scale-105" 
-                                        : "text-white"
+                                      "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all text-[#00a2e8]",
+                                      r1Win === 'Blue' && "rounded-full border-4 border-[#00a2e8] bg-[#00a2e8]/15 shadow-[0_0_12px_rgba(0,162,232,0.5)] scale-105" 
                                     )}>
-                                      {current?.points?.r1Blue || '-'}
+                                      {current?.points?.r1Blue || ''}
                                     </span>
                                   </div>
                                   <div className="flex items-center justify-center">
                                     <span className={cn(
-                                      "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all",
-                                      r2Win === 'Blue' 
-                                        ? "text-[#00a2e8] rounded-full border-4 border-[#00a2e8] bg-[#00a2e8]/15 shadow-[0_0_12px_rgba(0,162,232,0.5)] scale-105" 
-                                        : "text-white"
+                                      "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all text-[#00a2e8]",
+                                      r2Win === 'Blue' && "rounded-full border-4 border-[#00a2e8] bg-[#00a2e8]/15 shadow-[0_0_12px_rgba(0,162,232,0.5)] scale-105" 
                                     )}>
-                                      {current?.points?.r2Blue || '-'}
+                                      {current?.points?.r2Blue || ''}
                                     </span>
                                   </div>
                                   <div className="flex items-center justify-center">
                                     <span className={cn(
-                                      "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all",
-                                      r3Win === 'Blue' 
-                                        ? "text-[#00a2e8] rounded-full border-4 border-[#00a2e8] bg-[#00a2e8]/15 shadow-[0_0_12px_rgba(0,162,232,0.5)] scale-105" 
-                                        : "text-white"
+                                      "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all text-[#00a2e8]",
+                                      r3Win === 'Blue' && "rounded-full border-4 border-[#00a2e8] bg-[#00a2e8]/15 shadow-[0_0_12px_rgba(0,162,232,0.5)] scale-105" 
                                     )}>
-                                      {current?.points?.r3Blue || '-'}
+                                      {current?.points?.r3Blue || ''}
                                     </span>
                                   </div>
                                 </div>
@@ -10051,32 +10176,26 @@ function PointsView({
                                   <div className="flex-1 grid grid-cols-3 divide-x divide-white/10">
                                     <div className="flex items-center justify-center">
                                       <span className={cn(
-                                        "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all",
-                                        r1Win === 'Red' 
-                                          ? "text-[#ed1c24] rounded-full border-4 border-[#ed1c24] bg-[#ed1c24]/15 shadow-[0_0_12px_rgba(237,28,36,0.5)] scale-105" 
-                                          : "text-white"
+                                        "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all text-[#ed1c24]",
+                                        r1Win === 'Red' && "rounded-full border-4 border-[#ed1c24] bg-[#ed1c24]/15 shadow-[0_0_12px_rgba(237,28,36,0.5)] scale-105" 
                                       )}>
-                                        {current?.points?.r1Red || '-'}
+                                        {current?.points?.r1Red || ''}
                                       </span>
                                     </div>
                                     <div className="flex items-center justify-center">
                                       <span className={cn(
-                                        "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all",
-                                        r2Win === 'Red' 
-                                          ? "text-[#ed1c24] rounded-full border-4 border-[#ed1c24] bg-[#ed1c24]/15 shadow-[0_0_12px_rgba(237,28,36,0.5)] scale-105" 
-                                          : "text-white"
+                                        "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all text-[#ed1c24]",
+                                        r2Win === 'Red' && "rounded-full border-4 border-[#ed1c24] bg-[#ed1c24]/15 shadow-[0_0_12px_rgba(237,28,36,0.5)] scale-105" 
                                       )}>
-                                        {current?.points?.r2Red || '-'}
+                                        {current?.points?.r2Red || ''}
                                       </span>
                                     </div>
                                     <div className="flex items-center justify-center">
                                       <span className={cn(
-                                        "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all",
-                                        r3Win === 'Red' 
-                                          ? "text-[#ed1c24] rounded-full border-4 border-[#ed1c24] bg-[#ed1c24]/15 shadow-[0_0_12px_rgba(237,28,36,0.5)] scale-105" 
-                                          : "text-white"
+                                        "w-12 h-12 flex items-center justify-center font-black text-3xl transition-all text-[#ed1c24]",
+                                        r3Win === 'Red' && "rounded-full border-4 border-[#ed1c24] bg-[#ed1c24]/15 shadow-[0_0_12px_rgba(237,28,36,0.5)] scale-105" 
                                       )}>
-                                        {current?.points?.r3Red || '-'}
+                                        {current?.points?.r3Red || ''}
                                       </span>
                                     </div>
                                   </div>
@@ -11072,24 +11191,24 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                       <div className="col-span-3 grid grid-cols-3 divide-x divide-slate-800 bg-[#0e1726] text-white font-black text-center text-xl sm:text-2xl border-t border-slate-800 items-center">
                         <div className="flex items-center justify-center py-2 bg-[#0e1726]">
                           <span className={cn(
-                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all",
-                            r1W === 'Blue' ? "text-[#00a2e8] border-2 border-[#00a2e8] bg-[#00a2e8]/15 shadow-md scale-105" : "text-white"
+                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all text-[#00a2e8]",
+                            r1W === 'Blue' && "border-2 border-[#00a2e8] bg-[#00a2e8]/15 shadow-md scale-105"
                           )}>
                             {current?.points?.r1Blue || '0'}
                           </span>
                         </div>
                         <div className="flex items-center justify-center py-2 bg-[#0e1726]">
                           <span className={cn(
-                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all",
-                            r2W === 'Blue' ? "text-[#00a2e8] border-2 border-[#00a2e8] bg-[#00a2e8]/15 shadow-md scale-105" : "text-white"
+                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all text-[#00a2e8]",
+                            r2W === 'Blue' && "border-2 border-[#00a2e8] bg-[#00a2e8]/15 shadow-md scale-105"
                           )}>
                             {current?.points?.r2Blue || '0'}
                           </span>
                         </div>
                         <div className="flex items-center justify-center py-2 bg-[#0e1726]">
                           <span className={cn(
-                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all",
-                            r3W === 'Blue' ? "text-[#00a2e8] border-2 border-[#00a2e8] bg-[#00a2e8]/15 shadow-md scale-105" : "text-white"
+                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all text-[#00a2e8]",
+                            r3W === 'Blue' && "border-2 border-[#00a2e8] bg-[#00a2e8]/15 shadow-md scale-105"
                           )}>
                             {current?.points?.r3Blue || '0'}
                           </span>
@@ -11098,24 +11217,24 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                       <div className="col-span-3 grid grid-cols-3 divide-x divide-slate-800 bg-[#0e1726] text-white font-black text-center text-xl sm:text-2xl border-t border-slate-800 items-center">
                         <div className="flex items-center justify-center py-2 bg-[#0e1726]">
                           <span className={cn(
-                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all",
-                            r1W === 'Red' ? "text-[#ed1c24] border-2 border-[#ed1c24] bg-[#ed1c24]/15 shadow-md scale-105" : "text-white"
+                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all text-[#ed1c24]",
+                            r1W === 'Red' && "border-2 border-[#ed1c24] bg-[#ed1c24]/15 shadow-md scale-105"
                           )}>
                             {current?.points?.r1Red || '0'}
                           </span>
                         </div>
                         <div className="flex items-center justify-center py-2 bg-[#0e1726]">
                           <span className={cn(
-                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all",
-                            r2W === 'Red' ? "text-[#ed1c24] border-2 border-[#ed1c24] bg-[#ed1c24]/15 shadow-md scale-105" : "text-white"
+                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all text-[#ed1c24]",
+                            r2W === 'Red' && "border-2 border-[#ed1c24] bg-[#ed1c24]/15 shadow-md scale-105"
                           )}>
                             {current?.points?.r2Red || '0'}
                           </span>
                         </div>
                         <div className="flex items-center justify-center py-2 bg-[#0e1726]">
                           <span className={cn(
-                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all",
-                            r3W === 'Red' ? "text-[#ed1c24] border-2 border-[#ed1c24] bg-[#ed1c24]/15 shadow-md scale-105" : "text-white"
+                            "w-10 h-10 flex items-center justify-center rounded-full font-black text-xl sm:text-2xl transition-all text-[#ed1c24]",
+                            r3W === 'Red' && "border-2 border-[#ed1c24] bg-[#ed1c24]/15 shadow-md scale-105"
                           )}>
                             {current?.points?.r3Red || '0'}
                           </span>

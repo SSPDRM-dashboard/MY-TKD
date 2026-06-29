@@ -1,0 +1,260 @@
+4175-                icon={<LayoutDashboard size={20} />} 
+4176-                label="Dashboard" 
+4177-                active={activeTab === 'dashboard'} 
+4178:                onClick={() => setActiveTab('dashboard')} 
+4179-              />
+4180-              <NavItem 
+4181-                icon={<Monitor size={20} />} 
+4182-                label="Onsite View" 
+4183-                active={activeTab === 'general'} 
+4184:                onClick={() => setActiveTab('general')} 
+4185-              />
+4186-              <NavItem 
+4187-                icon={<LayoutDashboard size={20} />} 
+4188-                label="Standby View" 
+4189-                active={activeTab === 'standby'} 
+4190:                onClick={() => setActiveTab('standby')} 
+4191-              />
+4192-              <NavItem 
+4193-                icon={<LayoutDashboard size={20} />} 
+4194-                label="Site VIew" 
+4195-                active={activeTab === 'site_view'} 
+4196:                onClick={() => setActiveTab('site_view')} 
+4197-              />
+4198-              <NavItem 
+4199-                icon={<LayoutDashboard size={20} />} 
+4200-                label="Point View" 
+4201-                active={activeTab === 'points'} 
+4202:                onClick={() => setActiveTab('points')} 
+4203-              />
+4204-              <NavItem 
+4205-                icon={<LayoutDashboard size={20} />} 
+4206-                label="Live Controller" 
+4207-                active={activeTab === 'mats'} 
+4208:                onClick={() => setActiveTab('mats')} 
+4209-              />
+4210-              <NavItem 
+4211-                icon={<Shield size={20} />} 
+4212-                label="Bracket Logic" 
+4213-                active={activeTab === 'mapping'} 
+4214:                onClick={() => setActiveTab('mapping')} 
+4215-              />
+4216-              <NavItem 
+4217-                icon={<RefreshCw size={20} />} 
+4218-                label="AI Setup" 
+4219-                active={activeTab === 'ai-setup'} 
+4220:                onClick={() => setActiveTab('ai-setup')} 
+4221-              />
+4222-              <NavItem 
+4223-                icon={<Layers size={20} />} 
+4224-                label="Bout Chart" 
+4225-                active={activeTab === 'bout-chart'} 
+4226:                onClick={() => setActiveTab('bout-chart')} 
+4227-              />
+4228-              <NavItem 
+4229-                icon={<Search size={20} />} 
+4230-                label="Search Winner" 
+4231-                active={activeTab === 'search-winner'} 
+4232:                onClick={() => setActiveTab('search-winner')} 
+4233-              />
+4234-            </>
+4235-          )}
+--
+4239-                icon={<LayoutDashboard size={20} />} 
+4240-                label={`Ring ${getRingName(Number(user?.assignedRing) || 1)}`} 
+4241-                active={activeTab === 'mats'} 
+4242:                onClick={() => setActiveTab('mats')} 
+4243-                badge={rings.find(r => r.ringNumber === Number(user?.assignedRing))?.totalBouts || 0}
+4244-              />
+4245-              <NavItem 
+4246-                icon={<Search size={20} />} 
+4247-                label="Search Winner" 
+4248-                active={activeTab === 'search-winner'} 
+4249:                onClick={() => setActiveTab('search-winner')} 
+4250-              />
+4251-            </>
+4252-          )}
+--
+4256-                icon={<Monitor size={20} />} 
+4257-                label="Onsite View" 
+4258-                active={activeTab === 'general'} 
+4259:                onClick={() => setActiveTab('general')} 
+4260-              />
+4261-              <NavItem 
+4262-                icon={<LayoutDashboard size={20} />} 
+4263-                label="Standby View" 
+4264-                active={activeTab === 'standby'} 
+4265:                onClick={() => setActiveTab('standby')} 
+4266-              />
+4267-              <NavItem 
+4268-                icon={<LayoutDashboard size={20} />} 
+4269-                label="Site VIew" 
+4270-                active={activeTab === 'site_view'} 
+4271:                onClick={() => setActiveTab('site_view')} 
+4272-              />
+4273-              <NavItem 
+4274-                icon={<LayoutDashboard size={20} />} 
+4275-                label="Point View" 
+4276-                active={activeTab === 'points'} 
+4277:                onClick={() => setActiveTab('points')} 
+4278-              />
+4279-              <NavItem 
+4280-                icon={<QrCode size={20} />} 
+--
+4289-                icon={<LayoutDashboard size={20} />} 
+4290-                label="Standby View" 
+4291-                active={activeTab === 'standby'} 
+4292:                onClick={() => setActiveTab('standby')} 
+4293-              />
+4294-              <NavItem 
+4295-                icon={<LayoutDashboard size={20} />} 
+4296-                label="Site VIew" 
+4297-                active={activeTab === 'site_view'} 
+4298:                onClick={() => setActiveTab('site_view')} 
+4299-              />
+4300-              <NavItem 
+4301-                icon={<LayoutDashboard size={20} />} 
+4302-                label="TA Sheet" 
+4303-                active={activeTab === 'ta-sheet'} 
+4304:                onClick={() => setActiveTab('ta-sheet')} 
+4305-              />
+4306-              <NavItem 
+4307-                icon={<Edit2 size={20} />} 
+4308-                label="Player Inspection" 
+4309-                active={activeTab === 'player-signature'} 
+4310:                onClick={() => setActiveTab('player-signature')} 
+4311-              />
+4312-              <NavItem 
+4313-                icon={<ClipboardCheck size={20} />} 
+4314-                label="Inspection Logs" 
+4315-                active={activeTab === 'inspection-logs'} 
+4316:                onClick={() => setActiveTab('inspection-logs')} 
+4317-              />
+4318-              <NavItem 
+4319-                icon={<Search size={20} />} 
+4320-                label="Search Winner" 
+4321-                active={activeTab === 'search-winner'} 
+4322:                onClick={() => setActiveTab('search-winner')} 
+4323-              />
+4324-            </>
+4325-          )}
+--
+4328-              icon={<Trophy size={20} />} 
+4329-              label="Tournament Report" 
+4330-              active={activeTab === 'report'} 
+4331:              onClick={() => setActiveTab('report')} 
+4332-            />
+4333-          )}
+4334-          {user?.role === 'admin' && (
+--
+4337-                icon={<Trophy size={20} />} 
+4338-                label="Tournament Report" 
+4339-                active={activeTab === 'report'} 
+4340:                onClick={() => setActiveTab('report')} 
+4341-              />
+4342-
+4343-              <NavItem 
+4344-                icon={<ClipboardCheck size={20} />} 
+4345-                label="Inspection Logs" 
+4346-                active={activeTab === 'inspection-logs'} 
+4347:                onClick={() => setActiveTab('inspection-logs')} 
+4348-              />
+4349-              <NavItem 
+4350-                icon={<QrCode size={20} />} 
+--
+4374-          </div>
+4375-          {user?.role === 'admin' && (
+4376-            <button 
+4377:              onClick={() => setActiveTab('settings')}
+4378-              className={cn(
+4379-                "w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold transition-all group",
+4380-                activeTab === 'settings' 
+--
+6490-        {user?.role === 'admin' && (
+6491-          <>
+6492-            <button 
+6493:              onClick={() => setActiveTab('dashboard')}
+6494-              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'dashboard' ? "text-red-600" : "text-slate-400")}
+6495-            >
+6496-              <LayoutDashboard size={20} />
+6497-              <span className="text-[10px] font-bold">Home</span>
+6498-            </button>
+6499-            <button 
+6500:              onClick={() => setActiveTab('mats')}
+6501-              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'mats' ? "text-red-600" : "text-slate-400")}
+6502-            >
+6503-              <Monitor size={20} />
+--
+6505-            </button>
+6506-
+6507-            <button 
+6508:              onClick={() => setActiveTab('ai-setup')}
+6509-              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'ai-setup' ? "text-red-600" : "text-slate-400")}
+6510-            >
+6511-              <RefreshCw size={20} />
+6512-              <span className="text-[10px] font-bold">AI Setup</span>
+6513-            </button>
+6514-            <button 
+6515:              onClick={() => setActiveTab('search-winner')}
+6516-              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'search-winner' ? "text-red-600" : "text-slate-400")}
+6517-            >
+6518-              <Search size={20} />
+6519-              <span className="text-[10px] font-bold">Search</span>
+6520-            </button>
+6521-            <button 
+6522:              onClick={() => setActiveTab('settings')}
+6523-              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'settings' ? "text-red-600" : "text-slate-400")}
+6524-            >
+6525-              <Settings size={20} />
+--
+6530-        {user?.role === 'user' && (
+6531-          <>
+6532-            <button 
+6533:              onClick={() => setActiveTab('mats')}
+6534-              className={cn("flex flex-col items-center gap-1 transition-colors relative", activeTab === 'mats' ? "text-red-600" : "text-slate-400")}
+6535-            >
+6536-              <div className="relative">
+--
+6542-              <span className="text-[10px] font-bold">Ring {getRingName(Number(user?.assignedRing) || 1)}</span>
+6543-            </button>
+6544-            <button 
+6545:              onClick={() => setActiveTab('search-winner')}
+6546-              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'search-winner' ? "text-red-600" : "text-slate-400")}
+6547-            >
+6548-              <Search size={24} />
+6549-              <span className="text-[10px] font-bold">Search</span>
+6550-            </button>
+6551-            <button 
+6552:              onClick={() => setActiveTab('general')}
+6553-              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'general' ? "text-red-600" : "text-slate-400")}
+6554-            >
+6555-              <Monitor size={24} />
+--
+6560-        {user?.role === 'viewer' && (
+6561-          <>
+6562-            <button 
+6563:              onClick={() => setActiveTab('general')}
+6564-              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'general' ? "text-red-600" : "text-slate-400")}
+6565-            >
+6566-              <Monitor size={24} />
+6567-              <span className="text-[10px] font-bold">Onsite</span>
+6568-            </button>
+6569-            <button 
+6570:              onClick={() => setActiveTab('standby')}
+6571-              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'standby' ? "text-red-600" : "text-slate-400")}
+6572-            >
+6573-              <LayoutDashboard size={24} />
+6574-              <span className="text-[10px] font-bold">Standby</span>
+6575-            </button>
+6576-            <button 
+6577:              onClick={() => setActiveTab('site_view')}
+6578-              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'site_view' ? "text-red-600" : "text-slate-400")}
+6579-            >
+6580-              <LayoutDashboard size={24} />
+6581-              <span className="text-[10px] font-bold">Site</span>
+6582-            </button>
+6583-            <button 
+6584:              onClick={() => setActiveTab('points')}
+6585-              className={cn("flex flex-col items-center gap-1 transition-colors", activeTab === 'points' ? "text-red-600" : "text-slate-400")}
+6586-            >
+6587-              <LayoutDashboard size={24} />

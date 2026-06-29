@@ -80,4 +80,5 @@ export interface MatchHistoryItem {
   eventId: string;
   ring?: number;
   syncedAt?: string | Date | any;
+  winType?: string;
 }
