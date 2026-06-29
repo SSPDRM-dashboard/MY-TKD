@@ -81,12 +81,50 @@ export function SearchWinner({ matchHistory, currentEventId, onRestoreMatch }: S
                   </div>
                 )}
                 <div className="pt-6 border-t border-slate-100 flex flex-col items-center">
-                  <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mb-4 text-yellow-600">
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 border shadow-sm ${
+                    result.winnerSide === 'Blue' 
+                      ? 'bg-blue-50 text-blue-600 border-blue-200' 
+                      : result.winnerSide === 'Red' 
+                        ? 'bg-red-50 text-red-600 border-red-200' 
+                        : 'bg-yellow-50 text-yellow-600 border-yellow-200'
+                  }`}>
                     <Trophy size={32} />
                   </div>
-                  <p className="text-[10px] font-black text-yellow-600 uppercase tracking-widest mb-1">Winner</p>
-                  <p className="text-3xl font-black text-slate-900 mb-2 uppercase">{result.winner}</p>
-                  <p className="text-lg font-bold text-yellow-200 uppercase">{result.winnerClub || 'UNKNOWN CLUB'}</p>
+                  {result.winnerSide && (
+                    <div className="mb-2">
+                      <span className={`inline-flex items-center px-4 py-1 rounded-full text-xs font-black tracking-widest uppercase border shadow-sm ${
+                        result.winnerSide === 'Blue' 
+                          ? 'bg-blue-600 text-white border-blue-700' 
+                          : 'bg-red-600 text-white border-red-700'
+                      }`}>
+                        {result.winnerSide} Corner
+                      </span>
+                    </div>
+                  )}
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Winner</p>
+                  <p className="text-3xl font-black text-slate-900 mb-1 uppercase">
+                    {(result.winner.toLowerCase() === 'blue' && result.blue_name) 
+                      ? result.blue_name 
+                      : (result.winner.toLowerCase() === 'red' && result.red_name) 
+                        ? result.red_name 
+                        : result.winner}
+                  </p>
+                  {result.winnerClub && result.winnerClub !== '-' && (
+                    <p className="text-sm font-bold text-slate-500 uppercase">{result.winnerClub}</p>
+                  )}
+                </div>
+                
+                <div className="pt-6 pb-2 border-t border-slate-100 grid grid-cols-2 gap-4">
+                  <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 flex flex-col">
+                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Blue Corner</span>
+                    <span className="text-sm font-bold text-slate-800 uppercase">{result.blue_name || '---'}</span>
+                    <span className="text-xs font-medium text-slate-500 uppercase mt-auto">{result.blue_club || '---'}</span>
+                  </div>
+                  <div className="bg-red-50/50 p-4 rounded-xl border border-red-100 flex flex-col">
+                    <span className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-1">Red Corner</span>
+                    <span className="text-sm font-bold text-slate-800 uppercase">{result.red_name || '---'}</span>
+                    <span className="text-xs font-medium text-slate-500 uppercase mt-auto">{result.red_club || '---'}</span>
+                  </div>
                 </div>
                 {onRestoreMatch && !showSuccess && (
                   <div className="pt-6 border-t border-slate-100">

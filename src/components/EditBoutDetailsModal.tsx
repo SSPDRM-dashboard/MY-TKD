@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Edit2, X } from 'lucide-react';
-import { RingStatus, MatchData, EventData } from '../types';
+import { RingStatus, MatchData, EventData, MatchHistoryItem } from '../types';
 import { cn, normalizeBoutNumber, formatBoutNumber, isBoutMatch } from '../lib/utils';
 
 interface EditBoutDetailsModalProps {
@@ -13,9 +13,10 @@ interface EditBoutDetailsModalProps {
   boutNumberingMode: 'numeric' | 'alphanumeric';
   events: EventData[];
   currentEventId: string | null;
+  matchHistory?: MatchHistoryItem[];
 }
 
-export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, boutNumberingMode, events, currentEventId }: EditBoutDetailsModalProps) {
+export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, boutNumberingMode, events, currentEventId, matchHistory = [] }: EditBoutDetailsModalProps) {
   const defaultRing = (user?.role === 'admin' || sessionStorage.getItem('user_role') === 'court_clerk' || user?.role === 'user') ? (rings[0]?.ringNumber || 1) : (Number(user?.assignedRing) || 1);
   
   const [formData, setFormData] = useState({
@@ -105,8 +106,28 @@ export function EditBoutDetailsModal({ onClose, onSubmit, rings, queue, user, bo
         category: queuedBout.data.category || '',
         is_poomsae_solo: isSolo
       }));
+      return;
     }
-  }, [formData.ring, formData.bout, formData.eventId, rings, queue]);
+
+    // Check completed match history
+    if (matchHistory) {
+      const histId = `${formData.eventId || currentEventId}_${normalizedBout}`;
+      const hist = matchHistory.find(h => h.id === histId || (h.bout === normalizedBout && h.ring === formData.ring && h.eventId === (formData.eventId || currentEventId)));
+      if (hist) {
+        const isSolo = hist.category?.toUpperCase().includes('INDIVIDUAL POOMSAE') || false;
+        lastLookupRef.current = lookupKey;
+        setFormData(prev => ({
+          ...prev,
+          blue_name: hist.blue_name || '',
+          blue_club: hist.blue_club || '',
+          red_name: hist.red_name || '',
+          red_club: hist.red_club || '',
+          category: hist.category || '',
+          is_poomsae_solo: isSolo
+        }));
+      }
+    }
+  }, [formData.ring, formData.bout, formData.eventId, rings, queue, matchHistory]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

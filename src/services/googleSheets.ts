@@ -158,7 +158,7 @@ export async function syncToGoogleSheets(url: string, data: MatchData, eventName
     console.log('>>> GOOGLE SHEETS SYNC REQUEST SENT <<<');
     return true;
   } catch (error) {
-    console.error('!!! Google Sheets Sync Error !!!', error);
+    console.warn('[Google Sheets Sync] Sync failed:', error);
     throw error;
   }
 }
@@ -194,8 +194,8 @@ export async function updateTransferInGoogleSheets(url: string, ring: number, bo
     console.log('>>> GOOGLE SHEETS SYNC REQUEST SENT <<<');
     return true;
   } catch (error) {
-    console.error('!!! Google Sheets Transfer Sync Error !!!', error);
-    return false;
+    console.warn('[Google Sheets Sync] Transfer sync failed:', error);
+    throw error;
   }
 }
 
@@ -233,8 +233,8 @@ export async function updateBoutDetailsInGoogleSheets(url: string, ring: number,
     console.log('>>> GOOGLE SHEETS SYNC REQUEST SENT <<<');
     return true;
   } catch (error) {
-    console.error('Google Sheets Sync Error (Edit Details):', error);
-    return false;
+    console.warn('[Google Sheets Sync] Bout details sync failed:', error);
+    throw error;
   }
 }
 
@@ -288,8 +288,8 @@ export async function updateWinnerInGoogleSheets(url: string, ring: number, bout
     console.log('>>> GOOGLE SHEETS SYNC REQUEST SENT <<<');
     return true;
   } catch (error) {
-    console.error('!!! Google Sheets Winner Sync Error !!!', error);
-    return false;
+    console.warn('[Google Sheets Sync] Winner sync failed:', error);
+    throw error;
   }
 }
 
@@ -333,8 +333,8 @@ export async function updatePointsInGoogleSheets(url: string, ring: number, bout
 
     return true;
   } catch (error) {
-    console.error('Points sync error:', error);
-    return false;
+    console.warn('[Google Sheets Sync] Points sync failed:', error);
+    throw error;
   }
 }
 

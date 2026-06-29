@@ -1257,20 +1257,69 @@ export default function App() {
     return getEventWebAppUrl(event || undefined, passedUrl || googleSheetUrl);
   };
 
-  const syncToGoogleSheets = (url: string, data: MatchData, eventName: string = '', reason: string = '') => {
-    return rawSyncToGoogleSheets(getActiveSyncUrl(url), data, eventName, reason);
+  const handleSyncError = (action: string, error: any, targetUrl: string) => {
+    const errorStr = error instanceof Error ? error.message : String(error);
+    let msg = errorStr;
+    
+    if (errorStr.toLowerCase().includes('failed to fetch')) {
+      if (targetUrl && !targetUrl.includes('script.google.com') && !targetUrl.includes('/exec')) {
+        msg = "CORS / Web App URL Error. The configured URL appears to be a standard Google Sheets spreadsheet URL, not a Google Apps Script Web App. Please deploy your Google Sheet Script as a Web App (authorized to run as 'Anyone'), and configure the Web App URL (ending in /exec) in the event settings.";
+      } else {
+        msg = "Network connection failed (Failed to fetch). Please verify your Google Sheets Web App URL is valid, offline, or has access permission set to 'Anyone'.";
+      }
+    }
+    
+    setLastSyncError(`${action} failed: ${msg}`);
+    addToSyncLog(action, 'error', msg);
+    console.warn(`[Google Sheets Sync] ${action} failed: ${msg}`, error);
   };
 
-  const updateWinnerInGoogleSheets = (url: string, ring: number, bout: string | number, winner: string, eventName: string = '', winnerSide?: string, blueName?: string, redName?: string, points?: any, winnerClub?: string, blueClub?: string, redClub?: string) => {
-    return rawUpdateWinnerInGoogleSheets(getActiveSyncUrl(url), ring, bout, winner, eventName, winnerSide, blueName, redName, points, winnerClub, blueClub, redClub);
+  const syncToGoogleSheets = async (url: string, data: MatchData, eventName: string = '', reason: string = '') => {
+    const activeUrl = getActiveSyncUrl(url);
+    try {
+      const res = await rawSyncToGoogleSheets(activeUrl, data, eventName, reason);
+      setLastSyncError(null);
+      return res;
+    } catch (e) {
+      handleSyncError('New Bout Sync', e, activeUrl);
+      return false;
+    }
   };
 
-  const updateBoutDetailsInGoogleSheets = (url: string, ring: number, bout: string | number, blueName: string, blueClub: string, redName: string, redClub: string, eventName: string = '') => {
-    return rawUpdateBoutDetailsInGoogleSheets(getActiveSyncUrl(url), ring, bout, blueName, blueClub, redName, redClub, eventName);
+  const updateWinnerInGoogleSheets = async (url: string, ring: number, bout: string | number, winner: string, eventName: string = '', winnerSide?: string, blueName?: string, redName?: string, points?: any, winnerClub?: string, blueClub?: string, redClub?: string) => {
+    const activeUrl = getActiveSyncUrl(url);
+    try {
+      const res = await rawUpdateWinnerInGoogleSheets(activeUrl, ring, bout, winner, eventName, winnerSide, blueName, redName, points, winnerClub, blueClub, redClub);
+      setLastSyncError(null);
+      return res;
+    } catch (e) {
+      handleSyncError('Winner Sync', e, activeUrl);
+      return false;
+    }
   };
 
-  const updatePointsInGoogleSheets = (url: string, ring: number, bout: string | number, points: any, eventName: string = '') => {
-    return rawUpdatePointsInGoogleSheets(getActiveSyncUrl(url), ring, bout, points, eventName);
+  const updateBoutDetailsInGoogleSheets = async (url: string, ring: number, bout: string | number, blueName: string, blueClub: string, redName: string, redClub: string, eventName: string = '') => {
+    const activeUrl = getActiveSyncUrl(url);
+    try {
+      const res = await rawUpdateBoutDetailsInGoogleSheets(activeUrl, ring, bout, blueName, blueClub, redName, redClub, eventName);
+      setLastSyncError(null);
+      return res;
+    } catch (e) {
+      handleSyncError('Bout Details Sync', e, activeUrl);
+      return false;
+    }
+  };
+
+  const updatePointsInGoogleSheets = async (url: string, ring: number, bout: string | number, points: any, eventName: string = '') => {
+    const activeUrl = getActiveSyncUrl(url);
+    try {
+      const res = await rawUpdatePointsInGoogleSheets(activeUrl, ring, bout, points, eventName);
+      setLastSyncError(null);
+      return res;
+    } catch (e) {
+      handleSyncError('Points Sync', e, activeUrl);
+      return false;
+    }
   };
   const [showTotalBoutsPublic, setShowTotalBoutsPublic] = useSyncedState<boolean>('tkd_show_total_bouts_public', true);
   const [showOnlyActiveRings, setShowOnlyActiveRings] = useSyncedState<boolean>('tkd_show_only_active_rings', false);
@@ -1364,10 +1413,10 @@ export default function App() {
 
     return boutQueue
       .filter(item => {
-        const matchesEvent = item.data.eventId === currentEventId;
-        const itemRing = Number(item.data.ring);
-        const matchesRing = ringNum === undefined || itemRing === Number(ringNum);
-        const matchesUserRing = user?.role === 'admin' || itemRing === Number(user?.assignedRing);
+        const matchesEvent = (!item.data.eventId && !currentEventId) || item.data.eventId === currentEventId;
+        const itemRing = parseRingNumber(item.data.ring);
+        const matchesRing = ringNum === undefined || itemRing === parseRingNumber(ringNum);
+        const matchesUserRing = user?.role === 'admin' || itemRing === parseRingNumber(user?.assignedRing);
         const normalizedBout = normalizeBoutWithRing(item.data.bout, itemRing);
         const isCompleted = completedHistory.some(h => isBoutMatch(h.bout, normalizedBout));
         return matchesEvent && matchesRing && matchesUserRing && !isCompleted;
@@ -1801,12 +1850,32 @@ export default function App() {
                   const winnerClub = (row.length >= 17 && row[16]) ? row[16]?.trim() : ''; // Column Q for 18-col sheets
 
                   if (matchNo && category && winner && winner !== '-' && winner !== '') {
+                    const blue_name = row[5]?.trim() || '';
+                    const blue_club = row[6]?.trim() || '';
+                    const red_name = row[7]?.trim() || '';
+                    const red_club = row[8]?.trim() || '';
+                    
+                    const normWinner = winner.trim().toLowerCase();
+                    const normBlue = blue_name.toLowerCase();
+                    const normRed = red_name.toLowerCase();
+                    let winnerSide: 'Blue' | 'Red' | undefined = undefined;
+                    if (normWinner === normBlue || normBlue.includes(normWinner)) {
+                      winnerSide = 'Blue';
+                    } else if (normWinner === normRed || normRed.includes(normWinner)) {
+                      winnerSide = 'Red';
+                    }
+
                     const historyId = `${currentEventId}_${matchNo}`;
                     const historyItem = {
                       bout: matchNo,
                       category: category,
                       winner: winner,
                       winnerClub: winnerClub,
+                      winnerSide: winnerSide,
+                      blue_name: blue_name,
+                      blue_club: blue_club,
+                      red_name: red_name,
+                      red_club: red_club,
                       eventId: currentEventId,
                       ring: ringNo,
                       syncedAt: new Date().toISOString()
@@ -1948,6 +2017,10 @@ export default function App() {
                         winnerClub: winnerClub,
                         ring: ringNo,
                         ...(winnerSide && { winnerSide }),
+                        blue_name: blueName,
+                        blue_club: blueClub,
+                        red_name: redName,
+                        red_club: redClub,
                         eventId: currentEventId,
                         syncedAt: serverTimestamp()
                       };
@@ -2837,6 +2910,10 @@ export default function App() {
         winner: winnerName || winner,
         winnerClub: winner === 'Blue' ? currentBout.blue_club : (winner === 'Red' ? currentBout.red_club : '-'),
         winnerSide: (winner === 'Blue' || winner === 'Red') ? (winner as 'Blue' | 'Red') : undefined,
+        blue_name: currentBout.blue_name || '',
+        blue_club: currentBout.blue_club || '',
+        red_name: currentBout.red_name || '',
+        red_club: currentBout.red_club || '',
         eventId: currentEventId,
         ring: ringNumber
       };
@@ -3015,10 +3092,10 @@ export default function App() {
       originalRing: ringToUse,
       bout: matchToRestore.bout,
       category: matchToRestore.category || '',
-      blue_name: '',
-      blue_club: '',
-      red_name: '',
-      red_club: '',
+      blue_name: matchToRestore.blue_name || '',
+      blue_club: matchToRestore.blue_club || '',
+      red_name: matchToRestore.red_name || '',
+      red_club: matchToRestore.red_club || '',
       points: {},
       eventId: currentEventId,
       allowCompleted: true,
@@ -3782,20 +3859,21 @@ export default function App() {
       localStorage.setItem('tkd_sheet_url', newEvent.sheetUrl);
     }
 
-    // Safely auto-generate rings up to ringQuantity with clean active/upcoming matches
-    const neededRingsCount = newEvent.ringQuantity || 1;
-    const nextRings: RingStatus[] = [];
-    for (let i = 1; i <= neededRingsCount; i++) {
-      nextRings.push({
-        ringNumber: i,
-        currentBout: null,
-        onDeck: null,
-        inTheHole: null
-      });
-    }
+    // Safely auto-generate all 12 rings with clean active/upcoming matches
+    const nextRings: RingStatus[] = Array.from({ length: 12 }, (_, i) => ({
+      ringNumber: i + 1,
+      currentBout: null,
+      onDeck: null,
+      inTheHole: null
+    }));
     
     setRings(nextRings);
     localStorage.setItem('tkd_rings', JSON.stringify(nextRings));
+
+    // Update visibleRingsCount to match the new event's ring quantity
+    const neededRingsCount = newEvent.ringQuantity || 12;
+    setVisibleRingsCount(neededRingsCount);
+    localStorage.setItem('tkd_visible_rings_count', String(neededRingsCount));
 
     // Clear the upcoming standby/bout queue for the new event
     setBoutQueue([]);
@@ -5908,6 +5986,23 @@ export default function App() {
               const queued = boutQueue.find(q => q.data.ring === ringNumber && isBoutMatch(q.data.bout, normalized));
               if (queued) found = queued.data;
             }
+            if (!found && currentEventId) {
+              const histId = `${currentEventId}_${normalized}`;
+              const hist = matchHistory.find(h => h.id === histId || (h.bout === normalized && h.ring === ringNumber && h.eventId === currentEventId));
+              if (hist) {
+                found = {
+                  ring: hist.ring || ringNumber,
+                  bout: hist.bout,
+                  category: hist.category || '',
+                  blue_name: hist.blue_name || '',
+                  blue_club: hist.blue_club || '',
+                  red_name: hist.red_name || '',
+                  red_club: hist.red_club || '',
+                  eventId: hist.eventId,
+                  privacy_mode: false
+                };
+              }
+            }
 
             if (found) {
               if (winner === 'Completed') {
@@ -5949,6 +6044,10 @@ export default function App() {
                 winner: winName,
                 winnerClub: winClub,
                 winnerSide: (winner === 'Blue' || winner === 'Red') ? winner : undefined,
+                blue_name: found?.blue_name || '',
+                blue_club: found?.blue_club || '',
+                red_name: found?.red_name || '',
+                red_club: found?.red_club || '',
                 eventId: currentEventId,
                 ring: Number(ringNumber)
               };
@@ -5985,6 +6084,7 @@ export default function App() {
           boutNumberingMode={boutNumberingMode}
           events={events}
           currentEventId={currentEventId}
+          matchHistory={matchHistory}
         />
       )}
 
@@ -5997,6 +6097,7 @@ export default function App() {
           boutNumberingMode={boutNumberingMode}
           events={events}
           currentEventId={currentEventId}
+          matchHistory={matchHistory}
           onSubmit={(ringNumber, boutNumber, updates) => {
             // Check if bout already exists in rings or queue
             let exists = false;
@@ -6010,6 +6111,11 @@ export default function App() {
             if (!exists) {
               const inQ = boutQueue.some(q => q.data.ring === ringNumber && isBoutMatch(q.data.bout, boutNumber));
               if (inQ) exists = true;
+            }
+            if (!exists && currentEventId) {
+              const histId = `${currentEventId}_${normalizeBoutNumber(boutNumber)}`;
+              const inHist = matchHistory.some(h => h.id === histId || (h.bout === normalizeBoutNumber(boutNumber) && h.ring === ringNumber && h.eventId === currentEventId));
+              if (inHist) exists = true;
             }
 
             if (!exists) {
@@ -6137,45 +6243,53 @@ export default function App() {
                   if (q) oldMatch = q.data;
                 }
 
-                if (oldMatch) {
-                  const isBlueWinner = existingHist.winner === oldMatch.blue_name;
-                  const isRedWinner = existingHist.winner === oldMatch.red_name;
+                const side: 'Blue' | 'Red' = existingHist.winnerSide || (existingHist.winner === (oldMatch?.blue_name || existingHist.blue_name) ? 'Blue' : 'Red');
+                const prevBlueName = oldMatch ? oldMatch.blue_name : (existingHist.blue_name || '');
+                const prevBlueClub = oldMatch ? oldMatch.blue_club : (existingHist.blue_club || '');
+                const prevRedName = oldMatch ? oldMatch.red_name : (existingHist.red_name || '');
+                const prevRedClub = oldMatch ? oldMatch.red_club : (existingHist.red_club || '');
 
-                  if (isBlueWinner || isRedWinner) {
-                    const side: 'Blue' | 'Red' = existingHist.winnerSide || (isBlueWinner ? 'Blue' : 'Red');
-                    const newWinName = side === 'Blue' ? (updates.blue_name || oldMatch.blue_name) : (updates.red_name || oldMatch.red_name);
-                    const newWinClub = side === 'Blue' ? (updates.blue_club || oldMatch.blue_club) : (updates.red_club || oldMatch.red_club);
+                const newBlueName = updates.blue_name !== undefined ? updates.blue_name : prevBlueName;
+                const newBlueClub = updates.blue_club !== undefined ? updates.blue_club : prevBlueClub;
+                const newRedName = updates.red_name !== undefined ? updates.red_name : prevRedName;
+                const newRedClub = updates.red_club !== undefined ? updates.red_club : prevRedClub;
 
-                    const updatedHistItem: MatchHistoryItem = { 
-                      ...existingHist, 
-                      winner: newWinName, 
-                      winnerClub: newWinClub,
-                      winnerSide: side,
-                      ring: ringNumber
-                    };
-                    setMatchHistory(prev => prev.map(h => h.id === histId ? updatedHistItem : h));
+                const newWinName = side === 'Blue' ? newBlueName : newRedName;
+                const newWinClub = side === 'Blue' ? newBlueClub : newRedClub;
 
-                    // Store to Firestore
-                    const toSave: any = {
-                      ...updatedHistItem,
-                      syncedAt: serverTimestamp()
-                    };
-                    if (toSave.winnerSide === undefined) delete toSave.winnerSide;
-                    if (toSave.winnerClub === undefined) delete toSave.winnerClub;
+                const updatedHistItem: MatchHistoryItem = { 
+                  ...existingHist, 
+                  winner: newWinName, 
+                  winnerClub: newWinClub,
+                  winnerSide: side,
+                  blue_name: newBlueName,
+                  blue_club: newBlueClub,
+                  red_name: newRedName,
+                  red_club: newRedClub,
+                  category: updates.category !== undefined ? updates.category : (existingHist.category || ''),
+                  ring: ringNumber
+                };
+                setMatchHistory(prev => prev.map(h => h.id === histId ? updatedHistItem : h));
 
-                    if (!isFirestoreQuotaExceeded) {
-                      setDoc(doc(db, 'matchHistory', histId), toSave).catch(err => {
-                        console.error("Error updating history on name change:", err);
-                        if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
-                          handleGlobalQuotaTrigger();
-                        }
-                      });
+                // Store to Firestore
+                const toSave: any = {
+                  ...updatedHistItem,
+                  syncedAt: serverTimestamp()
+                };
+                if (toSave.winnerSide === undefined) delete toSave.winnerSide;
+                if (toSave.winnerClub === undefined) delete toSave.winnerClub;
+
+                if (!isFirestoreQuotaExceeded) {
+                  setDoc(doc(db, 'matchHistory', histId), toSave).catch(err => {
+                    console.error("Error updating history on name change:", err);
+                    if (err.code === 'resource-exhausted' || err.message?.toLowerCase().includes('quota')) {
+                      handleGlobalQuotaTrigger();
                     }
-
-                    // RE-PROPAGATE to brackets!
-                    checkAndGenerateNextBout(boutNumber, newWinName, newWinClub, oldMatch.category);
-                  }
+                  });
                 }
+
+                // RE-PROPAGATE to brackets!
+                checkAndGenerateNextBout(boutNumber, newWinName, newWinClub, updates.category || oldMatch?.category || existingHist.category);
               }
             }
           }}
@@ -6846,9 +6960,10 @@ interface EditResultModalProps {
   boutNumberingMode?: 'numeric' | 'alphanumeric';
   events: EventData[];
   currentEventId: string | null;
+  matchHistory?: MatchHistoryItem[];
 }
 
-function EditResultModal({ onClose, onSubmit, rings, queue, user, boutNumberingMode = 'alphanumeric', events, currentEventId }: EditResultModalProps) {
+function EditResultModal({ onClose, onSubmit, rings, queue, user, boutNumberingMode = 'alphanumeric', events, currentEventId, matchHistory = [] }: EditResultModalProps) {
   const defaultRing = (user?.role === 'admin' || sessionStorage.getItem('user_role') === 'court_clerk' || user?.role === 'user') ? (rings[0]?.ringNumber || 1) : (Number(user?.assignedRing) || 1);
   
   const [formData, setFormData] = useState({
@@ -6880,6 +6995,23 @@ function EditResultModal({ onClose, onSubmit, rings, queue, user, boutNumberingM
       const queued = queue.find(q => q.data.ring === formData.ring && isBoutMatch(q.data.bout, normalized) && (q.data.eventId === formData.eventId || !formData.eventId));
       if (queued) found = queued.data;
     }
+    if (!found && matchHistory) {
+      const histId = `${formData.eventId || currentEventId}_${normalized}`;
+      const hist = matchHistory.find(h => h.id === histId || (h.bout === normalized && h.ring === formData.ring && h.eventId === (formData.eventId || currentEventId)));
+      if (hist) {
+        found = {
+          ring: hist.ring || formData.ring,
+          bout: hist.bout,
+          category: hist.category || '',
+          blue_name: hist.blue_name || '',
+          blue_club: hist.blue_club || '',
+          red_name: hist.red_name || '',
+          red_club: hist.red_club || '',
+          eventId: hist.eventId,
+          privacy_mode: false
+        };
+      }
+    }
 
     if (found) {
       setActiveBoutNames({ blue: found.blue_name, red: found.red_name });
@@ -6894,7 +7026,7 @@ function EditResultModal({ onClose, onSubmit, rings, queue, user, boutNumberingM
       setActiveBoutNames(null);
       setIsPoomsae(false);
     }
-  }, [formData.ring, formData.bout, rings, queue]);
+  }, [formData.ring, formData.bout, rings, queue, matchHistory]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -9087,8 +9219,8 @@ function StandbyView({
 
           const ringQueueAll = boutQueue
             .filter(q => 
-              q.data.ring === ring.ringNumber && 
-              q.data.eventId === currentEventId
+              parseRingNumber(q.data.ring) === parseRingNumber(ring.ringNumber) && 
+              ((!q.data.eventId && !currentEventId) || q.data.eventId === currentEventId)
             )
             .sort((a, b) => {
               const parseBout = (bout: string | number) => {
@@ -9161,7 +9293,7 @@ function StandbyView({
                     <>
                       {/* Bout Num */}
                       <div className="col-span-2 flex items-center justify-center text-3xl font-black text-white border-r border-white/10 bg-[#161f33]">
-                        {current && hasPlayers(current) ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
+                        {current ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
                       </div>
                       {/* Players */}
                       <div className="col-span-10 flex flex-col">
@@ -9282,7 +9414,7 @@ function StandbyView({
           );
         })}
       </div>
-      <SponsorFooterBox isAdmin={false} />
+      <SponsorFooterBox isAdmin={isAdminOnly} />
       <AnnouncementPopup announcement={activeAnnouncement || null} onClose={onAnnouncementClose || (() => {})} size={isFullscreen ? 'large' : 'normal'} />
     </div>
   );
@@ -9467,8 +9599,8 @@ function SiteView({
         {displayedRings.map((ring, i) => {
           const ringQueueAll = boutQueue
             .filter(q => 
-              q.data.ring === ring.ringNumber && 
-              q.data.eventId === currentEventId
+              parseRingNumber(q.data.ring) === parseRingNumber(ring.ringNumber) && 
+              ((!q.data.eventId && !currentEventId) || q.data.eventId === currentEventId)
             )
             .sort((a, b) => {
               const parseBout = (bout: string | number) => {
@@ -9532,7 +9664,7 @@ function SiteView({
                     <>
                       {/* Bout Num */}
                       <div className="col-span-2 flex items-center justify-center text-3xl font-black text-white border-r border-[#1a1f2e] bg-[#161f33]">
-                        {current && hasPlayers(current) ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
+                        {current ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
                       </div>
                       {/* Players */}
                       <div className="col-span-10 flex flex-col">
@@ -9605,7 +9737,7 @@ function SiteView({
           );
         })}
       </div>
-      <SponsorFooterBox isAdmin={false} />
+      <SponsorFooterBox isAdmin={isAdminOnly} />
       <AnnouncementPopup announcement={activeAnnouncement || null} onClose={onAnnouncementClose || (() => {})} size={isFullscreen ? 'large' : 'normal'} />
     </div>
   );
@@ -9788,8 +9920,8 @@ function PointsView({
         {displayedRings.map((ring, i) => {
           const ringQueue = boutQueue
             .filter(q => 
-              q.data.ring === ring.ringNumber && 
-              q.data.eventId === currentEventId
+              parseRingNumber(q.data.ring) === parseRingNumber(ring.ringNumber) && 
+              ((!q.data.eventId && !currentEventId) || q.data.eventId === currentEventId)
             )
             .sort((a, b) => {
               const parseBout = (bout: string | number) => {
@@ -9838,7 +9970,7 @@ function PointsView({
                     <>
                       {/* Bout Num */}
                       <div className="col-span-2 flex items-center justify-center text-3xl font-black text-white border-r border-white/10 bg-[#161f33]">
-                        {current && hasPlayers(current) ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
+                        {current ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
                       </div>
                       {/* Players & Points */}
                       <div className="col-span-10 grid grid-cols-12 h-full">
@@ -10011,7 +10143,7 @@ function PointsView({
           );
         })}
       </div>
-      <SponsorFooterBox isAdmin={false} />
+      <SponsorFooterBox isAdmin={isAdminOnly} />
       <AnnouncementPopup announcement={activeAnnouncement || null} onClose={onAnnouncementClose || (() => {})} size={isFullscreen ? 'large' : 'normal'} />
     </div>
   );
@@ -10243,8 +10375,8 @@ function OnsiteView({
         {displayedRings.map((ring, i) => {
           const ringQueueAll = boutQueue
             .filter(q => 
-              q.data.ring === ring.ringNumber && 
-              q.data.eventId === currentEventId
+              parseRingNumber(q.data.ring) === parseRingNumber(ring.ringNumber) && 
+              ((!q.data.eventId && !currentEventId) || q.data.eventId === currentEventId)
             )
             .sort((a, b) => {
               const parseBout = (bout: string | number) => {
@@ -10335,7 +10467,7 @@ function OnsiteView({
                           isPoomsaeModeCurrent ? "ml-auto mr-10" : "-mx-10"
                         )}>
                           <span className="text-[36px] font-black text-slate-900 leading-none">
-                            {current && hasPlayers(current) ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
+                            {current ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---"}
                           </span>
                         </div>
 
@@ -10439,7 +10571,7 @@ function OnsiteView({
           );
         })}
       </div>
-      <SponsorFooterBox isAdmin={false} />
+      <SponsorFooterBox isAdmin={isAdminOnly} />
 
       {isFullscreen && totalPages > 1 && (
         <div className="flex justify-center gap-3 py-4 flex-shrink-0">
@@ -10643,7 +10775,7 @@ function PublicDashboardView({
             <div className={cn("grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6", gridColsClass)}>
               {displayedRings.map((ring, i) => {
                 const ringQueueAllSorted = boutQueue
-                  .filter(q => q.data.ring === ring.ringNumber)
+                  .filter(q => parseRingNumber(q.data.ring) === parseRingNumber(ring.ringNumber))
                   .sort((a, b) => {
                     const parseBout = (bout: string | number) => {
                       const s = bout.toString().replace(/\s+/g, '').toUpperCase().replace(/^([A-H])O+(\d+)([A-Z]*)$/, '$10$2$3');
@@ -10708,7 +10840,7 @@ function PublicDashboardView({
       </div>
 
       <div className="max-w-[1600px] mx-auto w-full px-3 sm:px-6 md:px-8">
-        <SponsorFooterBox isAdmin={false} />
+        <SponsorFooterBox isAdmin={isAdmin} />
       </div>
 
       <footer className="p-6 bg-slate-800 border-t border-slate-700 mt-8 text-center space-y-4">
@@ -10826,7 +10958,7 @@ function PublicRingCard({ ring, namingMode, queueCount, showTotalBouts = true, b
                   }
                   return false;
                 })();
-                const formBout = hasPlayers(current) ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---";
+                const formBout = current ? formatBoutNumber(ring.ringNumber, current.bout, boutNumberingMode) : "---";
                 if (isTransferred) {
                   return formBout;
                 }
